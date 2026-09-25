@@ -4,7 +4,7 @@
 - Current Step: Step 03B — Apply deployed Cognito configuration
 - Step status: COMPLETE — waiting for approval. Cognito configuration is applied in the frontend. Amplify is not deployed.
 - Current branch: step-03-aws-auth
-- Latest commit SHA: PENDING_COMMIT
+- Latest commit SHA: 958870df8567fe942cc333cf99470c5d1165b658
 - Current stack: Next.js 15.5.26, React 19, TypeScript, App Router, AWS CDK 2, aws-amplify 6
 - AWS region: ap-south-1
 - Infrastructure method: AWS CDK (TypeScript) in `infrastructure/`

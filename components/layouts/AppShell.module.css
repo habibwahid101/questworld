@@ -1,0 +1,88 @@
+.shell {
+  min-height: 100vh;
+  display: grid;
+}
+
+.sidebar {
+  display: none;
+  background: #161616;
+  color: #f4f4f4;
+  padding: 24px 18px;
+}
+
+.brandRow {
+  margin-bottom: 28px;
+}
+
+.nav {
+  display: grid;
+  gap: 6px;
+}
+
+.navLink {
+  display: block;
+  padding: 10px 12px;
+  border-radius: 8px;
+  color: #d4d4d4;
+}
+
+.navLinkActive,
+.navLink:hover {
+  background: #2a2a2a;
+  color: #fff;
+}
+
+.main {
+  min-width: 0;
+  background: var(--color-bg-muted);
+}
+
+.topbar {
+  min-height: 64px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 16px;
+  background: #fff;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.content {
+  padding: 20px 16px 40px;
+}
+
+.menuButton {
+  min-height: 44px;
+  min-width: 44px;
+  border: 1px solid var(--color-border-strong);
+  border-radius: 6px;
+  background: #fff;
+}
+
+.mobileNav {
+  display: grid;
+  gap: 8px;
+  padding: 12px 16px 16px;
+  background: #fff;
+  border-bottom: 1px solid var(--color-border);
+}
+
+@media (min-width: 960px) {
+  .shell {
+    grid-template-columns: 260px minmax(0, 1fr);
+  }
+
+  .sidebar {
+    display: block;
+  }
+
+  .menuButton,
+  .mobileNav {
+    display: none;
+  }
+
+  .content {
+    padding: 28px 28px 48px;
+  }
+}

@@ -1,0 +1,22 @@
+.mark {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--color-text);
+  font-weight: 700;
+  letter-spacing: -0.03em;
+}
+
+.logo {
+  display: block;
+  height: 28px;
+  width: auto;
+}
+
+.wordmark {
+  font-size: 1.05rem;
+}
+
+.inverse {
+  color: #fff;
+}

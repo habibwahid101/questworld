@@ -1,0 +1,52 @@
+# Questra World — Project Checkpoint
+
+- Project: Questra World
+- Current Step: Step 01
+- Step status: COMPLETE — waiting for approval
+- Current branch: step-01-repository-foundation
+- Latest commit SHA: PENDING_COMMIT
+- Current stack: Next.js 15.5.26, React 19, TypeScript, App Router
+- Planned AWS architecture:
+  - AWS Amplify Hosting
+  - Amazon Cognito
+  - API Gateway
+  - AWS Lambda
+  - Amazon DynamoDB
+  - Amazon S3
+  - Amazon EventBridge
+  - Amazon CloudWatch
+- Cost-efficiency rules:
+  - No EC2
+  - No always-running server
+  - No RDS initially
+  - No NAT Gateway unless later proven necessary
+  - No ElastiCache
+  - No OpenSearch
+  - No WAF initially
+  - No expensive infrastructure without explicit approval
+- Locked UI direction:
+  - Premium international fintech / financial platform visual language
+  - White and off-white backgrounds
+  - Deep charcoal typography
+  - Questra magenta/red accent
+  - Clean spacing, professional, trustworthy
+  - Mobile-first and fully responsive
+  - No crypto-hype, MLM, neon, rocket, or fake trading-terminal visuals
+- Completed work:
+  - Inspected https://github.com/habibwahid101/questworld; repository was empty
+  - Initialized Next.js + TypeScript App Router foundation
+  - Added design tokens, shared UI, public/member/admin shells
+  - Created public, auth, member, and admin routes with structured placeholders
+  - Prepared `public/brand/` for the official logo; no replacement logo invented
+  - Added README and this checkpoint file
+  - Validated lint, typecheck, and production build
+- Pending work:
+  - Official logo asset drop-in
+  - Authentication backend / Cognito
+  - Database and ledger
+  - Investment, monthly profit, and referral engines
+  - Deposit and withdrawal processing
+  - Admin financial actions
+  - AWS infrastructure
+- Known blockers: NONE
+- Next approved step: NONE until approval

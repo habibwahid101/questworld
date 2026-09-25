@@ -1,0 +1,16 @@
+.wrap {
+  min-height: 100vh;
+  display: grid;
+  align-items: center;
+  background: var(--color-bg-muted);
+  padding: 32px 0;
+}
+
+.panel {
+  width: min(100% - 32px, 460px);
+  margin: 0 auto;
+}
+
+.intro {
+  margin-bottom: 24px;
+}

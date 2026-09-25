@@ -11,8 +11,8 @@ export function LoginForm() {
   }
 
   return (
-    <form className="stack" onSubmit={onSubmit}>
-      <Field label="Email" htmlFor="email">
+    <form className="stack" onSubmit={onSubmit} noValidate={false}>
+      <Field label="Email Address" htmlFor="email">
         <Input id="email" name="email" type="email" autoComplete="email" required />
       </Field>
       <Field label="Password" htmlFor="password">
@@ -24,12 +24,16 @@ export function LoginForm() {
           required
         />
       </Field>
-      <Button type="submit">Log in</Button>
+      <div className="cluster" style={{ justifyContent: "space-between" }}>
+        <label htmlFor="remember" className="cluster">
+          <input id="remember" name="remember" type="checkbox" />
+          <span>Remember Me</span>
+        </label>
+        <Link href="/forgot-password">Forgot Password?</Link>
+      </div>
+      <Button type="submit">Login</Button>
       <p>
-        <Link href="/forgot-password">Forgot password?</Link>
-      </p>
-      <p>
-        Need an account? <Link href="/register">Register</Link>
+        {"Don't have an account?"} <Link href="/register">Create Account</Link>
       </p>
     </form>
   );

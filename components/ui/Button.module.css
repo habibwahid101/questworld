@@ -36,3 +36,28 @@
 .secondary:hover {
   opacity: 0.92;
 }
+
+.primary {
+  background: var(--color-accent);
+  color: #fff;
+}
+
+.primary:hover {
+  background: var(--color-accent-hover);
+}
+
+.secondary {
+  background: var(--color-text);
+  color: #fff;
+}
+
+.ghost {
+  background: transparent;
+  color: var(--color-text);
+  border-color: var(--color-border-strong);
+}
+
+.ghost:hover,
+.secondary:hover {
+  opacity: 0.92;
+}

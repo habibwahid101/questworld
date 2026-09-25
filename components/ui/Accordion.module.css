@@ -1,0 +1,32 @@
+.item {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: #fff;
+}
+
+.trigger {
+  width: 100%;
+  min-height: 56px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px 18px;
+  border: 0;
+  background: transparent;
+  text-align: left;
+  font-weight: 650;
+  color: var(--color-text);
+  cursor: pointer;
+}
+
+.panel {
+  padding: 0 18px 18px;
+}
+
+.icon {
+  flex: none;
+  color: var(--color-accent);
+  font-size: 1.2rem;
+  line-height: 1;
+}

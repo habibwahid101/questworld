@@ -56,6 +56,9 @@ npm start
 - `/how-it-works`
 - `/referrals`
 - `/faq`
+- `/terms`
+- `/privacy`
+- `/contact`
 
 ### Auth
 - `/login`
@@ -114,13 +117,16 @@ Premium international fintech visual language: white and off-white surfaces, dee
 
 Official brand logo files belong in `public/brand/`. Do not invent a replacement logo.
 
-## Current product display values
+Current public display values for Step 02:
 
-Investment plan sizes shown in the UI:
-- $100
-- $1,000
-- $10,000
-- $100,000
+Investment plans:
+- Starter $100
+- Growth $1,000
+- Professional $10,000
+- Premium $100,000
+
+Current Monthly Rate shown in the UI:
+- 8% display/demo content only. Future backend will provide the applicable rate.
 
 Referral display rates:
 - 3% Direct Sponsor

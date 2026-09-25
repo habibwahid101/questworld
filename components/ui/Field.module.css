@@ -20,7 +20,8 @@
 }
 
 .control:focus {
-  outline: 2px solid var(--color-accent-soft);
+  outline: 2px solid var(--color-accent);
+  outline-offset: 0;
   border-color: var(--color-accent);
 }
 

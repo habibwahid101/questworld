@@ -1,10 +1,10 @@
 # Questra World — Project Checkpoint
 
 - Project: Questra World
-- Current Step: Step 01
+- Current Step: Step 02 — Public Website + Auth UI
 - Step status: COMPLETE — waiting for approval
-- Current branch: step-01-repository-foundation
-- Latest commit SHA: 61d6c86797fe00bab188f6b92944a4ded18f46f3
+- Current branch: step-02-public-ui
+- Latest commit SHA: PENDING_COMMIT
 - Current stack: Next.js 15.5.26, React 19, TypeScript, App Router
 - Planned AWS architecture:
   - AWS Amplify Hosting
@@ -32,14 +32,24 @@
   - Clean spacing, professional, trustworthy
   - Mobile-first and fully responsive
   - No crypto-hype, MLM, neon, rocket, or fake trading-terminal visuals
+- Design decisions:
+  - Official logo still not in repo; text wordmark and `public/brand/` drop-in preserved
+  - 8% Current Monthly Rate is display/demo content only via `displayMonthlyRatePercent`
+  - Growth / $1,000 marked Popular
+  - Referral diagram is A → B → C with 3% / 1% only
+  - Terms, privacy, and contact pages are draft placeholders
+  - Register accepts `?ref=` to prefill referral code
+- Completed public pages:
+  - `/`, `/plans`, `/how-it-works`, `/referrals`, `/faq`, `/terms`, `/privacy`, `/contact`
+- Completed auth pages:
+  - `/login`, `/register`, `/forgot-password`, `/reset-password`
+- Validation results:
+  - lint PASS
+  - typecheck PASS
+  - production build PASS
 - Completed work:
-  - Inspected https://github.com/habibwahid101/questworld; repository was empty
-  - Initialized Next.js + TypeScript App Router foundation
-  - Added design tokens, shared UI, public/member/admin shells
-  - Created public, auth, member, and admin routes with structured placeholders
-  - Prepared `public/brand/` for the official logo; no replacement logo invented
-  - Added README and this checkpoint file
-  - Validated lint, typecheck, and production build
+  - Step 01 foundation retained
+  - Production-quality public website and authentication UI
 - Pending work:
   - Official logo asset drop-in
   - Authentication backend / Cognito

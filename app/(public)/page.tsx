@@ -1,10 +1,11 @@
 import {
-  BenefitsSection,
   EarningsExampleSection,
-  FaqPreviewSection,
   FinalCtaSection,
+  FaqPreviewSection,
   HeroSection,
+  HighlightsSection,
   HowItWorksSection,
+  PaymentSection,
   PlansSection,
   ReferralSection,
   WhySection,
@@ -14,12 +15,13 @@ export default function HomePage() {
   return (
     <>
       <HeroSection />
-      <BenefitsSection />
+      <HighlightsSection />
       <HowItWorksSection />
       <PlansSection />
       <EarningsExampleSection />
       <ReferralSection />
       <WhySection />
+      <PaymentSection />
       <FaqPreviewSection />
       <FinalCtaSection />
     </>

@@ -1,16 +1,19 @@
 import type { Metadata } from "next";
 import { AuthFrame } from "@/components/auth/AuthFrame";
 import { ForgotPasswordForm } from "@/components/auth/ForgotPasswordForm";
+import { pageMetadata } from "@/utils/metadata";
 
-export const metadata: Metadata = {
-  title: "Forgot password",
-};
+export const metadata: Metadata = pageMetadata(
+  "Forgot Password",
+  "Request a Questra World password reset link.",
+  "/forgot-password",
+);
 
 export default function ForgotPasswordPage() {
   return (
     <AuthFrame
-      title="Forgot password"
-      description="This form is prepared for a later Cognito reset flow."
+      title="Forgot Password"
+      description="No email is sent in this version. The confirmation wording is ready for a later reset flow."
     >
       <ForgotPasswordForm />
     </AuthFrame>

@@ -1,24 +1,14 @@
 import type { Metadata } from "next";
+import { Accordion } from "@/components/ui/Accordion";
 import { Card } from "@/components/ui/Card";
-import { faqPreview } from "@/constants/site";
+import { faqItems } from "@/constants/site";
+import { pageMetadata } from "@/utils/metadata";
 
-export const metadata: Metadata = {
-  title: "FAQ",
-  description: "Foundation questions for Questra World.",
-};
-
-const extra = [
-  {
-    question: "Are returns guaranteed?",
-    answer:
-      "This foundation does not publish return guarantees. Any later figures must be approved before they appear as product terms.",
-  },
-  {
-    question: "Can I deposit or withdraw today?",
-    answer:
-      "No. Wallet, deposit, and withdrawal processing are reserved for later steps after the AWS backend is approved.",
-  },
-];
+export const metadata: Metadata = pageMetadata(
+  "FAQ",
+  "Answers about Questra World plans, monthly earnings, referrals, payments, and withdrawals.",
+  "/faq",
+);
 
 export default function FaqPage() {
   return (
@@ -27,15 +17,19 @@ export default function FaqPage() {
         <div>
           <p className="eyebrow">FAQ</p>
           <h1>Common questions</h1>
+          <p className="lead" style={{ marginTop: 12 }}>
+            These answers follow the locked public product rules. They do not add
+            extra financial promises.
+          </p>
         </div>
-        <div className="stack">
-          {[...faqPreview, ...extra].map((item) => (
-            <Card key={item.question}>
-              <h2>{item.question}</h2>
-              <p style={{ marginTop: 10 }}>{item.answer}</p>
-            </Card>
-          ))}
-        </div>
+        <Accordion items={faqItems} />
+        <Card quiet>
+          <p>
+            Authentication, deposits, withdrawals, and commission posting are not
+            connected in this version. The forms and pages are ready for later backend
+            work.
+          </p>
+        </Card>
       </div>
     </section>
   );

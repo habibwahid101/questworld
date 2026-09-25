@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { BrandMark } from "@/components/ui/BrandMark";
@@ -13,6 +13,21 @@ export function PublicHeader() {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
 
+  useEffect(() => {
+    setOpen(false);
+  }, [pathname]);
+
+  useEffect(() => {
+    function onKey(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        setOpen(false);
+      }
+    }
+
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
   return (
     <header className={styles.header}>
       <div className={`container ${styles.bar}`}>
@@ -23,6 +38,7 @@ export function PublicHeader() {
               key={item.href}
               href={item.href}
               className={classNames(styles.navLink, pathname === item.href && styles.navLinkActive)}
+              aria-current={pathname === item.href ? "page" : undefined}
             >
               {item.label}
             </Link>
@@ -30,32 +46,38 @@ export function PublicHeader() {
         </nav>
         <div className={styles.actions}>
           <Button href="/login" variant="ghost">
-            Log in
+            Login
           </Button>
-          <Button href="/register">Create account</Button>
+          <Button href="/register">Create Account</Button>
         </div>
         <button
           className={styles.menuButton}
           type="button"
           aria-expanded={open}
           aria-controls="mobile-nav"
+          aria-label={open ? "Close menu" : "Open menu"}
           onClick={() => setOpen((value) => !value)}
         >
-          Menu
+          {open ? "Close" : "Menu"}
         </button>
       </div>
       {open ? (
-        <div id="mobile-nav" className={`container ${styles.mobilePanel}`}>
+        <nav id="mobile-nav" className={`container ${styles.mobilePanel}`} aria-label="Mobile">
           {publicNav.map((item) => (
-            <Link key={item.href} href={item.href} onClick={() => setOpen(false)}>
+            <Link
+              key={item.href}
+              href={item.href}
+              className={styles.mobileLink}
+              aria-current={pathname === item.href ? "page" : undefined}
+            >
               {item.label}
             </Link>
           ))}
           <Button href="/login" variant="ghost">
-            Log in
+            Login
           </Button>
-          <Button href="/register">Create account</Button>
-        </div>
+          <Button href="/register">Create Account</Button>
+        </nav>
       ) : null}
     </header>
   );

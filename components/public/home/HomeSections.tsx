@@ -1,72 +1,109 @@
+import { Accordion } from "@/components/ui/Accordion";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
-import { brand, faqPreview, investmentPlans, referralRates } from "@/constants/site";
-import { formatUsd } from "@/utils/format";
+import {
+  displayMonthlyRatePercent,
+  faqItems,
+  howItWorksSteps,
+  investmentPlans,
+  referralRates,
+  whyItems,
+} from "@/constants/site";
+import type { InvestmentPlan } from "@/types";
+import { estimatedMonthlyProfit, formatUsd, formatUsdPrecise } from "@/utils/format";
 import styles from "./HomeSections.module.css";
+
+function PlanCard({ plan }: { plan: InvestmentPlan }) {
+  const monthly = estimatedMonthlyProfit(plan.amountUsd, displayMonthlyRatePercent);
+
+  return (
+    <Card className={`${styles.planCard} ${plan.featured ? styles.planCardFeatured : ""}`}>
+      <div className="cluster">
+        <p className="eyebrow">{plan.name}</p>
+        {plan.featured ? <Badge tone="info">Popular</Badge> : null}
+      </div>
+      <p className={styles.planAmount}>{formatUsd(plan.amountUsd)}</p>
+      <div className={styles.planMeta}>
+        <p>
+          Current Monthly Rate: {displayMonthlyRatePercent}%
+        </p>
+        <p>
+          Estimated Monthly Earnings: {formatUsdPrecise(monthly)}
+        </p>
+        <p>
+          {formatUsd(plan.amountUsd)} × {displayMonthlyRatePercent}% = {formatUsdPrecise(monthly)} monthly
+        </p>
+        <p>Referral eligible</p>
+        <p>USDT payment</p>
+      </div>
+      <Button href="/register">{plan.ctaLabel}</Button>
+    </Card>
+  );
+}
 
 export function HeroSection() {
   return (
     <section className={styles.hero}>
       <div className={`container ${styles.heroInner}`}>
-        <div>
-          <p className="eyebrow">{brand.name}</p>
-          <h1>A clear structure for allocated investment plans.</h1>
+        <div className={styles.heroCopy}>
+          <p className="eyebrow">Questra World</p>
+          <h1>Build Your Investment Journey with Questra World</h1>
           <p className="lead" style={{ marginTop: 16 }}>
-            Questra World is being prepared as a professional member platform for plan
-            allocation, monthly profit records, referrals, and withdrawals. This release
-            establishes the product foundation only.
+            Choose an investment plan, manage your portfolio, track applicable monthly
+            earnings, and benefit from a simple two-generation referral program.
           </p>
-          <div className={styles.actions}>
-            <Button href="/register">Create account</Button>
+          <p className={styles.heroNote}>Starting from $100</p>
+          <div className="cluster" style={{ marginTop: 24 }}>
+            <Button href="/register">Start Investing</Button>
             <Button href="/plans" variant="ghost">
-              View plans
+              View Investment Plans
             </Button>
           </div>
         </div>
-        <Card className={styles.panel} quiet>
-          <div className="stack">
-            <Badge>Foundation preview</Badge>
-            <h2>What this platform will contain</h2>
-            <p>
-              Member records, plan selections, profit history, referral tracking, and
-              wallet activity. None of those engines are connected yet.
-            </p>
+        <div className={styles.visual} aria-hidden="true">
+          <div className={styles.visualTop}>
+            <div className={styles.metric}>
+              <div className={styles.metricLabel}>Active plan</div>
+              <div className={styles.metricValue}>Growth</div>
+            </div>
+            <div className={styles.metric}>
+              <div className={styles.metricLabel}>Allocation</div>
+              <div className={styles.metricValue}>$1,000</div>
+            </div>
           </div>
-        </Card>
+          <div className={styles.visualRow}>
+            <div className={styles.metric}>
+              <div className={styles.metricLabel}>Current monthly rate</div>
+              <div className={styles.metricValue}>{displayMonthlyRatePercent}%</div>
+            </div>
+            <div className={styles.metric}>
+              <div className={styles.metricLabel}>Estimated monthly</div>
+              <div className={styles.metricValue}>$80</div>
+            </div>
+          </div>
+        </div>
       </div>
     </section>
   );
 }
 
-export function BenefitsSection() {
+export function HighlightsSection() {
   const items = [
-    {
-      title: "Plan clarity",
-      body: "Listed plan sizes are presented without promotional clutter so members can review allocations calmly.",
-    },
-    {
-      title: "Recorded activity",
-      body: "The member area is structured around investments, profits, referrals, wallet, and withdrawals.",
-    },
-    {
-      title: "Operational control",
-      body: "An admin shell is prepared for users, deposits, monthly profit, commissions, and settings.",
-    },
+    { value: "Starting from $100", label: "Minimum listed plan" },
+    { value: "Monthly Earnings", label: "Tracked by investment period" },
+    { value: `${referralRates.directSponsorPercent}% Direct Referral`, label: "First generation" },
+    { value: `${referralRates.secondGenerationPercent}% Second Generation`, label: "Second generation only" },
   ];
 
   return (
     <section className="section section-muted">
-      <div className="container stack">
-        <div>
-          <p className="eyebrow">Key benefits</p>
-          <h2>Built to feel measured and trustworthy.</h2>
-        </div>
-        <div className="grid-3">
+      <div className="container">
+        <div className={styles.highlights}>
           {items.map((item) => (
-            <Card key={item.title}>
-              <h3>{item.title}</h3>
-              <p style={{ marginTop: 10 }}>{item.body}</p>
+            <Card key={item.value} className={styles.highlight} quiet>
+              <strong>{item.value}</strong>
+              <span>{item.label}</span>
             </Card>
           ))}
         </div>
@@ -76,28 +113,23 @@ export function BenefitsSection() {
 }
 
 export function HowItWorksSection() {
-  const steps = [
-    { title: "Create an account", body: "Register with your name, email, and optional referral code." },
-    { title: "Review a plan size", body: "Choose from the listed allocations when the investment engine is enabled." },
-    { title: "Track records", body: "Use the member area to review profits, referrals, wallet, and withdrawals." },
-  ];
-
   return (
     <section className="section" id="how-it-works">
       <div className="container stack">
         <div>
           <p className="eyebrow">How it works</p>
-          <h2>A simple path from account to records.</h2>
+          <h2>Four clear steps from account to records.</h2>
         </div>
-        <div className="grid-3">
-          {steps.map((step, index) => (
-            <Card key={step.title}>
-              <Badge tone="neutral">Step {index + 1}</Badge>
-              <h3 style={{ marginTop: 14 }}>{step.title}</h3>
-              <p style={{ marginTop: 10 }}>{step.body}</p>
+        <div className="grid-2">
+          {howItWorksSteps.map((step) => (
+            <Card key={step.number}>
+              <p className={styles.stepNum}>{step.number}</p>
+              <h3 style={{ marginTop: 10 }}>{step.title}</h3>
+              <p style={{ marginTop: 8 }}>{step.body}</p>
             </Card>
           ))}
         </div>
+        <Button href="/register">Create Your Account</Button>
       </div>
     </section>
   );
@@ -109,19 +141,15 @@ export function PlansSection() {
       <div className="container stack">
         <div>
           <p className="eyebrow">Investment plans</p>
-          <h2>Listed allocation sizes.</h2>
+          <h2>Four listed allocations.</h2>
           <p className="lead">
-            These are display values only. Monthly profit terms are not published in this
-            foundation and should not be assumed.
+            Current Monthly Rate shown below is display content for these pages. The
+            applicable rate will come from the backend in a later step.
           </p>
         </div>
-        <div className="grid-4">
+        <div className={styles.planGrid}>
           {investmentPlans.map((plan) => (
-            <Card key={plan.id}>
-              <p className="eyebrow">Plan</p>
-              <h3>{formatUsd(plan.amountUsd)}</h3>
-              <p style={{ marginTop: 10 }}>{plan.summary}</p>
-            </Card>
+            <PlanCard key={plan.id} plan={plan} />
           ))}
         </div>
       </div>
@@ -130,38 +158,37 @@ export function PlansSection() {
 }
 
 export function EarningsExampleSection() {
+  const amount = 1000;
+  const monthly = estimatedMonthlyProfit(amount, displayMonthlyRatePercent);
+
   return (
     <section className="section">
-      <div className="container stack">
-        <div>
-          <p className="eyebrow">Monthly earnings example</p>
-          <h2>Illustrative layout, not a performance claim.</h2>
-          <p className="lead">
-            The table shows how a monthly record may appear later. Figures below are
-            placeholders and are not live calculations.
-          </p>
-        </div>
-        <div className="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>Plan size</th>
-                <th>Example month</th>
-                <th>Record status</th>
-                <th>Displayed figure</th>
-              </tr>
-            </thead>
-            <tbody>
-              {investmentPlans.map((plan) => (
-                <tr key={plan.id}>
-                  <td>{formatUsd(plan.amountUsd)}</td>
-                  <td>Not published</td>
-                  <td>Placeholder</td>
-                  <td>—</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+      <div className="container">
+        <div className="grid-2">
+          <div>
+            <p className="eyebrow">Monthly earnings example</p>
+            <h2>A simple period example, not a compounded projection.</h2>
+            <p className="lead" style={{ marginTop: 12 }}>
+              Earnings are calculated according to the applicable monthly rate for the
+              investment period.
+            </p>
+          </div>
+          <Card>
+            <div className={styles.example}>
+              <div className={styles.exampleRow}>
+                <span>Active Investment</span>
+                <span>{formatUsd(amount)}</span>
+              </div>
+              <div className={styles.exampleRow}>
+                <span>Current Monthly Rate</span>
+                <span>{displayMonthlyRatePercent}%</span>
+              </div>
+              <div className={styles.exampleRow}>
+                <span>Estimated Monthly Profit</span>
+                <span>{formatUsdPrecise(monthly)}</span>
+              </div>
+            </div>
+          </Card>
         </div>
       </div>
     </section>
@@ -171,27 +198,44 @@ export function EarningsExampleSection() {
 export function ReferralSection() {
   return (
     <section className="section section-muted">
-      <div className="container">
-        <div className="grid-2">
-          <div>
-            <p className="eyebrow">Referral program</p>
-            <h2>Two listed referral levels.</h2>
-            <p className="lead" style={{ marginTop: 12 }}>
-              Commission calculation and payout processing are not implemented yet. The
-              rates below are displayed for product structure only.
-            </p>
-          </div>
-          <div className="grid-2">
-            <Card>
-              <h3>{referralRates.directSponsorPercent}% Direct Sponsor</h3>
-              <p style={{ marginTop: 10 }}>Listed first-level referral rate.</p>
-            </Card>
-            <Card>
-              <h3>{referralRates.secondGenerationPercent}% Second Generation</h3>
-              <p style={{ marginTop: 10 }}>Listed second-level referral rate.</p>
-            </Card>
-          </div>
+      <div className="container stack">
+        <div>
+          <p className="eyebrow">Referral program</p>
+          <h2>Two generations. No further levels.</h2>
+          <p className="lead">
+            Referral commissions are generated monthly while the source investment
+            remains active. A sponsor does not need an active investment of their own
+            to remain eligible for referral commission.
+          </p>
         </div>
+        <Card>
+          <div className={styles.diagram} aria-label="Referral relationship A to B to C">
+            <div className={styles.node}>A</div>
+            <div className={styles.arrow} aria-hidden="true">
+              →
+            </div>
+            <div className={styles.node}>B</div>
+            <div className={styles.arrow} aria-hidden="true">
+              →
+            </div>
+            <div className={styles.node}>C</div>
+          </div>
+        </Card>
+        <div className="grid-2">
+          <Card className={styles.commission}>
+            <h3>If C has an active investment</h3>
+            <p style={{ marginTop: 10 }}>
+              B receives {referralRates.directSponsorPercent}% Direct Sponsor.
+            </p>
+          </Card>
+          <Card className={styles.commission}>
+            <h3>Second generation</h3>
+            <p style={{ marginTop: 10 }}>
+              A receives {referralRates.secondGenerationPercent}% Second Generation.
+            </p>
+          </Card>
+        </div>
+        <Button href="/register">Start Referring</Button>
       </div>
     </section>
   );
@@ -203,27 +247,69 @@ export function WhySection() {
       <div className="container stack">
         <div>
           <p className="eyebrow">Why Questra World</p>
-          <h2>Premium restraint over promotional noise.</h2>
+          <h2>Professional structure, stated plainly.</h2>
         </div>
         <div className="grid-3">
+          {whyItems.map((item) => (
+            <Card key={item.title}>
+              <h3>{item.title}</h3>
+              <p style={{ marginTop: 10 }}>{item.body}</p>
+            </Card>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+export function PaymentSection() {
+  return (
+    <section className="section section-muted">
+      <div className="container">
+        <div className="grid-2">
           <Card>
-            <h3>Clear information architecture</h3>
-            <p style={{ marginTop: 10 }}>
-              Public pages, member records, and admin operations are separated from the start.
-            </p>
+            <p className="eyebrow">Deposit</p>
+            <h2>Manual USDT payment</h2>
+            <div className={styles.process} style={{ marginTop: 16 }}>
+              <div className={styles.processItem}>
+                <span className={styles.processMark}>1</span>
+                <p>Send USDT</p>
+              </div>
+              <div className={styles.processItem}>
+                <span className={styles.processMark}>2</span>
+                <p>Submit transaction details</p>
+              </div>
+              <div className={styles.processItem}>
+                <span className={styles.processMark}>3</span>
+                <p>Admin verification</p>
+              </div>
+              <div className={styles.processItem}>
+                <span className={styles.processMark}>4</span>
+                <p>Investment activation</p>
+              </div>
+            </div>
           </Card>
           <Card>
-            <h3>AWS-ready foundation</h3>
-            <p style={{ marginTop: 10 }}>
-              The application is prepared for Amplify Hosting and later Cognito, API Gateway,
-              Lambda, DynamoDB, and S3 work.
-            </p>
-          </Card>
-          <Card>
-            <h3>Cost-aware delivery</h3>
-            <p style={{ marginTop: 10 }}>
-              No always-on servers or managed databases are introduced in this step.
-            </p>
+            <p className="eyebrow">Withdrawal</p>
+            <h2>Request, review, paid</h2>
+            <div className={styles.process} style={{ marginTop: 16 }}>
+              <div className={styles.processItem}>
+                <span className={styles.processMark}>1</span>
+                <p>Submit withdrawal request</p>
+              </div>
+              <div className={styles.processItem}>
+                <span className={styles.processMark}>2</span>
+                <p>Admin review</p>
+              </div>
+              <div className={styles.processItem}>
+                <span className={styles.processMark}>3</span>
+                <p>Processing</p>
+              </div>
+              <div className={styles.processItem}>
+                <span className={styles.processMark}>4</span>
+                <p>Paid · 1–3 business days</p>
+              </div>
+            </div>
           </Card>
         </div>
       </div>
@@ -233,22 +319,15 @@ export function WhySection() {
 
 export function FaqPreviewSection() {
   return (
-    <section className="section section-muted">
+    <section className="section">
       <div className="container stack">
         <div>
-          <p className="eyebrow">FAQ preview</p>
-          <h2>Short answers for this foundation.</h2>
+          <p className="eyebrow">FAQ</p>
+          <h2>Answers aligned to the current product rules.</h2>
         </div>
-        <div className="grid-3">
-          {faqPreview.map((item) => (
-            <Card key={item.question}>
-              <h3>{item.question}</h3>
-              <p style={{ marginTop: 10 }}>{item.answer}</p>
-            </Card>
-          ))}
-        </div>
+        <Accordion items={faqItems} />
         <Button href="/faq" variant="ghost">
-          View all questions
+          Open the full FAQ page
         </Button>
       </div>
     </section>
@@ -261,16 +340,16 @@ export function FinalCtaSection() {
       <div className="container">
         <Card>
           <div className="stack">
-            <p className="eyebrow">Next step</p>
-            <h2>Create an account when you are ready to explore the member shell.</h2>
+            <p className="eyebrow">Get started</p>
+            <h2>Start Your Questra World Journey</h2>
             <p>
-              Registration currently collects details only. No verification flow or backend
-              account creation is connected.
+              Create an account to review the member area structure, or explore the
+              listed plans first.
             </p>
             <div className="cluster">
-              <Button href="/register">Register</Button>
-              <Button href="/how-it-works" variant="ghost">
-                Read how it works
+              <Button href="/register">Create Account</Button>
+              <Button href="/plans" variant="ghost">
+                Explore Plans
               </Button>
             </div>
           </div>

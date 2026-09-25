@@ -4,7 +4,7 @@
 - Current Step: Step 03 — AWS Hosting + Cognito Authentication
 - Step status: COMPLETE — waiting for approval. AWS resources are defined and synthesized, not deployed.
 - Current branch: step-03-aws-auth
-- Latest commit SHA: PENDING_COMMIT
+- Latest commit SHA: d56ecd7a29887cc0446c685d08b9423ae92e5d0b
 - Current stack: Next.js 15.5.26, React 19, TypeScript, App Router, AWS CDK 2, aws-amplify 6
 - AWS region: ap-south-1
 - Infrastructure method: AWS CDK (TypeScript) in `infrastructure/`

@@ -89,7 +89,7 @@ npm start
 
 ## Planned AWS architecture
 
-These services are planned for later approved steps. They are not provisioned in Step 01.
+These services are the planned architecture. Step 03 defines Cognito, a signup confirmation Lambda, and Amplify Hosting in CDK. API Gateway, DynamoDB, S3, and EventBridge are not part of this step.
 
 - AWS Amplify Hosting
 - Amazon Cognito
@@ -99,6 +99,22 @@ These services are planned for later approved steps. They are not provisioned in
 - Amazon S3
 - Amazon EventBridge
 - Amazon CloudWatch
+
+## AWS foundation
+
+Step 03 defines Amazon Cognito and AWS Amplify Hosting with AWS CDK in `infrastructure/`. Financial tables, deposits, withdrawals, and commission engines are still not implemented.
+
+Signup is confirmed by a Cognito Pre Sign-up Lambda so members are not asked for an email verification code. Password reset still sends a recovery code.
+
+See [docs/AWS.md](docs/AWS.md) for the resource list, cost behavior, deploy command, teardown command, and the manual GitHub authorization Amplify still needs.
+
+```bash
+cd infrastructure
+npm ci
+npx cdk synth
+```
+
+No expensive always-on infrastructure without approval.
 
 ## AWS cost-efficiency rules
 

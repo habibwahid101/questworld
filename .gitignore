@@ -38,6 +38,11 @@ yarn-error.log*
 .amplify-hosting
 .amplify
 
+# cdk
+infrastructure/node_modules
+infrastructure/cdk.out
+infrastructure/dist
+
 # typescript
 *.tsbuildinfo
 next-env.d.ts

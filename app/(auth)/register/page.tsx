@@ -14,7 +14,7 @@ export default function RegisterPage() {
   return (
     <AuthFrame
       title="Create Account"
-      description="Registration collects the fields below. No email verification step is included."
+      description="Create your account with email and password. No signup email verification step is required."
     >
       <Suspense fallback={<p>Loading registration form…</p>}>
         <RegisterForm />

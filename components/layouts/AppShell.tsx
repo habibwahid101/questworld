@@ -3,6 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useAuth } from "@/components/auth/AuthProvider";
 import { BrandMark } from "@/components/ui/BrandMark";
 import type { NavItem } from "@/types";
 import { classNames } from "@/utils/format";
@@ -18,6 +19,21 @@ type AppShellProps = {
 export function AppShell({ title, homeHref, items, children }: AppShellProps) {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
+  const { logout } = useAuth();
+  const [signingOut, setSigningOut] = useState(false);
+
+  async function onLogout() {
+    if (signingOut) {
+      return;
+    }
+    setSigningOut(true);
+    try {
+      await logout();
+      window.location.assign("/login");
+    } catch {
+      setSigningOut(false);
+    }
+  }
 
   return (
     <div className={styles.shell}>
@@ -40,14 +56,19 @@ export function AppShell({ title, homeHref, items, children }: AppShellProps) {
       <div className={styles.main}>
         <div className={styles.topbar}>
           <strong>{title}</strong>
-          <button
-            className={styles.menuButton}
-            type="button"
-            aria-expanded={open}
-            onClick={() => setOpen((value) => !value)}
-          >
-            Menu
-          </button>
+          <div className={styles.topActions}>
+            <button className={styles.logoutButton} type="button" onClick={() => void onLogout()} disabled={signingOut}>
+              {signingOut ? "Please wait…" : "Log out"}
+            </button>
+            <button
+              className={styles.menuButton}
+              type="button"
+              aria-expanded={open}
+              onClick={() => setOpen((value) => !value)}
+            >
+              Menu
+            </button>
+          </div>
         </div>
         {open ? (
           <nav className={styles.mobileNav} aria-label={`${title} mobile`}>

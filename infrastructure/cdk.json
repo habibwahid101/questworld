@@ -1,0 +1,6 @@
+{
+  "app": "npx tsx bin/questworld.ts",
+  "context": {
+    "@aws-cdk/core:checkSecretUsage": true
+  }
+}

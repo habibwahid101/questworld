@@ -1,11 +1,13 @@
 # Questra World — Project Checkpoint
 
 - Project: Questra World
-- Current Step: Step 02 — Public Website + Auth UI
-- Step status: COMPLETE — waiting for approval
-- Current branch: step-02-public-ui
-- Latest commit SHA: 15b5968f9b20814db019b70578718353d6a262f5
-- Current stack: Next.js 15.5.26, React 19, TypeScript, App Router
+- Current Step: Step 03 — AWS Hosting + Cognito Authentication
+- Step status: COMPLETE — waiting for approval. AWS resources are defined and synthesized, not deployed.
+- Current branch: step-03-aws-auth
+- Latest commit SHA: PENDING_COMMIT
+- Current stack: Next.js 15.5.26, React 19, TypeScript, App Router, AWS CDK 2, aws-amplify 6
+- AWS region: ap-south-1
+- Infrastructure method: AWS CDK (TypeScript) in `infrastructure/`
 - Planned AWS architecture:
   - AWS Amplify Hosting
   - Amazon Cognito
@@ -32,31 +34,27 @@
   - Clean spacing, professional, trustworthy
   - Mobile-first and fully responsive
   - No crypto-hype, MLM, neon, rocket, or fake trading-terminal visuals
-- Design decisions:
-  - Official logo still not in repo; text wordmark and `public/brand/` drop-in preserved
-  - 8% Current Monthly Rate is display/demo content only via `displayMonthlyRatePercent`
-  - Growth / $1,000 marked Popular
-  - Referral diagram is A → B → C with 3% / 1% only
-  - Terms, privacy, and contact pages are draft placeholders
-  - Register accepts `?ref=` to prefill referral code
-- Completed public pages:
-  - `/`, `/plans`, `/how-it-works`, `/referrals`, `/faq`, `/terms`, `/privacy`, `/contact`
-- Completed auth pages:
-  - `/login`, `/register`, `/forgot-password`, `/reset-password`
-- Validation results:
-  - lint PASS
-  - typecheck PASS
-  - production build PASS
-- Completed work:
-  - Step 01 foundation retained
-  - Production-quality public website and authentication UI
-- Pending work:
-  - Official logo asset drop-in
-  - Authentication backend / Cognito
-  - Database and ledger
-  - Investment, monthly profit, and referral engines
-  - Deposit and withdrawal processing
-  - Admin financial actions
-  - AWS infrastructure
-- Known blockers: NONE
+- Resources defined:
+  - Cognito user pool, public app client (no secret), `Admins` group
+  - Pre Sign-up Lambda that auto-confirms the user and auto-verifies email
+  - CloudWatch log group, 7-day retention
+  - Amplify Hosting app (`WEB_COMPUTE`) and `main` branch, without a GitHub token
+  - Amplify service role
+- Resources actually deployed: NONE
+- Cognito configuration:
+  - Email and password
+  - Required attributes: email, name
+  - Password: 8+ characters with uppercase, lowercase, number, and symbol
+  - No signup verification UI
+  - Forgot/reset password uses a recovery code
+  - No social login
+  - Referral code is not a Cognito attribute
+- Referral handoff: `localStorage` key `qw_pending_referral_code` for Step 04. Not genealogy.
+- Route protection status:
+  - Member routes redirect unauthenticated and unconfigured sessions to `/login`
+  - `/admin` requires the Cognito `Admins` group
+  - Tested as pure route and group rules. Live Cognito session was not deployed.
+- Amplify status: app and `main` branch are defined in CDK. GitHub authorization was not performed. Production branch is not connected.
+- Tests: `npm test` PASS (7). Lint PASS. Typecheck PASS. Production build PASS. `cdk synth` PASS. Low-cost template check PASS.
+- Known blockers: AWS credentials are not available in this environment, so deploy was not run. Amplify still needs interactive GitHub authorization.
 - Next approved step: NONE until approval

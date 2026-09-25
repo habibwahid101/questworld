@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import type { Metadata } from "next";
 import { AuthFrame } from "@/components/auth/AuthFrame";
 import { LoginForm } from "@/components/auth/LoginForm";
@@ -13,9 +14,11 @@ export default function LoginPage() {
   return (
     <AuthFrame
       title="Login"
-      description="Account authentication is UI-only in this version. No session is created."
+      description="Sign in with the email and password for your Questra World account."
     >
-      <LoginForm />
+      <Suspense fallback={<p>Loading login…</p>}>
+        <LoginForm />
+      </Suspense>
     </AuthFrame>
   );
 }

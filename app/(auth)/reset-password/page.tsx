@@ -5,7 +5,7 @@ import { pageMetadata } from "@/utils/metadata";
 
 export const metadata: Metadata = pageMetadata(
   "Reset Password",
-  "Choose a new Questra World password.",
+  "Reset your Questra World password with the recovery code.",
   "/reset-password",
 );
 
@@ -13,7 +13,7 @@ export default function ResetPasswordPage() {
   return (
     <AuthFrame
       title="Reset Password"
-      description="This screen is a UI placeholder until authentication is connected."
+      description="Use the recovery code from your email. This is not a signup verification step."
     >
       <ResetPasswordForm />
     </AuthFrame>

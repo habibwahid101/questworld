@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { isAuthConfigured } from "../lib/auth/config.ts";
+import { isAuthConfigured, readAuthConfig } from "../lib/auth/config.ts";
 import { mapAuthError, mapRecoveryRequestError } from "../lib/auth/errors.ts";
 import { isAdminGroups, normalizeGroups } from "../lib/auth/groups.ts";
 import { passwordIssue } from "../lib/auth/password.ts";
@@ -81,4 +81,29 @@ test("empty cognito identifiers are not treated as configured", () => {
     }),
     false,
   );
+});
+
+test("blank env uses the deployed public cognito configuration", () => {
+  const config = readAuthConfig({
+    NEXT_PUBLIC_AWS_REGION: " ",
+    NEXT_PUBLIC_COGNITO_USER_POOL_ID: "",
+    NEXT_PUBLIC_COGNITO_CLIENT_ID: undefined,
+  });
+  assert.deepEqual(config, {
+    region: "ap-south-1",
+    userPoolId: "ap-south-1_X2ibT0rBo",
+    clientId: "4djbqt27hj54c3tu5754g4pvgt",
+  });
+  assert.equal(isAuthConfigured(config), true);
+});
+
+test("explicit public env overrides the deployed cognito configuration", () => {
+  const config = readAuthConfig({
+    NEXT_PUBLIC_AWS_REGION: "ap-south-1",
+    NEXT_PUBLIC_COGNITO_USER_POOL_ID: "ap-south-1_OverridePool",
+    NEXT_PUBLIC_COGNITO_CLIENT_ID: "overrideclientid1",
+  });
+  assert.equal(config.userPoolId, "ap-south-1_OverridePool");
+  assert.equal(config.clientId, "overrideclientid1");
+  assert.equal(isAuthConfigured(config), true);
 });

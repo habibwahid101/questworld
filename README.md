@@ -102,7 +102,7 @@ These services are the planned architecture. Step 03 defines Cognito, a signup c
 
 ## AWS foundation
 
-Step 03 defines Amazon Cognito and AWS Amplify Hosting with AWS CDK in `infrastructure/`. Financial tables, deposits, withdrawals, and commission engines are still not implemented.
+Step 03 defines Amazon Cognito and AWS Amplify Hosting with AWS CDK in `infrastructure/`. Cognito is deployed in `ap-south-1`. The public pool and app client IDs are the defaults in `lib/auth/config.ts`. `.env.example` keeps blank placeholders. Do not commit a production `.env` file. Amplify is not deployed. Financial tables, deposits, withdrawals, and commission engines are still not implemented.
 
 Signup is confirmed by a Cognito Pre Sign-up Lambda so members are not asked for an email verification code. Password reset still sends a recovery code.
 

@@ -1,10 +1,10 @@
 # Questra World — Project Checkpoint
 
 - Project: Questra World
-- Current Step: Step 03 — AWS Hosting + Cognito Authentication
-- Step status: COMPLETE — waiting for approval. AWS resources are defined and synthesized, not deployed.
+- Current Step: Step 03B — Apply deployed Cognito configuration
+- Step status: COMPLETE — waiting for approval. Cognito configuration is applied in the frontend. Amplify is not deployed.
 - Current branch: step-03-aws-auth
-- Latest commit SHA: d56ecd7a29887cc0446c685d08b9423ae92e5d0b
+- Latest commit SHA: PENDING_COMMIT
 - Current stack: Next.js 15.5.26, React 19, TypeScript, App Router, AWS CDK 2, aws-amplify 6
 - AWS region: ap-south-1
 - Infrastructure method: AWS CDK (TypeScript) in `infrastructure/`
@@ -40,7 +40,12 @@
   - CloudWatch log group, 7-day retention
   - Amplify Hosting app (`WEB_COMPUTE`) and `main` branch, without a GitHub token
   - Amplify service role
-- Resources actually deployed: NONE
+- Cognito deployed: YES
+- Region: ap-south-1
+- User Pool ID: ap-south-1_X2ibT0rBo
+- App Client ID: 4djbqt27hj54c3tu5754g4pvgt
+- Amplify status: NOT DEPLOYED
+- Resources actually deployed: Cognito user pool, app client, and `Admins` group. Amplify is not deployed.
 - Cognito configuration:
   - Email and password
   - Required attributes: email, name
@@ -49,12 +54,13 @@
   - Forgot/reset password uses a recovery code
   - No social login
   - Referral code is not a Cognito attribute
+  - Public IDs are the defaults in `lib/auth/config.ts`. `.env.example` keeps blank placeholders. No production `.env` is committed.
 - Referral handoff: `localStorage` key `qw_pending_referral_code` for Step 04. Not genealogy.
 - Route protection status:
   - Member routes redirect unauthenticated and unconfigured sessions to `/login`
   - `/admin` requires the Cognito `Admins` group
-  - Tested as pure route and group rules. Live Cognito session was not deployed.
-- Amplify status: app and `main` branch are defined in CDK. GitHub authorization was not performed. Production branch is not connected.
-- Tests: `npm test` PASS (7). Lint PASS. Typecheck PASS. Production build PASS. `cdk synth` PASS. Low-cost template check PASS.
-- Known blockers: AWS credentials are not available in this environment, so deploy was not run. Amplify still needs interactive GitHub authorization.
-- Next approved step: NONE until approval
+  - Tested as pure route and group rules. Live Cognito login was not exercised in this step.
+- Amplify status: NOT DEPLOYED. The app and `main` branch remain defined in CDK only. GitHub authorization was not performed.
+- Tests: `npm test` PASS (9). Lint PASS. Typecheck PASS. Production build PASS.
+- Known blockers: NONE for Cognito configuration. Amplify deployment is not approved.
+- Next approved step: NONE

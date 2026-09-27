@@ -3,15 +3,23 @@ import * as amplify from "aws-cdk-lib/aws-amplify";
 import * as iam from "aws-cdk-lib/aws-iam";
 import { Construct } from "constructs";
 
+/**
+ * Secrets Manager secret name in ap-south-1.
+ * SecretString is the one-time GitHub token Amplify uses to authorize its GitHub App.
+ * CloudFormation resolves the dynamic reference at deploy time. The token is not stored
+ * in this repository, in the template, or by Amplify after authorization.
+ */
+const GITHUB_ACCESS_TOKEN_SECRET_ID = "questworld/amplify/github-access-token";
+const GITHUB_REPOSITORY = "https://github.com/habibwahid101/questworld";
+
 type HostingStackProps = cdk.StackProps & {
   userPoolId: string;
   userPoolClientId: string;
 };
 
 /**
- * Creates the Amplify Hosting app for Next.js compute without a GitHub token.
- * Connecting habibwahid101/questworld requires the Amplify console GitHub authorization.
- * Do not put a personal access token in this repository.
+ * Connects the existing Amplify app to GitHub.
+ * The access token is a CloudFormation Secrets Manager dynamic reference, not a stored credential.
  */
 export class HostingStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props: HostingStackProps) {
@@ -29,6 +37,8 @@ export class HostingStack extends cdk.Stack {
       name: "questworld",
       description: "Questra World Next.js application.",
       platform: "WEB_COMPUTE",
+      repository: GITHUB_REPOSITORY,
+      accessToken: cdk.SecretValue.secretsManager(GITHUB_ACCESS_TOKEN_SECRET_ID).unsafeUnwrap(),
       iamServiceRole: serviceRole.roleArn,
       environmentVariables: [
         { name: "NEXT_PUBLIC_AWS_REGION", value: "ap-south-1" },

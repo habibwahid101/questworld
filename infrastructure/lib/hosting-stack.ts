@@ -9,9 +9,10 @@ type HostingStackProps = cdk.StackProps & {
 };
 
 /**
- * Creates the Amplify Hosting app for Next.js compute without a GitHub token.
- * Connecting habibwahid101/questworld requires the Amplify console GitHub authorization.
- * Do not put a personal access token in this repository.
+ * Amplify Hosting for the existing questworld app.
+ * GitHub repository authorization is completed through the AWS Amplify
+ * GitHub App in the AWS Console and intentionally is not managed with a
+ * PAT in CDK. Do not add an access token or a Secrets Manager reference.
  */
 export class HostingStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props: HostingStackProps) {

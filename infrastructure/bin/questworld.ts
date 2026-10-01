@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import * as cdk from "aws-cdk-lib";
+import { ApiStack } from "../lib/api-stack";
 import { AuthStack } from "../lib/auth-stack";
 import { HostingStack } from "../lib/hosting-stack";
 
@@ -19,4 +20,9 @@ new HostingStack(app, "QuestworldHosting", {
   description: "Questra World Amplify Hosting app. GitHub connection is a separate authorization step.",
   userPoolId: auth.userPoolId,
   userPoolClientId: auth.userPoolClientId,
+});
+
+new ApiStack(app, "QuestworldApi", {
+  env,
+  description: "Questra World member profiles. No financial processing.",
 });

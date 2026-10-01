@@ -1,30 +1,30 @@
 # Questra World — Project Checkpoint
 
 - Project: Questra World
-- Current Step: Step 03B — Apply deployed Cognito configuration
-- Step status: COMPLETE — waiting for approval. Cognito configuration is applied in the frontend. Amplify is not deployed.
-- Current branch: step-03-aws-auth
-- Latest commit SHA: 958870df8567fe942cc333cf99470c5d1165b658
+- Current Step: Step 04 — Member data foundation
+- Step status: IMPLEMENTED IN REPOSITORY. AWS deployment and live member verification are not done in this commit.
+- Working branch: step-04-member-data
+- Authoritative main before this step: 41827ed83e1c5e0a3a0081867d312107b4620d6c
 - Current stack: Next.js 15.5.26, React 19, TypeScript, App Router, AWS CDK 2, aws-amplify 6
+- AWS account: 364410974458
 - AWS region: ap-south-1
 - Infrastructure method: AWS CDK (TypeScript) in `infrastructure/`
-- Planned AWS architecture:
-  - AWS Amplify Hosting
+- Architecture in use:
+  - AWS Amplify Hosting, canonical app `d1xja8a1py5jgx`
   - Amazon Cognito
-  - API Gateway
+  - API Gateway HTTP API (`QuestworldApi`, defined for Step 04)
   - AWS Lambda
-  - Amazon DynamoDB
-  - Amazon S3
-  - Amazon EventBridge
+  - Amazon DynamoDB on-demand (`questworld-members`, defined for Step 04)
   - Amazon CloudWatch
+- Not in this step: S3, EventBridge, investments, deposits, withdrawals, wallets, profits, commissions
 - Cost-efficiency rules:
   - No EC2
   - No always-running server
-  - No RDS initially
-  - No NAT Gateway unless later proven necessary
+  - No RDS
+  - No NAT Gateway
   - No ElastiCache
   - No OpenSearch
-  - No WAF initially
+  - No WAF
   - No expensive infrastructure without explicit approval
 - Locked UI direction:
   - Premium international fintech / financial platform visual language
@@ -34,33 +34,28 @@
   - Clean spacing, professional, trustworthy
   - Mobile-first and fully responsive
   - No crypto-hype, MLM, neon, rocket, or fake trading-terminal visuals
-- Resources defined:
-  - Cognito user pool, public app client (no secret), `Admins` group
-  - Pre Sign-up Lambda that auto-confirms the user and auto-verifies email
-  - CloudWatch log group, 7-day retention
-  - Amplify Hosting app (`WEB_COMPUTE`) and `main` branch, without a GitHub token
-  - Amplify service role
-- Cognito deployed: YES
-- Region: ap-south-1
-- User Pool ID: ap-south-1_X2ibT0rBo
-- App Client ID: 4djbqt27hj54c3tu5754g4pvgt
-- Amplify status: NOT DEPLOYED
-- Resources actually deployed: Cognito user pool, app client, and `Admins` group. Amplify is not deployed.
-- Cognito configuration:
-  - Email and password
-  - Required attributes: email, name
-  - Password: 8+ characters with uppercase, lowercase, number, and symbol
-  - No signup verification UI
-  - Forgot/reset password uses a recovery code
-  - No social login
-  - Referral code is not a Cognito attribute
-  - Public IDs are the defaults in `lib/auth/config.ts`. `.env.example` keeps blank placeholders. No production `.env` is committed.
-- Referral handoff: `localStorage` key `qw_pending_referral_code` for Step 04. Not genealogy.
-- Route protection status:
-  - Member routes redirect unauthenticated and unconfigured sessions to `/login`
-  - `/admin` requires the Cognito `Admins` group
-  - Tested as pure route and group rules. Live Cognito login was not exercised in this step.
-- Amplify status: NOT DEPLOYED. The app and `main` branch remain defined in CDK only. GitHub authorization was not performed.
-- Tests: `npm test` PASS (9). Lint PASS. Typecheck PASS. Production build PASS.
-- Known blockers: NONE for Cognito configuration. Amplify deployment is not approved.
-- Next approved step: NONE
+- Production auth and hosting, already verified before Step 04:
+  - Cognito user pool `ap-south-1_X2ibT0rBo`
+  - Cognito app client `4djbqt27hj54c3tu5754g4pvgt`
+  - `Admins` group
+  - Pre Sign-up Lambda auto-confirms the user and auto-verifies email
+  - Amplify branch `main`, PRODUCTION, Next.js SSR, auto-build on
+  - Repository connected with the Amplify GitHub App
+  - Signup, login, `/dashboard`, and session refresh were verified
+  - `QuestworldAuth` and `QuestworldHosting` diffs were previously zero
+  - Main branch is imported into `QuestworldHosting` with `DeletionPolicy: Retain`
+- Step 04 design:
+  - Stack: `QuestworldApi` only. It does not reference the Auth or Hosting stacks, so those templates do not gain exports.
+  - Table: `pk` + `sk`. Profile item `USER#<sub>` / `PROFILE`. Uniqueness item `REFERRAL#<code>` / `OWNER`, written in the same transaction.
+  - Identity: Cognito `sub`. Email and name come from the ID token.
+  - Endpoints: `POST /me/initialize`, `GET /me`, `PATCH /me`, all JWT-authorized
+  - Editable fields: name, phone, country
+  - Immutable: sub, referral code, sponsor, createdAt
+  - Pending code `qw_pending_referral_code` is cleared only after initialize succeeds
+  - Invalid and self-referral codes do not create a profile
+  - No public member lookup and no admin member API
+- Step 04 deployed: NO
+- Member API URL: not assigned
+- Tests: member rules are covered in `tests/members.test.ts`
+- Known blockers: this environment has not had AWS credentials, so the Step 04 stack has not been diffed or deployed and live member calls were not run.
+- Next approved step: deploy `QuestworldApi` only after the Auth and Hosting diffs are clean.

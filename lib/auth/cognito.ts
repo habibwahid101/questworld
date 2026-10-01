@@ -128,6 +128,17 @@ export async function confirmPasswordReset(input: {
   });
 }
 
+export async function getIdToken(): Promise<string> {
+  await applyStoredRememberMe();
+  const { fetchAuthSession } = await amplifyAuth();
+  const session = await fetchAuthSession();
+  const token = session.tokens?.idToken?.toString();
+  if (!token) {
+    throw new Error("Missing session token.");
+  }
+  return token;
+}
+
 export async function loadCurrentUser(): Promise<{
   email: string;
   payload: Record<string, unknown> | undefined;

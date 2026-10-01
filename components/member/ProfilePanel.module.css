@@ -1,0 +1,12 @@
+.referral {
+  display: grid;
+  gap: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--color-border);
+}
+
+.link {
+  display: block;
+  overflow-wrap: anywhere;
+  color: var(--color-text-soft);
+}

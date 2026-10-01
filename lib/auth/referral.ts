@@ -1,6 +1,6 @@
 /**
  * Temporary handoff only. This is not referral genealogy.
- * Step 04 should read this once, store the relationship in DynamoDB, then remove the key.
+ * After POST /me/initialize succeeds, remove the key.
  * Do not copy this value into Cognito custom attributes.
  */
 export const PENDING_REFERRAL_KEY = "qw_pending_referral_code";
@@ -24,4 +24,8 @@ export function rememberPendingReferral(storage: Pick<Storage, "setItem" | "remo
 
 export function readPendingReferral(storage: Pick<Storage, "getItem">): string {
   return storage.getItem(PENDING_REFERRAL_KEY) ?? "";
+}
+
+export function clearPendingReferral(storage: Pick<Storage, "removeItem">): void {
+  storage.removeItem(PENDING_REFERRAL_KEY);
 }

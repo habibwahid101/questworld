@@ -1,8 +1,6 @@
 # Questra World
 
-Questra World is a professional investment-plan application foundation. This repository currently contains the Next.js user interface, design system, and route structure only.
-
-The backend is intentionally not implemented yet.
+Questra World is a professional investment-plan application. Authentication and Amplify hosting are live. Step 04 adds member profiles and referral attribution. Investments, deposits, withdrawals, wallets, and commissions are not implemented.
 
 ## Local setup
 
@@ -89,7 +87,7 @@ npm start
 
 ## Planned AWS architecture
 
-These services are the planned architecture. Step 03 defines Cognito, a signup confirmation Lambda, and Amplify Hosting in CDK. API Gateway, DynamoDB, S3, and EventBridge are not part of this step.
+These services are the architecture. Cognito, Amplify Hosting, and the member API are defined in CDK. S3 and EventBridge are not part of Step 04.
 
 - AWS Amplify Hosting
 - Amazon Cognito
@@ -102,7 +100,11 @@ These services are the planned architecture. Step 03 defines Cognito, a signup c
 
 ## AWS foundation
 
-Step 03 defines Amazon Cognito and AWS Amplify Hosting with AWS CDK in `infrastructure/`. Cognito is deployed in `ap-south-1`. The public pool and app client IDs are the defaults in `lib/auth/config.ts`. `.env.example` keeps blank placeholders. Do not commit a production `.env` file. Amplify is not deployed. Financial tables, deposits, withdrawals, and commission engines are still not implemented.
+Step 03 deployed Amazon Cognito and AWS Amplify Hosting in `ap-south-1`. The canonical app is `d1xja8a1py5jgx` at `https://main.d1xja8a1py5jgx.amplifyapp.com`. GitHub is connected with the Amplify GitHub App, not a personal access token. The public pool and app client IDs are the defaults in `lib/auth/config.ts`.
+
+Step 04 adds `QuestworldApi`: an HTTP API, one Lambda, and the on-demand DynamoDB table `questworld-members`. `POST /me/initialize` creates an idempotent profile from the Cognito ID token and an optional pending referral code. `GET /me` and `PATCH /me` read and update the profile. The client cannot set the sponsor. CDK passes the API endpoint to Amplify as `NEXT_PUBLIC_MEMBER_API_URL`. Deploy `QuestworldApi` first, then `QuestworldHosting`. Do not run `cdk deploy --all`.
+
+`.env.example` keeps blank placeholders. Do not commit a production `.env` file. Financial tables, deposits, withdrawals, and commission engines are still not implemented.
 
 Signup is confirmed by a Cognito Pre Sign-up Lambda so members are not asked for an email verification code. Password reset still sends a recovery code.
 

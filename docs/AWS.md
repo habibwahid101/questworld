@@ -14,17 +14,17 @@ No expensive always-on infrastructure is approved. Do not add EC2, RDS, NAT Gate
 | Cognito user pool | DEPLOYED. `ap-south-1_X2ibT0rBo` |
 | Cognito app client | DEPLOYED. `4djbqt27hj54c3tu5754g4pvgt` (public, no secret) |
 | Cognito group `Admins` | DEPLOYED |
-| Amplify Hosting | NOT DEPLOYED |
+| Amplify Hosting | DEPLOYED. App `d1xja8a1py5jgx`, branch `main`, stage PRODUCTION, Next.js SSR, auto-build on |
+| GitHub connection | Amplify GitHub App for `https://github.com/habibwahid101/questworld`. No personal access token |
+| Member API | DEFINED in `QuestworldApi`. Not deployed until the Step 04 diff gate passes |
 
 The frontend reads these public values through [`lib/auth/config.ts`](../lib/auth/config.ts). Blank `NEXT_PUBLIC_COGNITO_USER_POOL_ID` and `NEXT_PUBLIC_COGNITO_CLIENT_ID` use the deployed pool and client. Set those variables only to override them. Do not commit `.env`, `.env.local`, or `.env.production`. `.env.example` keeps empty placeholders.
 
-Amplify is still not deployed. Do not start an Amplify deployment from this step. When Amplify is later approved, set the same three variables on the app before the production build:
+Amplify Hosting is deployed. The canonical URL is `https://main.d1xja8a1py5jgx.amplifyapp.com`. Repository authorization uses the AWS Amplify GitHub App and is intentionally not stored as a token in CDK. Do not add `accessToken` or a Secrets Manager reference.
 
-- `NEXT_PUBLIC_AWS_REGION=ap-south-1`
-- `NEXT_PUBLIC_COGNITO_USER_POOL_ID=ap-south-1_X2ibT0rBo`
-- `NEXT_PUBLIC_COGNITO_CLIENT_ID=4djbqt27hj54c3tu5754g4pvgt`
+The three Cognito variables above are already present on the Amplify app. `amplify.yml` writes `NEXT_PUBLIC_*` into `.env.production` during the build. Blank Cognito overrides still fall back to `lib/auth/config.ts`.
 
-`amplify.yml` writes `NEXT_PUBLIC_*` into `.env.production` during the Amplify build so the Next.js client can see an override. It does not replace the defaults when those variables are absent.
+`NEXT_PUBLIC_MEMBER_API_URL` is a public endpoint, not a secret. `QuestworldHosting` sets it from the `QuestworldApi` HTTP API endpoint. Do not type that URL into the Amplify console, Secrets Manager, or SSM, and do not hard-code an execute-api URL in source.
 
 ## Resources defined in Step 03
 
@@ -35,13 +35,13 @@ Amplify is still not deployed. Do not start an Amplify deployment from this step
 | Cognito group `Admins` | Separates administrators from members | No separate charge. |
 | Lambda `AutoConfirmSignUp` | Confirms a new user and marks email verified during signup | Runs only on signup. 128 MB, 5 second timeout. |
 | CloudWatch log group | Lambda logs, 7-day retention | Low storage cost. |
-| Amplify app `questworld` | Next.js hosting on Amplify Hosting compute | Defined in CDK only. Not deployed. |
-| Amplify branch `main` | Production branch record | Not deployed. Builds only after GitHub is connected and Amplify is approved. |
-| IAM role for Amplify | Service role AWS requires for Amplify Hosting | Defined in CDK only. Not deployed. |
+| Amplify app `questworld` | Next.js hosting on Amplify Hosting compute | Deployed as `d1xja8a1py5jgx`. Builds on push to `main`. |
+| Amplify branch `main` | Production branch, `DeletionPolicy: Retain` | PRODUCTION, auto-build enabled. |
+| IAM role for Amplify | Service role AWS requires for Amplify Hosting | Deployed with `QuestworldHosting`. Do not replace it. |
 
 The signup Lambda sets `autoConfirmUser` and `autoVerifyEmail`. That is the locked product rule: signup does not show an email-verification screen or ask for a signup code. Forgot Password still works because Cognito treats the email as verified and can send a recovery code. The reset screen collects that recovery code. It is not signup verification.
 
-Referral codes are not Cognito attributes. After registration the browser keeps an optional code in `localStorage` under `qw_pending_referral_code`. Step 04 must copy that into DynamoDB and then delete the key. It is a handoff, not the genealogy record.
+Referral codes are not Cognito attributes. The browser keeps an optional code in `localStorage` under `qw_pending_referral_code` until `POST /me/initialize` succeeds. The API resolves the sponsor. The browser then deletes the key. The key is a handoff, not the genealogy record.
 
 ## Intentionally not created
 
@@ -53,14 +53,41 @@ Referral codes are not Cognito attributes. After registration the browser keeps 
 - WAF
 - App Runner
 - Load balancers
-- DynamoDB, S3 application buckets, EventBridge schedules, payment wallets, and financial Lambdas
-- Amplify app and Amplify branch (defined, not deployed)
+- DynamoDB financial tables, S3 application buckets, EventBridge schedules, payment wallets, and financial Lambdas
+- A second Amplify app
 
-CDK bootstrap is not part of this stack. The Lambda source is inline, so synth does not publish a deployment asset. If a later change adds an asset, bootstrap is a one-time toolkit bucket and roles, not an application server. Do not bootstrap unless CDK asks for it.
+## Member data (Step 04)
+
+`QuestworldApi` is a separate stack. It does not modify `QuestworldAuth` or `QuestworldHosting`.
+
+| Resource | Why it exists | Cost behavior |
+| --- | --- | --- |
+| DynamoDB table `questworld-members` | One profile per Cognito `sub`, plus one `REFERRAL#code` uniqueness item | On-demand. No idle server. Retained if the stack is deleted. |
+| Lambda `MembersFunction` | `POST /me/initialize`, `GET /me`, `PATCH /me` | 256 MB, 10 second timeout. Runs only when called. |
+| HTTP API `questworld-members` | Cognito JWT authorizer. No client secret. | Pay per request. |
+| CloudWatch log group | Member Lambda logs, 7-day retention | Low storage cost. |
+
+Profile items use `pk=USER#<sub>` and `sk=PROFILE`. Referral lookup items use `pk=REFERRAL#<code>` and `sk=OWNER`. Both writes happen in one transaction, so two members cannot receive the same code. There is no GSI.
+
+The API reads `sub`, `email`, and `name` from the ID token. `PATCH /me` accepts only `name`, `phone`, and `country`. Referral code and sponsor are immutable. A missing or self-owned sponsor code does not create a profile. An existing member is returned unchanged if initialize is repeated.
+
+Deploy `QuestworldApi` first, then `QuestworldHosting`. Hosting only adds the public environment variable `NEXT_PUBLIC_MEMBER_API_URL`. It must not replace the Amplify app, the `main` branch, the service role, or the existing Cognito variables, and it must not remove the GitHub App connection.
+
+```bash
+cd infrastructure
+npx cdk deploy QuestworldApi --require-approval broadening
+npx cdk deploy QuestworldHosting --require-approval broadening
+```
+
+Do not run `cdk deploy --all`. Merging Step 04 to `main` is what starts the production frontend build, and that build must happen after the API endpoint is available through this variable. `.env.example` stays blank.
+
+## CDK assets
+
+`QuestworldAuth` still uses an inline signup Lambda. `QuestworldApi` bundles the member Lambda, so the first deploy of that stack needs the CDK bootstrap toolkit in `ap-south-1` if it is not already present. Bootstrap is a toolkit bucket and roles, not an application server. Do not bootstrap unless CDK asks for it. Do not create EC2, RDS, NAT, ElastiCache, OpenSearch, or WAF.
 
 ## Deploy
 
-Cognito is already deployed in `ap-south-1`. Do not redeploy it for this configuration step, and do not deploy Amplify until that step is approved.
+Cognito and Amplify are already deployed in `ap-south-1`. Do not redeploy them unless a named-stack diff is expected and non-destructive.
 
 If infrastructure itself changes later, run these from an authorized `questworld-admin` session in AWS CloudShell, or from any shell that already has that role. Do not create access keys. Do not use the root account.
 
@@ -69,23 +96,20 @@ cd infrastructure
 npm ci
 npx cdk synth
 node scripts/assert-low-cost.mjs
-npx cdk deploy --all --require-approval broadening
+npx cdk diff QuestworldAuth
+npx cdk diff QuestworldApi
+npx cdk diff QuestworldHosting
+npx cdk deploy QuestworldApi --require-approval broadening
+npx cdk deploy QuestworldHosting --require-approval broadening
 ```
+
+Do not run `cdk deploy --all`. `QuestworldAuth` should show no differences. `QuestworldApi` is new. `QuestworldHosting` should only gain `NEXT_PUBLIC_MEMBER_API_URL`. Deploy the API stack before Hosting. Stop if Hosting proposes replacing the Amplify app or branch, or disconnecting GitHub.
 
 ## GitHub connection for Amplify
 
-CDK defines the Amplify app and the `main` branch without a GitHub token. Connecting the repository requires an interactive GitHub authorization that must not be replaced with a personal access token in this repo or in chat. That connection is not done. Amplify is not deployed.
+The canonical Amplify app `d1xja8a1py5jgx` is connected to `https://github.com/habibwahid101/questworld` through the AWS Amplify GitHub App. CDK does not store a personal access token. Do not merge `step-06a-amplify-github` and do not reference `questworld/amplify/github-access-token`.
 
-Manual step, only after Amplify deployment is approved, as `questworld-admin`:
-
-1. Open Amplify in `ap-south-1`.
-2. Open the `questworld` app created by `QuestworldHosting`.
-3. Choose to connect a GitHub repository and approve the AWS Amplify GitHub App for `habibwahid101/questworld`.
-4. Select branch `main`.
-5. Confirm the platform is Web Compute (Next.js SSR) and that the existing `amplify.yml` is used.
-6. Set the three `NEXT_PUBLIC_*` variables listed above before the production build.
-
-Until that authorization is completed, Amplify is defined but not connected, and production hosting is not deployed.
+The `main` branch is CloudFormation-owned by `QuestworldHosting`, stage PRODUCTION, framework Next.js - SSR, auto-build enabled, and retained on deletion.
 
 ## First administrator
 
@@ -105,10 +129,10 @@ Run that in CloudShell as `questworld-admin`. Do not hard-code an admin email in
 
 ```bash
 cd infrastructure
-npx cdk destroy --all
+npx cdk destroy QuestworldApi
 ```
 
-The user pool uses `RemovalPolicy.RETAIN`, so stack deletion does not delete accounts. Delete the retained pool in Cognito only when you intend to remove users. Amplify app, branch, Lambda, and log group are removed with the stacks once they exist.
+Do not destroy `QuestworldAuth` or `QuestworldHosting` from this step. The user pool and the members table use `RemovalPolicy.RETAIN`. The Amplify `main` branch is also retained. Delete retained resources only when you intend to remove accounts or member profiles.
 
 ## Route protection
 

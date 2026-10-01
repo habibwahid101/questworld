@@ -6,6 +6,7 @@ import { Construct } from "constructs";
 type HostingStackProps = cdk.StackProps & {
   userPoolId: string;
   userPoolClientId: string;
+  membersApiUrl: string;
 };
 
 /**
@@ -35,6 +36,7 @@ export class HostingStack extends cdk.Stack {
         { name: "NEXT_PUBLIC_AWS_REGION", value: "ap-south-1" },
         { name: "NEXT_PUBLIC_COGNITO_USER_POOL_ID", value: props.userPoolId },
         { name: "NEXT_PUBLIC_COGNITO_CLIENT_ID", value: props.userPoolClientId },
+        { name: "NEXT_PUBLIC_MEMBER_API_URL", value: props.membersApiUrl },
       ],
       tags: [
         { key: "Project", value: "Questworld" },

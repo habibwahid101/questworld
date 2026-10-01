@@ -43,12 +43,15 @@ export class HostingStack extends cdk.Stack {
       ],
     });
 
-    new amplify.CfnBranch(this, "MainBranch", {
+    const mainBranch = new amplify.CfnBranch(this, "MainBranch", {
       appId: app.attrAppId,
       branchName: "main",
       stage: "PRODUCTION",
       enableAutoBuild: true,
       framework: "Next.js - SSR",
+    });
+    mainBranch.applyRemovalPolicy(cdk.RemovalPolicy.RETAIN, {
+      applyToUpdateReplacePolicy: false,
     });
 
     new cdk.CfnOutput(this, "AmplifyAppId", { value: app.attrAppId });

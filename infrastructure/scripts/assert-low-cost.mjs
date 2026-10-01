@@ -74,19 +74,20 @@ for (const resource of Object.values(apiTemplate.Resources ?? {})) {
   }
 }
 
-const requiredMemberActions = [
-  "dynamodb:GetItem",
-  "dynamodb:PutItem",
-  "dynamodb:UpdateItem",
-  "dynamodb:TransactWriteItems",
-];
+const requiredMemberActions = ["dynamodb:GetItem", "dynamodb:PutItem", "dynamodb:UpdateItem"];
 for (const action of requiredMemberActions) {
   if (!memberActions.has(action)) {
     throw new Error(`QuestworldApi Lambda policy is missing ${action}.`);
   }
 }
-if (memberActions.has("dynamodb:ConditionCheckItem") || memberActions.has("dynamodb:*")) {
-  throw new Error("QuestworldApi Lambda policy grants an unused or wildcard DynamoDB action.");
+const rejectedMemberActions = ["dynamodb:TransactWriteItems", "dynamodb:ConditionCheckItem", "dynamodb:*"];
+for (const action of rejectedMemberActions) {
+  if (memberActions.has(action)) {
+    throw new Error(`QuestworldApi Lambda policy must not grant ${action}.`);
+  }
+}
+if (memberActions.size !== requiredMemberActions.length) {
+  throw new Error(`QuestworldApi Lambda policy has unexpected DynamoDB actions: ${[...memberActions].sort().join(", ")}`);
 }
 const tableIds = new Set(
   Object.entries(apiTemplate.Resources ?? {})

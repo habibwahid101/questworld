@@ -15,14 +15,15 @@ const auth = new AuthStack(app, "QuestworldAuth", {
   description: "Questra World Cognito authentication. No financial data stores.",
 });
 
+const api = new ApiStack(app, "QuestworldApi", {
+  env,
+  description: "Questra World member profiles. No financial processing.",
+});
+
 new HostingStack(app, "QuestworldHosting", {
   env,
   description: "Questra World Amplify Hosting app. GitHub connection is a separate authorization step.",
   userPoolId: auth.userPoolId,
   userPoolClientId: auth.userPoolClientId,
-});
-
-new ApiStack(app, "QuestworldApi", {
-  env,
-  description: "Questra World member profiles. No financial processing.",
+  membersApiUrl: api.apiEndpoint,
 });

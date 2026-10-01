@@ -18,6 +18,8 @@ import { CANONICAL_WEB_ORIGIN, PUBLIC_USER_POOL_CLIENT_ID, PUBLIC_USER_POOL_ID }
  * GitHub authorization is not managed here.
  */
 export class ApiStack extends cdk.Stack {
+  public readonly apiEndpoint: string;
+
   constructor(scope: Construct, id: string, props: cdk.StackProps) {
     super(scope, id, props);
 
@@ -92,6 +94,7 @@ export class ApiStack extends cdk.Stack {
       authorizer,
     });
 
+    this.apiEndpoint = httpApi.apiEndpoint;
     new cdk.CfnOutput(this, "MembersApiUrl", { value: httpApi.apiEndpoint });
     new cdk.CfnOutput(this, "MembersTableName", { value: table.tableName });
 

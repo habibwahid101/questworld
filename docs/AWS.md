@@ -24,7 +24,7 @@ Amplify Hosting is deployed. The canonical URL is `https://main.d1xja8a1py5jgx.a
 
 The three Cognito variables above are already present on the Amplify app. `amplify.yml` writes `NEXT_PUBLIC_*` into `.env.production` during the build. Blank Cognito overrides still fall back to `lib/auth/config.ts`.
 
-`NEXT_PUBLIC_MEMBER_API_URL` is optional and public. Leave it blank until `QuestworldApi` has an execute-api URL. Do not commit `.env`.
+`NEXT_PUBLIC_MEMBER_API_URL` is a public endpoint, not a secret. `QuestworldHosting` sets it from the `QuestworldApi` HTTP API endpoint. Do not type that URL into the Amplify console, Secrets Manager, or SSM, and do not hard-code an execute-api URL in source.
 
 ## Resources defined in Step 03
 
@@ -71,14 +71,15 @@ Profile items use `pk=USER#<sub>` and `sk=PROFILE`. Referral lookup items use `p
 
 The API reads `sub`, `email`, and `name` from the ID token. `PATCH /me` accepts only `name`, `phone`, and `country`. Referral code and sponsor are immutable. A missing or self-owned sponsor code does not create a profile. An existing member is returned unchanged if initialize is repeated.
 
-Deploy only this stack after `npx cdk diff QuestworldAuth` and `npx cdk diff QuestworldHosting` show no unexpected changes:
+Deploy `QuestworldApi` first, then `QuestworldHosting`. Hosting only adds the public environment variable `NEXT_PUBLIC_MEMBER_API_URL`. It must not replace the Amplify app, the `main` branch, the service role, or the existing Cognito variables, and it must not remove the GitHub App connection.
 
 ```bash
 cd infrastructure
 npx cdk deploy QuestworldApi --require-approval broadening
+npx cdk deploy QuestworldHosting --require-approval broadening
 ```
 
-Do not run `cdk deploy --all`. Do not put the API URL in a committed `.env`. After deployment, set `NEXT_PUBLIC_MEMBER_API_URL` for the Amplify build or record the public URL in `lib/members/config.ts` the same way the Cognito IDs are recorded.
+Do not run `cdk deploy --all`. Merging Step 04 to `main` is what starts the production frontend build, and that build must happen after the API endpoint is available through this variable. `.env.example` stays blank.
 
 ## CDK assets
 
@@ -96,11 +97,13 @@ npm ci
 npx cdk synth
 node scripts/assert-low-cost.mjs
 npx cdk diff QuestworldAuth
+npx cdk diff QuestworldApi
 npx cdk diff QuestworldHosting
 npx cdk deploy QuestworldApi --require-approval broadening
+npx cdk deploy QuestworldHosting --require-approval broadening
 ```
 
-Do not run `cdk deploy --all` against this account. `QuestworldAuth` and `QuestworldHosting` are already reconciled. Deploy a named stack only when its diff is safe.
+Do not run `cdk deploy --all`. `QuestworldAuth` should show no differences. `QuestworldApi` is new. `QuestworldHosting` should only gain `NEXT_PUBLIC_MEMBER_API_URL`. Deploy the API stack before Hosting. Stop if Hosting proposes replacing the Amplify app or branch, or disconnecting GitHub.
 
 ## GitHub connection for Amplify
 

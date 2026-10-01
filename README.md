@@ -102,7 +102,7 @@ These services are the architecture. Cognito, Amplify Hosting, and the member AP
 
 Step 03 deployed Amazon Cognito and AWS Amplify Hosting in `ap-south-1`. The canonical app is `d1xja8a1py5jgx` at `https://main.d1xja8a1py5jgx.amplifyapp.com`. GitHub is connected with the Amplify GitHub App, not a personal access token. The public pool and app client IDs are the defaults in `lib/auth/config.ts`.
 
-Step 04 adds `QuestworldApi`: an HTTP API, one Lambda, and the on-demand DynamoDB table `questworld-members`. `POST /me/initialize` creates an idempotent profile from the Cognito ID token and an optional pending referral code. `GET /me` and `PATCH /me` read and update the profile. The client cannot set the sponsor. Deploy that stack by name only. Do not run `cdk deploy --all`.
+Step 04 adds `QuestworldApi`: an HTTP API, one Lambda, and the on-demand DynamoDB table `questworld-members`. `POST /me/initialize` creates an idempotent profile from the Cognito ID token and an optional pending referral code. `GET /me` and `PATCH /me` read and update the profile. The client cannot set the sponsor. CDK passes the API endpoint to Amplify as `NEXT_PUBLIC_MEMBER_API_URL`. Deploy `QuestworldApi` first, then `QuestworldHosting`. Do not run `cdk deploy --all`.
 
 `.env.example` keeps blank placeholders. Do not commit a production `.env` file. Financial tables, deposits, withdrawals, and commission engines are still not implemented.
 

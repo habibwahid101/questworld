@@ -45,7 +45,7 @@
   - `QuestworldAuth` and `QuestworldHosting` diffs were previously zero
   - Main branch is imported into `QuestworldHosting` with `DeletionPolicy: Retain`
 - Step 04 design:
-  - Stack: `QuestworldApi` only. It does not reference the Auth or Hosting stacks, so those templates do not gain exports.
+  - Stack: `QuestworldApi` does not import `QuestworldAuth`. `QuestworldHosting` imports only the public API endpoint.
   - Table: `pk` + `sk`. Profile item `USER#<sub>` / `PROFILE`. Uniqueness item `REFERRAL#<code>` / `OWNER`, written in the same transaction.
   - Identity: Cognito `sub`. Email and name come from the ID token.
   - Endpoints: `POST /me/initialize`, `GET /me`, `PATCH /me`, all JWT-authorized
@@ -55,7 +55,8 @@
   - Invalid and self-referral codes do not create a profile
   - No public member lookup and no admin member API
 - Step 04 deployed: NO
-- Member API URL: not assigned
+- Member API URL: CDK passes the `QuestworldApi` endpoint into Amplify as `NEXT_PUBLIC_MEMBER_API_URL`. No URL is hard-coded.
+- Deployment order: `QuestworldApi`, then `QuestworldHosting`. The Hosting change is only that public variable. Merging to `main` builds the frontend after the backend exists.
 - Tests: member rules are covered in `tests/members.test.ts`
-- Known blockers: this environment has not had AWS credentials, so the Step 04 stack has not been diffed or deployed and live member calls were not run.
-- Next approved step: deploy `QuestworldApi` only after the Auth and Hosting diffs are clean.
+- Known blockers: authenticated CDK diff and deployment have not been run.
+- Next approved step: diff `QuestworldAuth`, `QuestworldApi`, and `QuestworldHosting`, then deploy only if Auth is unchanged and Hosting adds only the API URL.

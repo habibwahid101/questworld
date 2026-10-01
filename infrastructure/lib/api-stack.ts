@@ -53,9 +53,16 @@ export class ApiStack extends cdk.Stack {
         externalModules: ["@aws-sdk/*"],
       },
     });
+    // A TransactWrite Put is still authorized as dynamodb:PutItem.
+    // There is no ConditionCheck action, so ConditionCheckItem is not granted.
     membersFn.addToRolePolicy(
       new iam.PolicyStatement({
-        actions: ["dynamodb:GetItem", "dynamodb:PutItem", "dynamodb:UpdateItem", "dynamodb:ConditionCheckItem"],
+        actions: [
+          "dynamodb:GetItem",
+          "dynamodb:PutItem",
+          "dynamodb:UpdateItem",
+          "dynamodb:TransactWriteItems",
+        ],
         resources: [table.tableArn],
       }),
     );

@@ -57,5 +57,45 @@ for (const type of required) {
   }
 }
 
+const apiTemplate = JSON.parse(await readFile(path.join(outDir, "QuestworldApi.template.json"), "utf8"));
+const memberActions = new Set();
+const memberResources = [];
+for (const resource of Object.values(apiTemplate.Resources ?? {})) {
+  if (resource.Type !== "AWS::IAM::Policy") {
+    continue;
+  }
+  for (const statement of resource.Properties?.PolicyDocument?.Statement ?? []) {
+    const actions = Array.isArray(statement.Action) ? statement.Action : [statement.Action];
+    for (const action of actions) {
+      memberActions.add(action);
+    }
+    const resources = Array.isArray(statement.Resource) ? statement.Resource : [statement.Resource];
+    memberResources.push(...resources);
+  }
+}
+
+const requiredMemberActions = [
+  "dynamodb:GetItem",
+  "dynamodb:PutItem",
+  "dynamodb:UpdateItem",
+  "dynamodb:TransactWriteItems",
+];
+for (const action of requiredMemberActions) {
+  if (!memberActions.has(action)) {
+    throw new Error(`QuestworldApi Lambda policy is missing ${action}.`);
+  }
+}
+if (memberActions.has("dynamodb:ConditionCheckItem") || memberActions.has("dynamodb:*")) {
+  throw new Error("QuestworldApi Lambda policy grants an unused or wildcard DynamoDB action.");
+}
+const tableIds = new Set(
+  Object.entries(apiTemplate.Resources ?? {})
+    .filter(([, resource]) => resource.Type === "AWS::DynamoDB::Table")
+    .map(([id]) => id),
+);
+if (memberResources.length !== 1 || memberResources[0]?.["Fn::GetAtt"]?.[1] !== "Arn" || !tableIds.has(memberResources[0]?.["Fn::GetAtt"]?.[0])) {
+  throw new Error("QuestworldApi Lambda policy must target only the members table.");
+}
+
 console.log("Low-cost resource check passed.");
 console.log([...found].sort().join("\n"));

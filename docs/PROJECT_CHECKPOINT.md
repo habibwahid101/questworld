@@ -1,9 +1,10 @@
 # Questra World — Project Checkpoint
 
 - Project: Questra World
-- Current Step: Step 04 — Member data foundation
-- Step status: COMPLETE
-- Production branch: main
+- Current Step: Step 05 — Investment data foundation
+- Step status: IMPLEMENTED IN BRANCH. Not deployed. Live investment verification is not done.
+- Working branch: step-05-investment-data
+- Branch base: 783a0d0758b504a3695b824b67453c648abca21d
 - Step 04 implementation merge: 6597138938f1a399289e7e10709312146cea1899
 - Authoritative main before this step: 41827ed83e1c5e0a3a0081867d312107b4620d6c
 - Current stack: Next.js 15.5.26, React 19, TypeScript, App Router, AWS CDK 2, aws-amplify 6
@@ -15,9 +16,9 @@
   - Amazon Cognito
   - API Gateway HTTP API (`QuestworldApi`, deployed)
   - AWS Lambda
-  - Amazon DynamoDB on-demand (`questworld-members`, ACTIVE, PAY_PER_REQUEST)
+  - Amazon DynamoDB on-demand (`questworld-members` deployed; `questworld-investments` defined in Step 05 and not deployed)
   - Amazon CloudWatch
-- Not in this step: S3, EventBridge, investments, deposits, withdrawals, wallets, profits, commissions
+- Not in Step 05: deposits, payment processing, transaction hashes, wallet balances, admin review, status changes, activation, monthly profit, withdrawals, referral commissions, settlement
 - Cost-efficiency rules:
   - No EC2
   - No always-running server
@@ -79,5 +80,15 @@
   - Unauthenticated `GET /me` returns 401
 - Tests: `tests/members.test.ts` covers invalid referral rejection, self-referral rejection, sponsor immutability, idempotent initialization, immutable member fields, and referral-code uniqueness retry
 - Final infrastructure diffs: `QuestworldAuth` 0, `QuestworldApi` 0, `QuestworldHosting` 0
-- Known blockers: none
-- Next approved step: NONE
+- Step 04 remains COMPLETE in production. Its final diffs were zero before Step 05.
+- Step 05 deployed: NO
+- Step 05 design:
+  - Separate table `questworld-investments`, on-demand, `pk` + `sk`, retained, no GSI
+  - Records are `USER#<sub>` / `INVESTMENT#<id>`, created only as `awaiting_deposit`
+  - Amounts are integer USDT minor units with scale 6, from the server plan catalog
+  - The public 8% display rate is not stored
+  - Routes on the existing API: `POST /investments`, `GET /investments`, `GET /investments/{investmentId}`
+  - Idempotency is a `USER#<sub>` / `IDEMPOTENCY#<key>` item written in the same transaction
+  - The investment Lambda can use `GetItem`, `PutItem`, and `Query` on `questworld-investments` only
+- Known blockers: authenticated CDK diff and deployment have not been run for Step 05.
+- Next approved step: diff `QuestworldApi` only. `QuestworldAuth` and `QuestworldHosting` must show no differences. Do not deploy until that diff is approved. Do not run `cdk deploy --all`.

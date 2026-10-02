@@ -58,44 +58,61 @@ for (const type of required) {
 }
 
 const apiTemplate = JSON.parse(await readFile(path.join(outDir, "QuestworldApi.template.json"), "utf8"));
-const memberActions = new Set();
-const memberResources = [];
+const tables = new Map();
+for (const [id, resource] of Object.entries(apiTemplate.Resources ?? {})) {
+  if (resource.Type === "AWS::DynamoDB::Table") {
+    tables.set(id, resource.Properties?.TableName);
+    if (resource.Properties?.TableName === "questworld-investments") {
+      if (resource.Properties.BillingMode !== "PAY_PER_REQUEST" || resource.Properties.GlobalSecondaryIndexes) {
+        throw new Error("questworld-investments must be on-demand and must not have a GSI.");
+      }
+      if (resource.DeletionPolicy !== "Retain") {
+        throw new Error("questworld-investments must be retained.");
+      }
+    }
+  }
+}
+
+const actionsByTable = new Map();
 for (const resource of Object.values(apiTemplate.Resources ?? {})) {
   if (resource.Type !== "AWS::IAM::Policy") {
     continue;
   }
   for (const statement of resource.Properties?.PolicyDocument?.Statement ?? []) {
     const actions = Array.isArray(statement.Action) ? statement.Action : [statement.Action];
-    for (const action of actions) {
-      memberActions.add(action);
-    }
     const resources = Array.isArray(statement.Resource) ? statement.Resource : [statement.Resource];
-    memberResources.push(...resources);
+    if (resources.length !== 1) {
+      throw new Error("Each QuestworldApi DynamoDB statement must target one table.");
+    }
+    const tableId = resources[0]?.["Fn::GetAtt"]?.[0];
+    const tableName = tables.get(tableId);
+    if (!tableName || resources[0]?.["Fn::GetAtt"]?.[1] !== "Arn") {
+      throw new Error("QuestworldApi DynamoDB access must use a table ARN.");
+    }
+    const granted = actionsByTable.get(tableName) ?? new Set();
+    for (const action of actions) {
+      granted.add(action);
+    }
+    actionsByTable.set(tableName, granted);
   }
 }
 
-const requiredMemberActions = ["dynamodb:GetItem", "dynamodb:PutItem", "dynamodb:UpdateItem"];
-for (const action of requiredMemberActions) {
-  if (!memberActions.has(action)) {
-    throw new Error(`QuestworldApi Lambda policy is missing ${action}.`);
+function expectExactActions(tableName, expected) {
+  const actual = actionsByTable.get(tableName);
+  if (!actual) {
+    throw new Error(`QuestworldApi is missing a policy for ${tableName}.`);
+  }
+  const actualList = [...actual].sort();
+  const expectedList = [...expected].sort();
+  if (actualList.join(",") !== expectedList.join(",")) {
+    throw new Error(`${tableName} policy is ${actualList.join(", ")}`);
   }
 }
-const rejectedMemberActions = ["dynamodb:TransactWriteItems", "dynamodb:ConditionCheckItem", "dynamodb:*"];
-for (const action of rejectedMemberActions) {
-  if (memberActions.has(action)) {
-    throw new Error(`QuestworldApi Lambda policy must not grant ${action}.`);
-  }
-}
-if (memberActions.size !== requiredMemberActions.length) {
-  throw new Error(`QuestworldApi Lambda policy has unexpected DynamoDB actions: ${[...memberActions].sort().join(", ")}`);
-}
-const tableIds = new Set(
-  Object.entries(apiTemplate.Resources ?? {})
-    .filter(([, resource]) => resource.Type === "AWS::DynamoDB::Table")
-    .map(([id]) => id),
-);
-if (memberResources.length !== 1 || memberResources[0]?.["Fn::GetAtt"]?.[1] !== "Arn" || !tableIds.has(memberResources[0]?.["Fn::GetAtt"]?.[0])) {
-  throw new Error("QuestworldApi Lambda policy must target only the members table.");
+
+expectExactActions("questworld-members", ["dynamodb:GetItem", "dynamodb:PutItem", "dynamodb:UpdateItem"]);
+expectExactActions("questworld-investments", ["dynamodb:GetItem", "dynamodb:PutItem", "dynamodb:Query"]);
+if (actionsByTable.size !== 2) {
+  throw new Error(`Unexpected DynamoDB policy targets: ${[...actionsByTable.keys()].join(", ")}`);
 }
 
 console.log("Low-cost resource check passed.");

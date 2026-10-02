@@ -7,7 +7,7 @@ export default function AdminInvestmentsPage() {
   return (
     <PagePlaceholder
       title="Investments"
-      description="Admin review of allocated plans is not connected yet."
+      description="Admin review is not part of this step. Activation and deposit verification are later work."
     />
   );
 }

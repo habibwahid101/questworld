@@ -85,6 +85,16 @@ npx cdk deploy QuestworldHosting --require-approval broadening
 
 Do not run `cdk deploy --all`. `.env.example` stays blank. The public API URL stays in the Amplify environment variable, not in source.
 
+## Investment data (Step 05)
+
+Step 05 is implemented on branch `step-05-investment-data`. It is not deployed.
+
+`questworld-investments` is a separate on-demand table with `pk` and `sk`, retained, and no GSI. A member can record an investment as `awaiting_deposit`. The amount is an integer USDT minor-unit value from the server catalog. The client cannot set the owner, amount, or status. Payment, deposit verification, activation, profit, withdrawals, and commissions are not part of this step.
+
+The investment Lambda is allowed `dynamodb:GetItem`, `dynamodb:PutItem`, and `dynamodb:Query` on that table only. It cannot read `questworld-members`. `QuestworldAuth` and `QuestworldHosting` are unchanged. No new Amplify variable is required.
+
+Do not deploy Step 05 until `npx cdk diff QuestworldApi` is reviewed and the Auth and Hosting diffs are empty. Do not run `cdk deploy --all`.
+
 ## CDK assets
 
 `QuestworldAuth` still uses an inline signup Lambda. `QuestworldApi` bundles the member Lambda and is already deployed, so the CDK bootstrap toolkit in `ap-south-1` is already present. Bootstrap is a toolkit bucket and roles, not an application server. Do not bootstrap again unless CDK asks for it. Do not create EC2, RDS, NAT, ElastiCache, OpenSearch, or WAF.

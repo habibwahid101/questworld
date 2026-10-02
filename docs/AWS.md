@@ -16,7 +16,9 @@ No expensive always-on infrastructure is approved. Do not add EC2, RDS, NAT Gate
 | Cognito group `Admins` | DEPLOYED |
 | Amplify Hosting | DEPLOYED. App `d1xja8a1py5jgx`, branch `main`, stage PRODUCTION, Next.js SSR, auto-build on |
 | GitHub connection | Amplify GitHub App for `https://github.com/habibwahid101/questworld`. No personal access token |
-| Member API | DEFINED in `QuestworldApi`. Not deployed until the Step 04 diff gate passes |
+| Member API | DEPLOYED. `QuestworldApi`, `https://tp85xfa9z1.execute-api.ap-south-1.amazonaws.com` |
+| DynamoDB `questworld-members` | DEPLOYED. ACTIVE, `PAY_PER_REQUEST` |
+| Step 04 | COMPLETE. Production Amplify build for `6597138938f1a399289e7e10709312146cea1899` succeeded |
 
 The frontend reads these public values through [`lib/auth/config.ts`](../lib/auth/config.ts). Blank `NEXT_PUBLIC_COGNITO_USER_POOL_ID` and `NEXT_PUBLIC_COGNITO_CLIENT_ID` use the deployed pool and client. Set those variables only to override them. Do not commit `.env`, `.env.local`, or `.env.production`. `.env.example` keeps empty placeholders.
 
@@ -24,7 +26,7 @@ Amplify Hosting is deployed. The canonical URL is `https://main.d1xja8a1py5jgx.a
 
 The three Cognito variables above are already present on the Amplify app. `amplify.yml` writes `NEXT_PUBLIC_*` into `.env.production` during the build. Blank Cognito overrides still fall back to `lib/auth/config.ts`.
 
-`NEXT_PUBLIC_MEMBER_API_URL` is a public endpoint, not a secret. `QuestworldHosting` sets it from the `QuestworldApi` HTTP API endpoint. Do not type that URL into the Amplify console, Secrets Manager, or SSM, and do not hard-code an execute-api URL in source.
+`NEXT_PUBLIC_MEMBER_API_URL` is a public endpoint, not a secret. `QuestworldHosting` already sets it to `https://tp85xfa9z1.execute-api.ap-south-1.amazonaws.com`. Do not type that URL into the Amplify console, Secrets Manager, or SSM, and do not hard-code an execute-api URL in source.
 
 ## Resources defined in Step 03
 
@@ -58,11 +60,11 @@ Referral codes are not Cognito attributes. The browser keeps an optional code in
 
 ## Member data (Step 04)
 
-`QuestworldApi` is a separate stack. It does not modify `QuestworldAuth` or `QuestworldHosting`.
+`QuestworldApi` is a separate deployed stack. It does not import `QuestworldAuth`. `QuestworldHosting` already contains `NEXT_PUBLIC_MEMBER_API_URL`. Step 04 is complete. Final diffs for `QuestworldAuth`, `QuestworldApi`, and `QuestworldHosting` are zero.
 
 | Resource | Why it exists | Cost behavior |
 | --- | --- | --- |
-| DynamoDB table `questworld-members` | One profile per Cognito `sub`, plus one `REFERRAL#code` uniqueness item | On-demand. No idle server. Retained if the stack is deleted. |
+| DynamoDB table `questworld-members` | One profile per Cognito `sub`, plus one `REFERRAL#code` uniqueness item | DEPLOYED. ACTIVE, on-demand (`PAY_PER_REQUEST`). No idle server. Retained if the stack is deleted. |
 | Lambda `MembersFunction` | `POST /me/initialize`, `GET /me`, `PATCH /me` | 256 MB, 10 second timeout. Runs only when called. |
 | HTTP API `questworld-members` | Cognito JWT authorizer. No client secret. | Pay per request. |
 | CloudWatch log group | Member Lambda logs, 7-day retention | Low storage cost. |
@@ -71,7 +73,9 @@ Profile items use `pk=USER#<sub>` and `sk=PROFILE`. Referral lookup items use `p
 
 The API reads `sub`, `email`, and `name` from the ID token. `PATCH /me` accepts only `name`, `phone`, and `country`. Referral code and sponsor are immutable. A missing or self-owned sponsor code does not create a profile. An existing member is returned unchanged if initialize is repeated.
 
-Deploy `QuestworldApi` first, then `QuestworldHosting`. Hosting only adds the public environment variable `NEXT_PUBLIC_MEMBER_API_URL`. It must not replace the Amplify app, the `main` branch, the service role, or the existing Cognito variables, and it must not remove the GitHub App connection.
+Step 04 is complete. `QuestworldApi` is deployed. The members API is `https://tp85xfa9z1.execute-api.ap-south-1.amazonaws.com`. The production Amplify build succeeded. Do not redeploy these stacks while their diffs are zero.
+
+If a later change touches both stacks, deploy `QuestworldApi` before `QuestworldHosting`. A Hosting change must not replace the Amplify app, the `main` branch, the service role, or the existing Cognito variables, and it must not remove the GitHub App connection.
 
 ```bash
 cd infrastructure
@@ -79,15 +83,15 @@ npx cdk deploy QuestworldApi --require-approval broadening
 npx cdk deploy QuestworldHosting --require-approval broadening
 ```
 
-Do not run `cdk deploy --all`. Merging Step 04 to `main` is what starts the production frontend build, and that build must happen after the API endpoint is available through this variable. `.env.example` stays blank.
+Do not run `cdk deploy --all`. `.env.example` stays blank. The public API URL stays in the Amplify environment variable, not in source.
 
 ## CDK assets
 
-`QuestworldAuth` still uses an inline signup Lambda. `QuestworldApi` bundles the member Lambda, so the first deploy of that stack needs the CDK bootstrap toolkit in `ap-south-1` if it is not already present. Bootstrap is a toolkit bucket and roles, not an application server. Do not bootstrap unless CDK asks for it. Do not create EC2, RDS, NAT, ElastiCache, OpenSearch, or WAF.
+`QuestworldAuth` still uses an inline signup Lambda. `QuestworldApi` bundles the member Lambda and is already deployed, so the CDK bootstrap toolkit in `ap-south-1` is already present. Bootstrap is a toolkit bucket and roles, not an application server. Do not bootstrap again unless CDK asks for it. Do not create EC2, RDS, NAT, ElastiCache, OpenSearch, or WAF.
 
 ## Deploy
 
-Cognito and Amplify are already deployed in `ap-south-1`. Do not redeploy them unless a named-stack diff is expected and non-destructive.
+Cognito, Amplify, and the member API are already deployed in `ap-south-1`. Final diffs for `QuestworldAuth`, `QuestworldApi`, and `QuestworldHosting` are zero. Do not redeploy a stack whose diff is empty.
 
 If infrastructure itself changes later, run these from an authorized `questworld-admin` session in AWS CloudShell, or from any shell that already has that role. Do not create access keys. Do not use the root account.
 
@@ -103,7 +107,7 @@ npx cdk deploy QuestworldApi --require-approval broadening
 npx cdk deploy QuestworldHosting --require-approval broadening
 ```
 
-Do not run `cdk deploy --all`. `QuestworldAuth` should show no differences. `QuestworldApi` is new. `QuestworldHosting` should only gain `NEXT_PUBLIC_MEMBER_API_URL`. Deploy the API stack before Hosting. Stop if Hosting proposes replacing the Amplify app or branch, or disconnecting GitHub.
+Do not run `cdk deploy --all`. Do not deploy a stack whose diff is empty. If a future change touches both the API and Hosting, deploy `QuestworldApi` before `QuestworldHosting`. Stop if Hosting proposes replacing the Amplify app or branch, disconnecting GitHub, or changing the Cognito variables.
 
 ## GitHub connection for Amplify
 

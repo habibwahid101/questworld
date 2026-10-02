@@ -4,8 +4,14 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { createCurrentInvestment, InvestmentClientError, listCurrentInvestments } from "@/lib/investments/client";
-import { formatUsdtAmount, type InvestmentRecord, type PlanId } from "@/lib/investments/service";
+import { formatUsdtAmount, type InvestmentRecord, type InvestmentStatus, type PlanId } from "@/lib/investments/service";
 import { isMemberApiConfigured } from "@/lib/members/config";
+
+const statusLabel: Record<InvestmentStatus, string> = {
+  awaiting_deposit: "Awaiting deposit",
+  pending_verification: "Pending verification",
+  active: "Active",
+};
 
 const plans: readonly { id: PlanId; label: string }[] = [
   { id: "starter", label: "Starter" },
@@ -111,7 +117,7 @@ export function InvestmentsPanel() {
           <Card key={investment.investmentId}>
             <p className="eyebrow">{investment.planName}</p>
             <h2>{formatUsdtAmount(investment.amountMinor, investment.scale)}</h2>
-            <p style={{ marginTop: 10 }}>Status: Awaiting deposit</p>
+            <p style={{ marginTop: 10 }}>Status: {statusLabel[investment.status]}</p>
             <p>Recorded {new Date(investment.createdAt).toLocaleString()}</p>
           </Card>
         ))

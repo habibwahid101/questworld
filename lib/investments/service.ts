@@ -28,7 +28,7 @@ export type InvestmentRecord = {
   amountMinor: number;
   currency: typeof INVESTMENT_CURRENCY;
   scale: typeof INVESTMENT_SCALE;
-  status: typeof CREATABLE_INVESTMENT_STATUS;
+  status: InvestmentStatus;
   createdAt: string;
   updatedAt: string;
   statusChangedAt: string;
@@ -64,6 +64,29 @@ export class InvestmentRequestError extends Error {
 const INVESTMENT_ID_PATTERN =
   /^inv_[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const IDEMPOTENCY_PATTERN = /^[A-Za-z0-9_-]{8,128}$/;
+
+export function readStoredInvestmentStatus(value: unknown): InvestmentStatus {
+  if (value === "awaiting_deposit" || value === "pending_verification" || value === "active") {
+    return value;
+  }
+  throw new InvestmentRequestError(500, "invalid_stored_status", "That investment record is not valid.");
+}
+
+export function investmentFromStoredItem(item: Record<string, unknown>): InvestmentRecord {
+  return {
+    investmentId: String(item.investmentId),
+    ownerSub: String(item.ownerSub),
+    planId: item.planId as InvestmentRecord["planId"],
+    planName: String(item.planName),
+    amountMinor: Number(item.amountMinor),
+    currency: INVESTMENT_CURRENCY,
+    scale: INVESTMENT_SCALE,
+    status: readStoredInvestmentStatus(item.status),
+    createdAt: String(item.createdAt),
+    updatedAt: String(item.updatedAt),
+    statusChangedAt: String(item.statusChangedAt),
+  };
+}
 
 export function identityFromClaims(
   claims: Record<string, unknown> | undefined,

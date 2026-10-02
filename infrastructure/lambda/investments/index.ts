@@ -2,6 +2,7 @@ import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import { DynamoDBDocumentClient, GetCommand, QueryCommand, TransactWriteCommand } from "@aws-sdk/lib-dynamodb";
 import {
   handleInvestmentApi,
+  investmentFromStoredItem,
   type CreateInvestmentResult,
   type InvestmentRecord,
   type InvestmentStore,
@@ -191,17 +192,5 @@ function investmentToItem(record: InvestmentRecord): Record<string, unknown> {
 }
 
 function itemToInvestment(item: Record<string, unknown>): InvestmentRecord {
-  return {
-    investmentId: String(item.investmentId),
-    ownerSub: String(item.ownerSub),
-    planId: item.planId as InvestmentRecord["planId"],
-    planName: String(item.planName),
-    amountMinor: Number(item.amountMinor),
-    currency: "USDT",
-    scale: 6,
-    status: "awaiting_deposit",
-    createdAt: String(item.createdAt),
-    updatedAt: String(item.updatedAt),
-    statusChangedAt: String(item.statusChangedAt),
-  };
+  return investmentFromStoredItem(item);
 }

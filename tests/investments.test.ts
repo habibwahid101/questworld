@@ -6,6 +6,7 @@ import {
   handleInvestmentApi,
   identityFromClaims,
   investmentCatalog,
+  investmentFromStoredItem,
   type InvestmentStore,
 } from "../lib/investments/service.ts";
 
@@ -143,6 +144,25 @@ test("a list returns only the caller's investments and a foreign lookup is 404",
     store,
   });
   assert.equal(own.statusCode, 200);
+});
+
+test("stored statuses are returned as stored and an invalid status is not rewritten", () => {
+  const base = {
+    investmentId: "inv_ffffffff-ffff-4fff-8fff-fffffffffff1",
+    ownerSub: "member-1",
+    planId: "starter",
+    planName: "Starter",
+    amountMinor: 100_000_000,
+    currency: "USDT",
+    scale: 6,
+    createdAt: NOW,
+    updatedAt: NOW,
+    statusChangedAt: NOW,
+  };
+  assert.equal(investmentFromStoredItem({ ...base, status: "pending_verification" }).status, "pending_verification");
+  assert.equal(investmentFromStoredItem({ ...base, status: "active" }).status, "active");
+  assert.throws(() => investmentFromStoredItem({ ...base, status: "cancelled" }), /not valid/);
+  assert.throws(() => investmentFromStoredItem({ ...base, status: "awaiting_deposit " }), /not valid/);
 });
 
 test("no status transition endpoint exists", async () => {

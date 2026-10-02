@@ -1,6 +1,16 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { isAuthConfigured, readAuthConfig } from "../lib/auth/config.ts";
+import {
+  confirmPasswordResetWithDeps,
+  getIdTokenWithDeps,
+  loadCurrentUserWithDeps,
+  loginAccountWithDeps,
+  logoutAccountWithDeps,
+  registerAccountWithDeps,
+  requestPasswordResetWithDeps,
+  type AuthFlowDeps,
+} from "../lib/auth/cognito.ts";
 import { mapAuthError, mapRecoveryRequestError } from "../lib/auth/errors.ts";
 import { isAdminGroups, normalizeGroups } from "../lib/auth/groups.ts";
 import { passwordIssue } from "../lib/auth/password.ts";
@@ -40,6 +50,10 @@ test("auth errors stay user-safe", () => {
   assert.match(mapAuthError({ name: "ExpiredCodeException" }), /expired/i);
   assert.equal(mapAuthError(new Error("Failed to fetch")), "We could not reach the authentication service. Check your connection and try again.");
   assert.equal(mapAuthError({ name: "SomethingElse", message: "User pool abc leaked" }), "Something went wrong. Please try again.");
+  assert.equal(
+    mapAuthError(new Error("Amplify has not been configured. Please call Amplify.configure() before using this service.")),
+    "Authentication is still starting. Refresh the page and try again.",
+  );
   assert.equal(mapRecoveryRequestError({ name: "UserNotFoundException" }), null);
   assert.match(mapRecoveryRequestError({ name: "LimitExceededException" }) ?? "", /Too many/);
 });
@@ -62,6 +76,105 @@ test("referral handoff stores only a trimmed pending code", () => {
   rememberPendingReferral(storage, "   ");
   assert.equal(saved.has(PENDING_REFERRAL_KEY), false);
   assert.equal(normalizeReferralCode("x".repeat(80)).length, 64);
+});
+
+function recordingDeps(remembered: boolean) {
+  const events: string[] = [];
+  let remember = remembered;
+  const deps: AuthFlowDeps = {
+    async ensureConfigured() {
+      events.push("configure");
+    },
+    async setTokenStorage(next) {
+      events.push(next ? "storage-local" : "storage-session");
+    },
+    readRemember() {
+      return remember;
+    },
+    writeRemember(next) {
+      remember = next;
+      events.push(next ? "flag-on" : "flag-off");
+    },
+    async signUp() {
+      events.push("signUp");
+      return { nextStep: { signUpStep: "DONE" } };
+    },
+    async signIn() {
+      events.push("signIn");
+      return { nextStep: { signInStep: "DONE" } };
+    },
+    async signOut() {
+      events.push("signOut");
+    },
+    async resetPassword() {
+      events.push("resetPassword");
+    },
+    async confirmResetPassword() {
+      events.push("confirmResetPassword");
+    },
+    async getCurrentUser() {
+      events.push("getCurrentUser");
+      return { username: "member@example.com", signInDetails: { loginId: "member@example.com" } };
+    },
+    async fetchAuthSession() {
+      events.push("fetchAuthSession");
+      return { tokens: { idToken: { toString: () => "token", payload: { sub: "member-1" } } } };
+    },
+  };
+  return {
+    deps,
+    events,
+    remembered: () => remember,
+  };
+}
+
+test("a fresh page load configures Amplify before token storage and the session read", async () => {
+  const remembered = recordingDeps(true);
+  const user = await loadCurrentUserWithDeps(remembered.deps);
+  assert.deepEqual(remembered.events, ["configure", "storage-local", "getCurrentUser", "fetchAuthSession"]);
+  assert.equal(user?.email, "member@example.com");
+  assert.ok(remembered.events.indexOf("configure") < remembered.events.indexOf("storage-local"));
+  assert.ok(remembered.events.indexOf("storage-local") < remembered.events.indexOf("getCurrentUser"));
+
+  const guest = recordingDeps(false);
+  await loadCurrentUserWithDeps(guest.deps);
+  assert.equal(guest.events[0], "configure");
+  assert.equal(guest.events[1], "storage-session");
+
+  const token = recordingDeps(true);
+  assert.equal(await getIdTokenWithDeps(token.deps), "token");
+  assert.deepEqual(token.events, ["configure", "storage-local", "fetchAuthSession"]);
+});
+
+test("login from a fresh page configures Amplify before storage and sign-in", async () => {
+  const checked = recordingDeps(false);
+  await loginAccountWithDeps(checked.deps, { email: "A@Example.com", password: "ValidPass1!", remember: true });
+  assert.deepEqual(checked.events, ["configure", "storage-local", "flag-on", "signIn"]);
+  assert.equal(checked.remembered(), true);
+
+  const unchecked = recordingDeps(true);
+  await loginAccountWithDeps(unchecked.deps, { email: "member@example.com", password: "ValidPass1!", remember: false });
+  assert.deepEqual(unchecked.events, ["configure", "storage-session", "flag-off", "signIn"]);
+  assert.equal(unchecked.remembered(), false);
+});
+
+test("password, logout, and signup calls configure Amplify before the auth request", async () => {
+  const signup = recordingDeps(false);
+  await registerAccountWithDeps(signup.deps, { name: "Member", email: "member@example.com", password: "ValidPass1!" });
+  assert.deepEqual(signup.events, ["configure", "signUp"]);
+
+  const reset = recordingDeps(false);
+  await requestPasswordResetWithDeps(reset.deps, "member@example.com");
+  assert.deepEqual(reset.events, ["configure", "resetPassword"]);
+
+  const confirm = recordingDeps(false);
+  await confirmPasswordResetWithDeps(confirm.deps, { email: "member@example.com", code: "123456", password: "ValidPass1!" });
+  assert.deepEqual(confirm.events, ["configure", "confirmResetPassword"]);
+
+  const logout = recordingDeps(true);
+  await logoutAccountWithDeps(logout.deps);
+  assert.deepEqual(logout.events, ["configure", "signOut"]);
+  assert.equal(logout.events.includes("storage-local"), false);
 });
 
 test("empty cognito identifiers are not treated as configured", () => {

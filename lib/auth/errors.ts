@@ -45,6 +45,9 @@ export function mapAuthError(error: unknown): string {
       if (isNetwork(error)) {
         return "We could not reach the authentication service. Check your connection and try again.";
       }
+      if (/amplify has not been configured|userpool not configured/i.test(errorMessage(error))) {
+        return "Authentication is still starting. Refresh the page and try again.";
+      }
       return "Something went wrong. Please try again.";
   }
 }

@@ -2,8 +2,9 @@
 
 - Project: Questra World
 - Current Step: Step 04 — Member data foundation
-- Step status: IMPLEMENTED IN REPOSITORY. AWS deployment and live member verification are not done in this commit.
-- Working branch: step-04-member-data
+- Step status: COMPLETE
+- Production branch: main
+- Step 04 implementation merge: 6597138938f1a399289e7e10709312146cea1899
 - Authoritative main before this step: 41827ed83e1c5e0a3a0081867d312107b4620d6c
 - Current stack: Next.js 15.5.26, React 19, TypeScript, App Router, AWS CDK 2, aws-amplify 6
 - AWS account: 364410974458
@@ -12,9 +13,9 @@
 - Architecture in use:
   - AWS Amplify Hosting, canonical app `d1xja8a1py5jgx`
   - Amazon Cognito
-  - API Gateway HTTP API (`QuestworldApi`, defined for Step 04)
+  - API Gateway HTTP API (`QuestworldApi`, deployed)
   - AWS Lambda
-  - Amazon DynamoDB on-demand (`questworld-members`, defined for Step 04)
+  - Amazon DynamoDB on-demand (`questworld-members`, ACTIVE, PAY_PER_REQUEST)
   - Amazon CloudWatch
 - Not in this step: S3, EventBridge, investments, deposits, withdrawals, wallets, profits, commissions
 - Cost-efficiency rules:
@@ -54,9 +55,29 @@
   - Pending code `qw_pending_referral_code` is cleared only after initialize succeeds
   - Invalid and self-referral codes do not create a profile
   - No public member lookup and no admin member API
-- Step 04 deployed: NO
-- Member API URL: CDK passes the `QuestworldApi` endpoint into Amplify as `NEXT_PUBLIC_MEMBER_API_URL`. No URL is hard-coded.
-- Deployment order: `QuestworldApi`, then `QuestworldHosting`. The Hosting change is only that public variable. Merging to `main` builds the frontend after the backend exists.
-- Tests: member rules are covered in `tests/members.test.ts`
-- Known blockers: authenticated CDK diff and deployment have not been run.
-- Next approved step: diff `QuestworldAuth`, `QuestworldApi`, and `QuestworldHosting`, then deploy only if Auth is unchanged and Hosting adds only the API URL.
+- Step 04 deployed: YES
+- QuestworldApi: deployed successfully
+- Members API: `https://tp85xfa9z1.execute-api.ap-south-1.amazonaws.com`
+- DynamoDB: `questworld-members`, ACTIVE, PAY_PER_REQUEST
+- QuestworldHosting: deployed successfully
+- Amplify app: `d1xja8a1py5jgx`
+- Production URL: `https://main.d1xja8a1py5jgx.amplifyapp.com`
+- Amplify environment: `NEXT_PUBLIC_MEMBER_API_URL` is the public QuestworldApi endpoint. No URL is hard-coded in source.
+- Amplify implementation build: job 3, commit `6597138938f1a399289e7e10709312146cea1899`, SUCCEED (build, deploy, and verify)
+- Live member verification:
+  - Existing member login and session work
+  - Member initialization works
+  - Profile update works and persists after a hard refresh
+  - The member referral code persists
+  - The DynamoDB referral owner record exists
+  - The tested member has exactly one profile item
+  - A referral registration link prefills correctly
+  - A controlled second account was created
+  - The second member received a unique referral code
+  - `sponsorReferralCode` was stored as `QWMECCJM6V`
+  - The referred member status is active
+  - Unauthenticated `GET /me` returns 401
+- Tests: `tests/members.test.ts` covers invalid referral rejection, self-referral rejection, sponsor immutability, idempotent initialization, immutable member fields, and referral-code uniqueness retry
+- Final infrastructure diffs: `QuestworldAuth` 0, `QuestworldApi` 0, `QuestworldHosting` 0
+- Known blockers: none
+- Next approved step: NONE

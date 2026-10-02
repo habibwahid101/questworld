@@ -12,9 +12,9 @@ import { Construct } from "constructs";
 import { CANONICAL_WEB_ORIGIN, PUBLIC_USER_POOL_CLIENT_ID, PUBLIC_USER_POOL_ID } from "./public-ids";
 
 /**
- * Member profiles only. No wallets, investments, or commission tables.
- * Referral uniqueness is a separate REFERRAL#code item written in the same
- * DynamoDB transaction as the profile. That avoids a non-atomic GSI check.
+ * Member profiles and awaiting-deposit investments.
+ * Investments use a separate table and Lambda. They do not read questworld-members.
+ * Referral uniqueness stays a REFERRAL#code item in the members table.
  * GitHub authorization is not managed here.
  */
 export class ApiStack extends cdk.Stack {
@@ -78,7 +78,7 @@ export class ApiStack extends cdk.Stack {
           apigwv2.CorsHttpMethod.PATCH,
           apigwv2.CorsHttpMethod.OPTIONS,
         ],
-        allowHeaders: ["authorization", "content-type"],
+        allowHeaders: ["authorization", "content-type", "idempotency-key"],
         maxAge: cdk.Duration.hours(1),
       },
     });
@@ -96,9 +96,58 @@ export class ApiStack extends cdk.Stack {
       authorizer,
     });
 
+    const investmentsTable = new dynamodb.Table(this, "InvestmentsTable", {
+      tableName: "questworld-investments",
+      partitionKey: { name: "pk", type: dynamodb.AttributeType.STRING },
+      sortKey: { name: "sk", type: dynamodb.AttributeType.STRING },
+      billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
+      removalPolicy: cdk.RemovalPolicy.RETAIN,
+    });
+    const investmentLogs = new logs.LogGroup(this, "InvestmentsLogs", {
+      retention: logs.RetentionDays.ONE_WEEK,
+      removalPolicy: cdk.RemovalPolicy.DESTROY,
+    });
+    const investmentsFn = new nodejs.NodejsFunction(this, "InvestmentsFunction", {
+      description: "Records awaiting-deposit investments. No payments, wallets, or activation.",
+      runtime: lambda.Runtime.NODEJS_22_X,
+      entry: path.join(__dirname, "../lambda/investments/index.ts"),
+      handler: "handler",
+      timeout: cdk.Duration.seconds(10),
+      memorySize: 256,
+      logGroup: investmentLogs,
+      environment: {
+        INVESTMENTS_TABLE_NAME: investmentsTable.tableName,
+      },
+      bundling: {
+        minify: false,
+        sourceMap: false,
+        externalModules: ["@aws-sdk/*"],
+      },
+    });
+    investmentsFn.addToRolePolicy(
+      new iam.PolicyStatement({
+        actions: ["dynamodb:GetItem", "dynamodb:PutItem", "dynamodb:Query"],
+        resources: [investmentsTable.tableArn],
+      }),
+    );
+    const investmentIntegration = new integrations.HttpLambdaIntegration("InvestmentsIntegration", investmentsFn);
+    httpApi.addRoutes({
+      path: "/investments",
+      methods: [apigwv2.HttpMethod.GET, apigwv2.HttpMethod.POST],
+      integration: investmentIntegration,
+      authorizer,
+    });
+    httpApi.addRoutes({
+      path: "/investments/{investmentId}",
+      methods: [apigwv2.HttpMethod.GET],
+      integration: investmentIntegration,
+      authorizer,
+    });
+
     this.apiEndpoint = httpApi.apiEndpoint;
     new cdk.CfnOutput(this, "MembersApiUrl", { value: httpApi.apiEndpoint });
     new cdk.CfnOutput(this, "MembersTableName", { value: table.tableName });
+    new cdk.CfnOutput(this, "InvestmentsTableName", { value: investmentsTable.tableName });
 
     cdk.Tags.of(this).add("Project", "Questworld");
     cdk.Tags.of(this).add("Environment", "production");

@@ -1,6 +1,6 @@
 # Questra World
 
-Questra World is a professional investment-plan application. Authentication and Amplify hosting are live. Step 04 adds member profiles and referral attribution. Investments, deposits, withdrawals, wallets, and commissions are not implemented.
+Questra World is a professional investment-plan application. Authentication, Amplify hosting, member profiles, and the Step 05 investment data foundation are live. A member can record an investment as awaiting deposit. Deposits, withdrawals, wallets, and commissions are not implemented.
 
 ## Local setup
 
@@ -104,7 +104,9 @@ Step 03 deployed Amazon Cognito and AWS Amplify Hosting in `ap-south-1`. The can
 
 Step 04 adds `QuestworldApi`: an HTTP API, one Lambda, and the on-demand DynamoDB table `questworld-members`. `POST /me/initialize` creates an idempotent profile from the Cognito ID token and an optional pending referral code. `GET /me` and `PATCH /me` read and update the profile. The client cannot set the sponsor. CDK passes the API endpoint to Amplify as `NEXT_PUBLIC_MEMBER_API_URL`. Deploy `QuestworldApi` first, then `QuestworldHosting`. Do not run `cdk deploy --all`.
 
-`.env.example` keeps blank placeholders. Do not commit a production `.env` file. Financial tables, deposits, withdrawals, and commission engines are still not implemented.
+Step 05 is implemented, deployed, and verified. The same API serves `POST /investments`, `GET /investments`, and `GET /investments/{investmentId}`, all JWT-authorized. Records live in the on-demand table `questworld-investments` (`pk` + `sk`, no GSI) as `USER#<sub>` / `INVESTMENT#<id>` and are created only as `awaiting_deposit`. Production is `https://main.d1xja8a1py5jgx.amplifyapp.com`. The API is `https://tp85xfa9z1.execute-api.ap-south-1.amazonaws.com`.
+
+`.env.example` keeps blank placeholders. Do not commit a production `.env` file. Payment, deposit, wallet, verification, activation, profit, withdrawal, commission, and admin investment operations are not implemented.
 
 Signup is confirmed by a Cognito Pre Sign-up Lambda so members are not asked for an email verification code. Password reset still sends a recovery code.
 

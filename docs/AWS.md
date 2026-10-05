@@ -87,13 +87,21 @@ Do not run `cdk deploy --all`. `.env.example` stays blank. The public API URL st
 
 ## Investment data (Step 05)
 
-Step 05 is implemented on branch `step-05-investment-data`. It is not deployed.
+Step 05 is IMPLEMENTED / DEPLOYED / VERIFIED.
 
-`questworld-investments` is a separate on-demand table with `pk` and `sk`, retained, and no GSI. A member can record an investment as `awaiting_deposit`. The amount is an integer USDT minor-unit value from the server catalog. The client cannot set the owner, amount, or status. Payment, deposit verification, activation, profit, withdrawals, and commissions are not part of this step.
+Production is `https://main.d1xja8a1py5jgx.amplifyapp.com`. The API is `https://tp85xfa9z1.execute-api.ap-south-1.amazonaws.com` in `ap-south-1`, account `364410974458`.
 
-The investment Lambda is allowed `dynamodb:GetItem`, `dynamodb:PutItem`, and `dynamodb:Query` on that table only. It cannot read `questworld-members`. `QuestworldAuth` and `QuestworldHosting` are unchanged. No new Amplify variable is required.
+`questworld-investments` is a separate on-demand table with `pk` and `sk`, retained, and no GSI. JWT-authorized routes are `POST /investments`, `GET /investments`, and `GET /investments/{investmentId}`. A record is `USER#<sub>` / `INVESTMENT#<id>` and is created only as `awaiting_deposit`. The amount is an integer USDT minor-unit value from the server catalog. The client cannot set the owner, amount, or status.
 
-Do not deploy Step 05 until `npx cdk diff QuestworldApi` is reviewed and the Auth and Hosting diffs are empty. Do not run `cdk deploy --all`.
+Verified on production:
+
+- `hello.habibwahid@gmail.com` is `USER#61231dba-6001-705f-7447-78fc245d3760` and sees only `inv_099f028d-9317-430c-85b0-cb4ac14af129`, Starter, 100 USDT, recorded `2026-10-02T13:48:39.172Z`.
+- `anis.softlab@gmail.com` is `USER#c1b39d3a-8011-7053-dc8d-a24ca993c5cb` and sees only `inv_60224d9f-4134-4ebd-9c45-afdc56ae262e`, Starter, 100 USDT, recorded `2026-10-05T15:09:35.467Z`.
+- The earlier empty list was a different signed-in user, not a page filter. No code change was required.
+
+The investment Lambda is allowed `dynamodb:GetItem`, `dynamodb:PutItem`, and `dynamodb:Query` on that table only. It cannot read `questworld-members`. On 2026-10-05, `QuestworldAuth`, `QuestworldApi`, and `QuestworldHosting` had no differences. No new Amplify variable is required.
+
+Payment, deposit, wallet, verification, activation, profit, withdrawal, commission, and admin investment operations are out of scope. Do not run `cdk deploy --all`.
 
 ## CDK assets
 
@@ -101,7 +109,7 @@ Do not deploy Step 05 until `npx cdk diff QuestworldApi` is reviewed and the Aut
 
 ## Deploy
 
-Cognito, Amplify, and the member API are already deployed in `ap-south-1`. Final diffs for `QuestworldAuth`, `QuestworldApi`, and `QuestworldHosting` are zero. Do not redeploy a stack whose diff is empty.
+Cognito, Amplify, the member API, and the investment API are already deployed in `ap-south-1`. On 2026-10-05 the diffs for `QuestworldAuth`, `QuestworldApi`, and `QuestworldHosting` had no differences. Do not redeploy a stack whose diff is empty.
 
 If infrastructure itself changes later, run these from an authorized `questworld-admin` session in AWS CloudShell, or from any shell that already has that role. Do not create access keys. Do not use the root account.
 
@@ -146,7 +154,7 @@ cd infrastructure
 npx cdk destroy QuestworldApi
 ```
 
-Do not destroy `QuestworldAuth` or `QuestworldHosting` from this step. The user pool and the members table use `RemovalPolicy.RETAIN`. The Amplify `main` branch is also retained. Delete retained resources only when you intend to remove accounts or member profiles.
+Do not destroy `QuestworldAuth` or `QuestworldHosting` from this step. The user pool, `questworld-members`, and `questworld-investments` use `RemovalPolicy.RETAIN`. The Amplify `main` branch is also retained. Delete retained resources only when you intend to remove accounts, member profiles, or investment records.
 
 ## Route protection
 

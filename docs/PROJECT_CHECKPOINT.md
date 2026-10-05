@@ -2,9 +2,8 @@
 
 - Project: Questra World
 - Current Step: Step 05 — Investment data foundation
-- Step status: IMPLEMENTED IN BRANCH. Not deployed. Live investment verification is not done.
-- Working branch: step-05-investment-data
-- Branch base: 783a0d0758b504a3695b824b67453c648abca21d
+- Step status: IMPLEMENTED / DEPLOYED / VERIFIED
+- Production main: `e7f35b5512cc51ccf7e7acde1ef89037c523b5a6`
 - Step 04 implementation merge: 6597138938f1a399289e7e10709312146cea1899
 - Authoritative main before this step: 41827ed83e1c5e0a3a0081867d312107b4620d6c
 - Current stack: Next.js 15.5.26, React 19, TypeScript, App Router, AWS CDK 2, aws-amplify 6
@@ -16,9 +15,9 @@
   - Amazon Cognito
   - API Gateway HTTP API (`QuestworldApi`, deployed)
   - AWS Lambda
-  - Amazon DynamoDB on-demand (`questworld-members` deployed; `questworld-investments` defined in Step 05 and not deployed)
+  - Amazon DynamoDB on-demand (`questworld-members` and `questworld-investments`, both deployed)
   - Amazon CloudWatch
-- Not in Step 05: deposits, payment processing, transaction hashes, wallet balances, admin review, status changes, activation, monthly profit, withdrawals, referral commissions, settlement
+- Not in Step 05: payment, deposit, wallet, verification, activation, profit, withdrawal, commission, admin investment operations
 - Cost-efficiency rules:
   - No EC2
   - No always-running server
@@ -81,14 +80,20 @@
 - Tests: `tests/members.test.ts` covers invalid referral rejection, self-referral rejection, sponsor immutability, idempotent initialization, immutable member fields, and referral-code uniqueness retry
 - Final infrastructure diffs: `QuestworldAuth` 0, `QuestworldApi` 0, `QuestworldHosting` 0
 - Step 04 remains COMPLETE in production. Its final diffs were zero before Step 05.
-- Step 05 deployed: NO
-- Step 05 design:
-  - Separate table `questworld-investments`, on-demand, `pk` + `sk`, retained, no GSI
-  - Records are `USER#<sub>` / `INVESTMENT#<id>`, created only as `awaiting_deposit`
-  - Amounts are integer USDT minor units with scale 6, from the server plan catalog
-  - The public 8% display rate is not stored
-  - Routes on the existing API: `POST /investments`, `GET /investments`, `GET /investments/{investmentId}`
-  - Idempotency is a `USER#<sub>` / `IDEMPOTENCY#<key>` item written in the same transaction
-  - The investment Lambda can use `GetItem`, `PutItem`, and `Query` on `questworld-investments` only
-- Known blockers: authenticated CDK diff and deployment have not been run for Step 05.
-- Next approved step: diff `QuestworldApi` only. `QuestworldAuth` and `QuestworldHosting` must show no differences. Do not deploy until that diff is approved. Do not run `cdk deploy --all`.
+- Step 05: IMPLEMENTED / DEPLOYED / VERIFIED
+- Production: `https://main.d1xja8a1py5jgx.amplifyapp.com`
+- API: `https://tp85xfa9z1.execute-api.ap-south-1.amazonaws.com`
+- Region: `ap-south-1`. Account: `364410974458`
+- DynamoDB: `questworld-investments`, on-demand, `pk` + `sk`, no GSI
+- Routes, all JWT-authorized: `POST /investments`, `GET /investments`, `GET /investments/{investmentId}`
+- Records are `USER#<sub>` / `INVESTMENT#<id>`, created only as `awaiting_deposit`
+- Amounts are integer USDT minor units with scale 6, from the server plan catalog
+- The public 8% display rate is not stored
+- Idempotency is a `USER#<sub>` / `IDEMPOTENCY#<key>` item written in the same transaction
+- The investment Lambda can use `GetItem`, `PutItem`, and `Query` on `questworld-investments` only
+- Verified member records:
+  - `hello.habibwahid@gmail.com` is `USER#61231dba-6001-705f-7447-78fc245d3760` and sees only `inv_099f028d-9317-430c-85b0-cb4ac14af129`, Starter, 100 USDT, recorded `2026-10-02T13:48:39.172Z`
+  - `anis.softlab@gmail.com` is `USER#c1b39d3a-8011-7053-dc8d-a24ca993c5cb` and sees only `inv_60224d9f-4134-4ebd-9c45-afdc56ae262e`, Starter, 100 USDT, recorded `2026-10-05T15:09:35.467Z`
+- The earlier empty list was a different signed-in user, not a page filter. No code change was required.
+- CDK diffs on 2026-10-05 for `QuestworldAuth`, `QuestworldApi`, and `QuestworldHosting` had no differences.
+- Next approved step: NONE. Do not start Step 06.

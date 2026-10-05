@@ -189,6 +189,103 @@ test("no status transition endpoint exists", async () => {
   assert.equal(saved?.status, "awaiting_deposit");
 });
 
+const OWNED_ID = "inv_11111111-1111-4111-8111-111111111111";
+const ACTIVE_ID = "inv_22222222-2222-4222-8222-222222222222";
+const SUBMITTED_AT = "2026-10-05T15:09:35.467Z";
+
+function deposit(
+  store: InvestmentStore,
+  userId: string,
+  investmentId: string,
+  body: unknown,
+  idempotencyKey = "deposit-key-1",
+) {
+  return handleInvestmentApi({
+    method: "POST",
+    path: `/investments/${investmentId}/deposit`,
+    claims: claims(userId),
+    body,
+    idempotencyKey,
+    store,
+    now: () => SUBMITTED_AT,
+  });
+}
+
+test("only the owner can submit one deposit reference for an awaiting-deposit investment", async () => {
+  const store = createMemoryInvestmentStore();
+  await post(store, "member-1", { planId: "starter" }, "idem-deposit-create", fixedId(OWNED_ID));
+
+  const overridden = await deposit(store, "member-1", OWNED_ID, {
+    reference: "TX123456",
+    status: "active",
+    ownerSub: "member-2",
+    amountMinor: 1,
+  });
+  assert.equal(overridden.statusCode, 400);
+  assert.equal((await store.getById("member-1", OWNED_ID))?.status, "awaiting_deposit");
+
+  const foreign = await deposit(store, "member-2", OWNED_ID, { reference: "TX123456" }, "deposit-foreign");
+  assert.equal(foreign.statusCode, 404);
+  assert.equal((await store.getById("member-1", OWNED_ID))?.status, "awaiting_deposit");
+
+  const submitted = await deposit(store, "member-1", OWNED_ID, { reference: " TX123456 " });
+  assert.equal(submitted.statusCode, 200);
+  const investment = submitted.body.investment as {
+    status: string;
+    depositReference: string;
+    submittedAt: string;
+    amountMinor: number;
+    planId: string;
+    ownerSub: string;
+  };
+  assert.equal(investment.status, "pending_verification");
+  assert.equal(investment.depositReference, "TX123456");
+  assert.equal(investment.submittedAt, SUBMITTED_AT);
+  assert.equal(investment.amountMinor, 100_000_000);
+  assert.equal(investment.planId, "starter");
+  assert.equal(investment.ownerSub, "member-1");
+
+  const duplicate = await deposit(store, "member-1", OWNED_ID, { reference: "TX999999" }, "deposit-key-2");
+  assert.equal(duplicate.statusCode, 409);
+  assert.equal(duplicate.body.error, "deposit_not_allowed");
+  assert.equal((await store.getById("member-1", OWNED_ID))?.depositReference, "TX123456");
+});
+
+test("the same deposit idempotency key returns the original submission", async () => {
+  const store = createMemoryInvestmentStore();
+  await post(store, "member-1", { planId: "starter" }, "idem-deposit-replay", fixedId(OWNED_ID));
+  const first = await deposit(store, "member-1", OWNED_ID, { reference: "TX123456" }, "deposit-replay");
+  const second = await deposit(store, "member-1", OWNED_ID, { reference: "TX999999" }, "deposit-replay");
+  assert.equal(first.statusCode, 200);
+  assert.equal(second.statusCode, 200);
+  const replay = second.body.investment as { depositReference: string; status: string };
+  assert.equal(replay.depositReference, "TX123456");
+  assert.equal(replay.status, "pending_verification");
+  assert.equal((await store.listByOwner("member-1")).length, 1);
+});
+
+test("an investment that is not awaiting deposit cannot receive a reference", async () => {
+  const store = createMemoryInvestmentStore([
+    {
+      investmentId: ACTIVE_ID,
+      ownerSub: "member-1",
+      planId: "starter",
+      planName: "Starter",
+      amountMinor: 100_000_000,
+      currency: "USDT",
+      scale: 6,
+      status: "active",
+      createdAt: NOW,
+      updatedAt: NOW,
+      statusChangedAt: NOW,
+    },
+  ]);
+  const rejected = await deposit(store, "member-1", ACTIVE_ID, { reference: "TX123456" }, "deposit-active");
+  assert.equal(rejected.statusCode, 409);
+  assert.equal((await store.getById("member-1", ACTIVE_ID))?.status, "active");
+  assert.equal((await store.getById("member-1", ACTIVE_ID))?.depositReference, undefined);
+});
+
 test("a body user id is ignored because a missing token is unauthorized", async () => {
   const store = createMemoryInvestmentStore();
   const response = await handleInvestmentApi({
@@ -207,8 +304,11 @@ test("the investment Lambda policy does not include the members table", () => {
   assert.match(investmentPolicy, /dynamodb:GetItem/);
   assert.match(investmentPolicy, /dynamodb:PutItem/);
   assert.match(investmentPolicy, /dynamodb:Query/);
+  assert.match(investmentPolicy, /dynamodb:UpdateItem/);
   assert.match(investmentPolicy, /resources: \[investmentsTable\.tableArn\]/);
   assert.doesNotMatch(investmentPolicy, /resources: \[table\.tableArn\]/);
   assert.doesNotMatch(investmentPolicy, /questworld-members/);
   assert.doesNotMatch(investmentPolicy, /dynamodb:\*/);
+  assert.doesNotMatch(investmentPolicy, /dynamodb:Scan/);
+  assert.doesNotMatch(investmentPolicy, /dynamodb:DeleteItem/);
 });

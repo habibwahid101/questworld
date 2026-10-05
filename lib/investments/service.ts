@@ -1,7 +1,8 @@
 /**
- * Investment records for Step 05.
+ * Investment records.
  * Cognito `sub` is the owner. The client cannot choose it, the amount, or the status.
- * Creating a record does not take payment or activate the investment.
+ * Creating a record does not take payment. Submitting a deposit reference only marks
+ * that owned awaiting-deposit record as pending verification.
  */
 
 export const INVESTMENT_CURRENCY = "USDT";
@@ -32,6 +33,8 @@ export type InvestmentRecord = {
   createdAt: string;
   updatedAt: string;
   statusChangedAt: string;
+  depositReference?: string;
+  submittedAt?: string;
 };
 
 export type InvestmentIdentity = {
@@ -43,8 +46,19 @@ export type CreateInvestmentResult =
   | { result: "exists"; investmentId: string }
   | { result: "id-taken" };
 
+export type DepositSubmission = {
+  ownerSub: string;
+  investmentId: string;
+  depositReference: string;
+  submittedAt: string;
+  idempotencyKey: string;
+};
+
+export type DepositSubmissionResult = { result: "submitted" } | { result: "exists" } | { result: "not-found" } | { result: "rejected" };
+
 export type InvestmentStore = {
   create(record: InvestmentRecord, idempotencyKey: string): Promise<CreateInvestmentResult>;
+  submitDeposit(submission: DepositSubmission): Promise<DepositSubmissionResult>;
   getById(ownerSub: string, investmentId: string): Promise<InvestmentRecord | null>;
   listByOwner(ownerSub: string): Promise<InvestmentRecord[]>;
 };
@@ -64,6 +78,7 @@ export class InvestmentRequestError extends Error {
 const INVESTMENT_ID_PATTERN =
   /^inv_[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const IDEMPOTENCY_PATTERN = /^[A-Za-z0-9_-]{8,128}$/;
+const DEPOSIT_REFERENCE_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:-]{3,119}$/;
 
 export function readStoredInvestmentStatus(value: unknown): InvestmentStatus {
   if (value === "awaiting_deposit" || value === "pending_verification" || value === "active") {
@@ -85,6 +100,7 @@ export function investmentFromStoredItem(item: Record<string, unknown>): Investm
     createdAt: String(item.createdAt),
     updatedAt: String(item.updatedAt),
     statusChangedAt: String(item.statusChangedAt),
+    ...storedDepositFields(item),
   };
 }
 
@@ -161,6 +177,19 @@ export async function handleInvestmentApi(input: {
       return { statusCode: 200, body: { investment: record } };
     }
 
+    const depositInvestmentId = depositIdFromPath(path);
+    if (method === "POST" && depositInvestmentId) {
+      const record = await submitDeposit({
+        ownerSub: identity.userId,
+        investmentId: depositInvestmentId,
+        body: input.body,
+        idempotencyKey: input.idempotencyKey,
+        store: input.store,
+        now,
+      });
+      return { statusCode: 200, body: { investment: record } };
+    }
+
     return errorBody(404, "not_found", "That investment request does not exist.");
   } catch (caught) {
     if (caught instanceof InvestmentRequestError) {
@@ -216,6 +245,51 @@ async function createInvestment(input: {
   throw new InvestmentRequestError(500, "id_generation_failed", "Could not create an investment.");
 }
 
+async function submitDeposit(input: {
+  ownerSub: string;
+  investmentId: string;
+  body: unknown;
+  idempotencyKey: string | undefined;
+  store: InvestmentStore;
+  now: () => string;
+}): Promise<InvestmentRecord> {
+  const depositReference = referenceFromBody(input.body);
+  const idempotencyKey = readIdempotencyKey(input.idempotencyKey);
+  const outcome = await input.store.submitDeposit({
+    ownerSub: input.ownerSub,
+    investmentId: input.investmentId,
+    depositReference,
+    submittedAt: input.now(),
+    idempotencyKey,
+  });
+  if (outcome.result === "not-found") {
+    throw new InvestmentRequestError(404, "investment_not_found", "That investment was not found.");
+  }
+  if (outcome.result === "rejected") {
+    throw new InvestmentRequestError(409, "deposit_not_allowed", "This investment is not awaiting a deposit reference.");
+  }
+  const saved = await input.store.getById(input.ownerSub, input.investmentId);
+  if (!saved || saved.ownerSub !== input.ownerSub || saved.status !== "pending_verification") {
+    throw new InvestmentRequestError(500, "deposit_failed", "Could not save that deposit reference.");
+  }
+  return saved;
+}
+
+function referenceFromBody(body: unknown): string {
+  if (!body || typeof body !== "object" || Array.isArray(body)) {
+    throw new InvestmentRequestError(400, "invalid_body", "Enter the deposit reference.");
+  }
+  const source = body as Record<string, unknown>;
+  const extra = Object.keys(source).filter((key) => key !== "reference");
+  if (extra.length > 0) {
+    throw new InvestmentRequestError(400, "invalid_body", "Only the deposit reference can be submitted.");
+  }
+  if (typeof source.reference !== "string" || !DEPOSIT_REFERENCE_PATTERN.test(source.reference.trim())) {
+    throw new InvestmentRequestError(400, "invalid_reference", "Enter the deposit reference from your transfer.");
+  }
+  return source.reference.trim();
+}
+
 function planFromBody(body: unknown): (typeof investmentCatalog)[PlanId] {
   if (!body || typeof body !== "object" || Array.isArray(body)) {
     throw new InvestmentRequestError(400, "invalid_body", "Choose a plan.");
@@ -241,6 +315,31 @@ function readIdempotencyKey(value: string | undefined): string {
     );
   }
   return key;
+}
+
+function depositIdFromPath(path: string): string | null {
+  const match = path.match(/^\/investments\/([^/]+)\/deposit$/);
+  if (!match?.[1] || !INVESTMENT_ID_PATTERN.test(match[1])) {
+    return null;
+  }
+  return match[1];
+}
+
+function storedDepositFields(item: Record<string, unknown>): Pick<InvestmentRecord, "depositReference" | "submittedAt"> {
+  const fields: Pick<InvestmentRecord, "depositReference" | "submittedAt"> = {};
+  if (item.depositReference !== undefined) {
+    if (typeof item.depositReference !== "string" || item.depositReference.trim() === "") {
+      throw new InvestmentRequestError(500, "invalid_stored_deposit", "That investment record is not valid.");
+    }
+    fields.depositReference = item.depositReference;
+  }
+  if (item.submittedAt !== undefined) {
+    if (typeof item.submittedAt !== "string" || item.submittedAt.trim() === "") {
+      throw new InvestmentRequestError(500, "invalid_stored_deposit", "That investment record is not valid.");
+    }
+    fields.submittedAt = item.submittedAt;
+  }
+  return fields;
 }
 
 function investmentIdFromPath(path: string): string | null {

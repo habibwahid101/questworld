@@ -17,6 +17,23 @@ export async function listCurrentInvestments(): Promise<InvestmentRecord[]> {
   return payload.investments ?? [];
 }
 
+export async function submitCurrentDeposit(
+  investmentId: string,
+  reference: string,
+  idempotencyKey: string,
+): Promise<InvestmentRecord> {
+  const payload = await investmentRequest<{ investment?: InvestmentRecord }>(
+    "POST",
+    `/investments/${investmentId}/deposit`,
+    { reference },
+    idempotencyKey,
+  );
+  if (!payload.investment) {
+    throw new InvestmentClientError("investment_request_failed", "Could not save that deposit reference.");
+  }
+  return payload.investment;
+}
+
 export async function createCurrentInvestment(planId: string, idempotencyKey: string): Promise<InvestmentRecord> {
   const payload = await investmentRequest<{ investment?: InvestmentRecord }>("POST", "/investments", { planId }, idempotencyKey);
   if (!payload.investment) {

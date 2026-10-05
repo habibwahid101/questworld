@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
-import { createCurrentInvestment, InvestmentClientError, listCurrentInvestments } from "@/lib/investments/client";
+import { createCurrentInvestment, InvestmentClientError, listCurrentInvestments, submitCurrentDeposit } from "@/lib/investments/client";
 import { formatUsdtAmount, type InvestmentRecord, type InvestmentStatus, type PlanId } from "@/lib/investments/service";
 import { isMemberApiConfigured } from "@/lib/members/config";
 
@@ -25,7 +25,10 @@ export function InvestmentsPanel() {
   const [message, setMessage] = useState<string | null>(null);
   const [loading, setLoading] = useState(isMemberApiConfigured());
   const [savingPlan, setSavingPlan] = useState<PlanId | null>(null);
+  const [savingDepositId, setSavingDepositId] = useState<string | null>(null);
+  const [references, setReferences] = useState<Record<string, string>>({});
   const pendingKeys = useRef<Partial<Record<PlanId, string>>>({});
+  const depositKeys = useRef<Record<string, string>>({});
 
   const load = useCallback(async () => {
     const records = await listCurrentInvestments();
@@ -54,7 +57,7 @@ export function InvestmentsPanel() {
   }, [load]);
 
   async function choosePlan(planId: PlanId) {
-    if (savingPlan) {
+    if (savingPlan || savingDepositId) {
       return;
     }
     setSavingPlan(planId);
@@ -70,6 +73,27 @@ export function InvestmentsPanel() {
       setMessage(error.message);
     } finally {
       setSavingPlan(null);
+    }
+  }
+
+  async function submitReference(investmentId: string) {
+    if (savingPlan || savingDepositId) {
+      return;
+    }
+    const reference = references[investmentId]?.trim() ?? "";
+    setSavingDepositId(investmentId);
+    setMessage(null);
+    const idempotencyKey = depositKeys.current[investmentId] ?? crypto.randomUUID();
+    depositKeys.current[investmentId] = idempotencyKey;
+    try {
+      await submitCurrentDeposit(investmentId, reference, idempotencyKey);
+      delete depositKeys.current[investmentId];
+      await load();
+    } catch (caught) {
+      const error = caught instanceof InvestmentClientError ? caught : new InvestmentClientError("investment_request_failed", "Could not save that deposit reference.");
+      setMessage(error.message);
+    } finally {
+      setSavingDepositId(null);
     }
   }
 
@@ -94,7 +118,7 @@ export function InvestmentsPanel() {
             <Button
               key={plan.id}
               variant="secondary"
-              disabled={savingPlan !== null}
+              disabled={savingPlan !== null || savingDepositId !== null}
               onClick={() => void choosePlan(plan.id)}
             >
               {savingPlan === plan.id ? "Recording…" : plan.label}
@@ -119,6 +143,31 @@ export function InvestmentsPanel() {
             <h2>{formatUsdtAmount(investment.amountMinor, investment.scale)}</h2>
             <p style={{ marginTop: 10 }}>Status: {statusLabel[investment.status]}</p>
             <p>Recorded {new Date(investment.createdAt).toLocaleString()}</p>
+            {investment.status === "awaiting_deposit" ? (
+              <form
+                style={{ marginTop: 16 }}
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  void submitReference(investment.investmentId);
+                }}
+              >
+                <label htmlFor={`deposit-${investment.investmentId}`}>Deposit reference</label>
+                <input
+                  id={`deposit-${investment.investmentId}`}
+                  value={references[investment.investmentId] ?? ""}
+                  onChange={(event) => {
+                    const value = event.target.value;
+                    setReferences((current) => ({ ...current, [investment.investmentId]: value }));
+                  }}
+                  autoComplete="off"
+                  style={{ display: "block", width: "100%", marginTop: 8 }}
+                />
+                <Button type="submit" disabled={savingPlan !== null || savingDepositId !== null} style={{ marginTop: 12 }}>
+                  {savingDepositId === investment.investmentId ? "Submitting…" : "Submit reference"}
+                </Button>
+              </form>
+            ) : null}
+            {investment.depositReference ? <p style={{ marginTop: 10 }}>Reference {investment.depositReference}</p> : null}
           </Card>
         ))
       )}

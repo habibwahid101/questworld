@@ -4,12 +4,15 @@ import {
   handleInvestmentApi,
   investmentFromStoredItem,
   type CreateInvestmentResult,
+  type DepositSubmission,
+  type DepositSubmissionResult,
   type InvestmentRecord,
   type InvestmentStore,
 } from "../../../lib/investments/service";
 
 const INVESTMENT_PREFIX = "INVESTMENT#";
 const IDEMPOTENCY_PREFIX = "IDEMPOTENCY#";
+const DEPOSIT_IDEMPOTENCY_PREFIX = "IDEMPOTENCY#DEPOSIT#";
 
 type ApiGatewayEvent = {
   rawPath?: string;
@@ -107,6 +110,47 @@ export function createDynamoInvestmentStore(tableName: string): InvestmentStore 
         return cancellationResult(caught, tableName, record.ownerSub, idempotencyKey);
       }
     },
+    async submitDeposit(submission) {
+      try {
+        await document.send(
+          new TransactWriteCommand({
+            TransactItems: [
+              {
+                Update: {
+                  TableName: tableName,
+                  Key: { pk: userKey(submission.ownerSub), sk: `${INVESTMENT_PREFIX}${submission.investmentId}` },
+                  UpdateExpression:
+                    "SET #status = :pending, depositReference = :reference, submittedAt = :submittedAt, updatedAt = :submittedAt, statusChangedAt = :submittedAt",
+                  ConditionExpression: "#status = :awaiting AND ownerSub = :owner",
+                  ExpressionAttributeNames: { "#status": "status" },
+                  ExpressionAttributeValues: {
+                    ":pending": "pending_verification",
+                    ":awaiting": "awaiting_deposit",
+                    ":reference": submission.depositReference,
+                    ":submittedAt": submission.submittedAt,
+                    ":owner": submission.ownerSub,
+                  },
+                },
+              },
+              {
+                Put: {
+                  TableName: tableName,
+                  Item: {
+                    pk: userKey(submission.ownerSub),
+                    sk: `${DEPOSIT_IDEMPOTENCY_PREFIX}${submission.idempotencyKey}`,
+                    investmentId: submission.investmentId,
+                  },
+                  ConditionExpression: "attribute_not_exists(pk)",
+                },
+              },
+            ],
+          }),
+        );
+        return { result: "submitted" };
+      } catch (caught) {
+        return depositCancellation(caught, tableName, submission);
+      }
+    },
     async getById(ownerSub, investmentId) {
       const response = await document.send(
         new GetCommand({
@@ -164,6 +208,33 @@ async function cancellationResult(
   }
   if (reasons[0] === "ConditionalCheckFailed") {
     return { result: "id-taken" };
+  }
+  throw caught;
+}
+
+async function depositCancellation(
+  caught: unknown,
+  tableName: string,
+  submission: DepositSubmission,
+): Promise<DepositSubmissionResult> {
+  const reasons = cancellationReasons(caught);
+  if (reasons[1] === "ConditionalCheckFailed") {
+    const response = await document.send(
+      new GetCommand({
+        TableName: tableName,
+        Key: { pk: userKey(submission.ownerSub), sk: `${DEPOSIT_IDEMPOTENCY_PREFIX}${submission.idempotencyKey}` },
+      }),
+    );
+    return response.Item?.investmentId === submission.investmentId ? { result: "exists" } : { result: "rejected" };
+  }
+  if (reasons[0] === "ConditionalCheckFailed") {
+    const response = await document.send(
+      new GetCommand({
+        TableName: tableName,
+        Key: { pk: userKey(submission.ownerSub), sk: `${INVESTMENT_PREFIX}${submission.investmentId}` },
+      }),
+    );
+    return response.Item ? { result: "rejected" } : { result: "not-found" };
   }
   throw caught;
 }

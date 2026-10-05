@@ -108,7 +108,7 @@ export class ApiStack extends cdk.Stack {
       removalPolicy: cdk.RemovalPolicy.DESTROY,
     });
     const investmentsFn = new nodejs.NodejsFunction(this, "InvestmentsFunction", {
-      description: "Records awaiting-deposit investments. No payments, wallets, or activation.",
+      description: "Records awaiting-deposit investments and one deposit reference. No payment gateway, wallet, or activation.",
       runtime: lambda.Runtime.NODEJS_22_X,
       entry: path.join(__dirname, "../lambda/investments/index.ts"),
       handler: "handler",
@@ -126,7 +126,7 @@ export class ApiStack extends cdk.Stack {
     });
     investmentsFn.addToRolePolicy(
       new iam.PolicyStatement({
-        actions: ["dynamodb:GetItem", "dynamodb:PutItem", "dynamodb:Query"],
+        actions: ["dynamodb:GetItem", "dynamodb:PutItem", "dynamodb:Query", "dynamodb:UpdateItem"],
         resources: [investmentsTable.tableArn],
       }),
     );
@@ -140,6 +140,12 @@ export class ApiStack extends cdk.Stack {
     httpApi.addRoutes({
       path: "/investments/{investmentId}",
       methods: [apigwv2.HttpMethod.GET],
+      integration: investmentIntegration,
+      authorizer,
+    });
+    httpApi.addRoutes({
+      path: "/investments/{investmentId}/deposit",
+      methods: [apigwv2.HttpMethod.POST],
       integration: investmentIntegration,
       authorizer,
     });

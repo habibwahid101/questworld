@@ -1,6 +1,6 @@
 import { getIdToken } from "@/lib/auth/cognito";
 import { isMemberApiConfigured, readMemberApiUrl } from "@/lib/members/config";
-import type { InvestmentRecord, ProfitEntry } from "@/lib/investments/service";
+import type { InvestmentRecord, ProfitEntry, WithdrawalRequest } from "@/lib/investments/service";
 
 export class InvestmentClientError extends Error {
   readonly code: string;
@@ -37,6 +37,19 @@ export async function submitCurrentDeposit(
 export async function listCurrentProfits(): Promise<ProfitEntry[]> {
   const payload = await investmentRequest<{ profits?: ProfitEntry[] }>("GET", "/profits");
   return payload.profits ?? [];
+}
+
+export async function listCurrentWithdrawals(): Promise<{ withdrawals: WithdrawalRequest[]; availableMinor: number }> {
+  const payload = await investmentRequest<{ withdrawals?: WithdrawalRequest[]; availableMinor?: number }>("GET", "/withdrawals");
+  return { withdrawals: payload.withdrawals ?? [], availableMinor: payload.availableMinor ?? 0 };
+}
+
+export async function requestCurrentWithdrawal(amountMinor: number): Promise<WithdrawalRequest> {
+  const payload = await investmentRequest<{ withdrawal?: WithdrawalRequest }>("POST", "/withdrawals", { amountMinor });
+  if (!payload.withdrawal) {
+    throw new InvestmentClientError("investment_request_failed", "Could not save that withdrawal request.");
+  }
+  return payload.withdrawal;
 }
 
 export async function listPendingDeposits(): Promise<InvestmentRecord[]> {

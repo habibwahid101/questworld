@@ -9,11 +9,13 @@ import type {
   InvestmentRecord,
   InvestmentStore,
   ProfitEntry,
+  WithdrawalRequest,
 } from "./service.ts";
 
 export function createMemoryInvestmentStore(seed: readonly InvestmentRecord[] = []): InvestmentStore {
   const investments = new Map<string, InvestmentRecord>();
   const profits = new Map<string, ProfitEntry>();
+  const withdrawals = new Map<string, WithdrawalRequest>();
   const idempotency = new Map<string, string>();
   for (const record of seed) {
     investments.set(`${record.ownerSub}#${record.investmentId}`, structuredClone(record));
@@ -138,6 +140,23 @@ export function createMemoryInvestmentStore(seed: readonly InvestmentRecord[] = 
         .map((entry) => structuredClone(entry))
         .sort(
           (left, right) => right.period.localeCompare(left.period) || left.investmentId.localeCompare(right.investmentId),
+        );
+    },
+    async putWithdrawal(request: WithdrawalRequest) {
+      const key = `${request.ownerSub}#${request.withdrawalId}`;
+      if (withdrawals.has(key)) {
+        return "duplicate";
+      }
+      withdrawals.set(key, structuredClone(request));
+      return "created";
+    },
+    async listWithdrawals(ownerSub) {
+      return [...withdrawals.values()]
+        .filter((request) => request.ownerSub === ownerSub)
+        .map((request) => structuredClone(request))
+        .sort(
+          (left, right) =>
+            right.createdAt.localeCompare(left.createdAt) || left.withdrawalId.localeCompare(right.withdrawalId),
         );
     },
     async getById(ownerSub, investmentId) {

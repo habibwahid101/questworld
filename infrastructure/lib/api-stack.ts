@@ -110,7 +110,7 @@ export class ApiStack extends cdk.Stack {
       removalPolicy: cdk.RemovalPolicy.DESTROY,
     });
     const investmentsFn = new nodejs.NodejsFunction(this, "InvestmentsFunction", {
-      description: "Records investments and posts the monthly profit ledger. No wallet, withdrawal, or commission.",
+      description: "Records investments, the monthly profit ledger, and withdrawal requests. No payout or commission.",
       runtime: lambda.Runtime.NODEJS_22_X,
       entry: path.join(__dirname, "../lambda/investments/index.ts"),
       handler: "handler",
@@ -172,6 +172,12 @@ export class ApiStack extends cdk.Stack {
     httpApi.addRoutes({
       path: "/profits",
       methods: [apigwv2.HttpMethod.GET],
+      integration: investmentIntegration,
+      authorizer,
+    });
+    httpApi.addRoutes({
+      path: "/withdrawals",
+      methods: [apigwv2.HttpMethod.GET, apigwv2.HttpMethod.POST],
       integration: investmentIntegration,
       authorizer,
     });

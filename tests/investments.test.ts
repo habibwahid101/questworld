@@ -12,6 +12,8 @@ import {
   previousUtcMonth,
   type InvestmentRecord,
   type InvestmentStore,
+  type ProfitEntry,
+  type WithdrawalRequest,
 } from "../lib/investments/service.ts";
 
 const NOW = "2026-10-02T12:00:00.000Z";
@@ -593,4 +595,121 @@ test("monthly profit posts once for an active investment and only the owner can 
   });
   assert.equal(other.statusCode, 200);
   assert.deepEqual(other.body.profits, []);
+});
+
+test("a member can request posted profit and cannot read another member's request", async () => {
+  const active: InvestmentRecord = {
+    investmentId: ACTIVE_ID,
+    ownerSub: "member-1",
+    planId: "starter",
+    planName: "Starter",
+    amountMinor: 100_000_000,
+    currency: "USDT",
+    scale: 6,
+    status: "active",
+    createdAt: NOW,
+    updatedAt: NOW,
+    statusChangedAt: NOW,
+  };
+  const profit: ProfitEntry = {
+    investmentId: ACTIVE_ID,
+    ownerSub: "member-1",
+    period: "2026-10",
+    rateBps: 800,
+    profitMinor: 8_000_000,
+    principalMinor: 100_000_000,
+    currency: "USDT",
+    scale: 6,
+    planId: "starter",
+    planName: "Starter",
+    postedAt: "2026-11-01T01:00:00.000Z",
+  };
+  const approved: WithdrawalRequest = {
+    withdrawalId: "wd_11111111-1111-4111-8111-111111111111",
+    ownerSub: "member-1",
+    amountMinor: 1_000_000,
+    currency: "USDT",
+    scale: 6,
+    status: "approved",
+    createdAt: NOW,
+    updatedAt: NOW,
+  };
+  const store = createMemoryInvestmentStore([active]);
+  assert.equal(await store.putProfit(profit), "created");
+  assert.equal(await store.putWithdrawal(approved), "created");
+
+  const listed = await handleInvestmentApi({ method: "GET", path: "/withdrawals", claims: claims("member-1"), store });
+  assert.equal(listed.statusCode, 200);
+  assert.equal(listed.body.availableMinor, 7_000_000);
+
+  const zero = await handleInvestmentApi({
+    method: "POST",
+    path: "/withdrawals",
+    claims: claims("member-1"),
+    body: { amountMinor: 0 },
+    store,
+    now: () => "2026-11-02T00:00:00.000Z",
+  });
+  assert.equal(zero.statusCode, 400);
+
+  const above = await handleInvestmentApi({
+    method: "POST",
+    path: "/withdrawals",
+    claims: claims("member-1"),
+    body: { amountMinor: 7_000_001 },
+    store,
+  });
+  assert.equal(above.statusCode, 409);
+  assert.equal(above.body.error, "withdrawal_above_available");
+
+  const otherOwner = await handleInvestmentApi({
+    method: "POST",
+    path: "/withdrawals",
+    claims: claims("member-2"),
+    body: { amountMinor: 7_000_000, ownerSub: "member-1" },
+    store,
+  });
+  assert.equal(otherOwner.statusCode, 400);
+  const otherAvailable = await handleInvestmentApi({
+    method: "POST",
+    path: "/withdrawals",
+    claims: claims("member-2"),
+    body: { amountMinor: 7_000_000 },
+    store,
+  });
+  assert.equal(otherAvailable.statusCode, 409);
+
+  const requested = await handleInvestmentApi({
+    method: "POST",
+    path: "/withdrawals",
+    claims: claims("member-1"),
+    body: { amountMinor: 7_000_000 },
+    store,
+    now: () => "2026-11-02T00:00:00.000Z",
+    newWithdrawalId: () => "wd_22222222-2222-4222-8222-222222222222",
+  });
+  assert.equal(requested.statusCode, 200);
+  const withdrawal = requested.body.withdrawal as WithdrawalRequest;
+  assert.equal(withdrawal.status, "pending_review");
+  assert.equal(withdrawal.ownerSub, "member-1");
+  assert.equal(withdrawal.amountMinor, 7_000_000);
+  assert.equal((await store.getById("member-1", ACTIVE_ID))?.status, "active");
+  assert.equal((await store.getById("member-1", ACTIVE_ID))?.amountMinor, 100_000_000);
+  assert.equal((await store.listProfits("member-1"))[0]?.profitMinor, 8_000_000);
+
+  const ownerList = await handleInvestmentApi({ method: "GET", path: "/withdrawals", claims: claims("member-1"), store });
+  const ownerRequests = ownerList.body.withdrawals as Array<{ withdrawalId: string }>;
+  assert.deepEqual(
+    ownerRequests.map((request) => request.withdrawalId).sort(),
+    [approved.withdrawalId, withdrawal.withdrawalId].sort(),
+  );
+  const foreignList = await handleInvestmentApi({
+    method: "GET",
+    path: "/withdrawals",
+    claims: claims("member-2"),
+    body: { ownerSub: "member-1" },
+    store,
+  });
+  assert.deepEqual(foreignList.body.withdrawals, []);
+  assert.equal(foreignList.body.availableMinor, 0);
 });

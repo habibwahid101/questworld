@@ -7,6 +7,7 @@ import {
   identityFromClaims,
   investmentCatalog,
   investmentFromStoredItem,
+  isAdminClaims,
   type InvestmentStore,
 } from "../lib/investments/service.ts";
 
@@ -395,6 +396,31 @@ test("a deposit that is not pending cannot be reviewed", async () => {
   assert.equal(rejected.statusCode, 409);
   assert.equal((await store.getById("member-1", ACTIVE_ID))?.status, "awaiting_deposit");
   assert.equal((await store.getById("member-1", ACTIVE_ID))?.reviewedBy, undefined);
+});
+
+test("the API Gateway bracketed Admins claim is accepted and a member claim is not", async () => {
+  assert.equal(isAdminClaims({ sub: "admin-1", "cognito:groups": "[Admins]" }), true);
+  assert.equal(isAdminClaims({ sub: "admin-1", "cognito:groups": '["Admins"]' }), true);
+  assert.equal(isAdminClaims({ sub: "admin-1", "cognito:groups": "Members,Admins" }), true);
+  assert.equal(isAdminClaims({ sub: "member-1", "cognito:groups": "[Members]" }), false);
+  assert.equal(isAdminClaims({ sub: "member-1" }), false);
+
+  const store = createMemoryInvestmentStore([pendingItem(PENDING_ID, "member-1")]);
+  const admin = await handleInvestmentApi({
+    method: "GET",
+    path: "/admin/deposits",
+    claims: { sub: "admin-1", "cognito:groups": "[Admins]" },
+    store,
+  });
+  assert.equal(admin.statusCode, 200);
+  const member = await handleInvestmentApi({
+    method: "GET",
+    path: "/admin/deposits",
+    claims: { sub: "member-1", "cognito:groups": "[Members]" },
+    store,
+  });
+  assert.equal(member.statusCode, 403);
+  assert.equal((await store.getById("member-1", PENDING_ID))?.status, "pending_verification");
 });
 
 test("a body user id is ignored because a missing token is unauthorized", async () => {

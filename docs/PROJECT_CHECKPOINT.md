@@ -1,9 +1,10 @@
 # Questra World — Project Checkpoint
 
 - Project: Questra World
-- Current Step: Step 05 — Investment data foundation
-- Step status: IMPLEMENTED / DEPLOYED / VERIFIED
-- Production main: `e7f35b5512cc51ccf7e7acde1ef89037c523b5a6`
+- Current Step: Step 12 — Certification
+- Step status: Steps 06–11 DEPLOYED. This checkpoint records that state. No payout.
+- Production main: `6362e96a3e3aac9c3048e3730799b14380f3f346`
+- Step 05 production main: `e7f35b5512cc51ccf7e7acde1ef89037c523b5a6`
 - Step 04 implementation merge: 6597138938f1a399289e7e10709312146cea1899
 - Authoritative main before this step: 41827ed83e1c5e0a3a0081867d312107b4620d6c
 - Current stack: Next.js 15.5.26, React 19, TypeScript, App Router, AWS CDK 2, aws-amplify 6
@@ -16,6 +17,7 @@
   - API Gateway HTTP API (`QuestworldApi`, deployed)
   - AWS Lambda
   - Amazon DynamoDB on-demand (`questworld-members` and `questworld-investments`, both deployed)
+  - Amazon EventBridge, one monthly schedule
   - Amazon CloudWatch
 - Not in Step 05: payment, deposit, wallet, verification, activation, profit, withdrawal, commission, admin investment operations
 - Cost-efficiency rules:
@@ -90,10 +92,24 @@
 - Amounts are integer USDT minor units with scale 6, from the server plan catalog
 - The public 8% display rate is not stored
 - Idempotency is a `USER#<sub>` / `IDEMPOTENCY#<key>` item written in the same transaction
-- The investment Lambda can use `GetItem`, `PutItem`, and `Query` on `questworld-investments` only
+- The investment Lambda can use `GetItem`, `PutItem`, and `Query` on `questworld-investments` only. Later steps added `Scan` and `UpdateItem` on that table, and `GetItem` on `questworld-members` for the sponsor chain.
 - Verified member records:
   - `hello.habibwahid@gmail.com` is `USER#61231dba-6001-705f-7447-78fc245d3760` and sees only `inv_099f028d-9317-430c-85b0-cb4ac14af129`, Starter, 100 USDT, recorded `2026-10-02T13:48:39.172Z`
   - `anis.softlab@gmail.com` is `USER#c1b39d3a-8011-7053-dc8d-a24ca993c5cb` and sees only `inv_60224d9f-4134-4ebd-9c45-afdc56ae262e`, Starter, 100 USDT, recorded `2026-10-05T15:09:35.467Z`
 - The earlier empty list was a different signed-in user, not a page filter. No code change was required.
 - CDK diffs on 2026-10-05 for `QuestworldAuth`, `QuestworldApi`, and `QuestworldHosting` had no differences.
-- Next approved step: NONE. Do not start Step 06.
+- Steps 06–11: DEPLOYED. No payout.
+- Production main for this certification: `6362e96a3e3aac9c3048e3730799b14380f3f346`
+- Amplify app `d1xja8a1py5jgx`, branch `main`. Job 15 SUCCEED at `2026-10-06T14:30:52Z`.
+- Step 06: `POST /investments/{investmentId}/deposit`. The server sets `pending_verification` and stores the reference. The client cannot set the owner, amount, or status.
+- Step 07: an admin in `Admins` uses `GET /admin/deposits` and `POST /admin/deposits/{investmentId}/review`. The server sets `deposit_verified` or `rejected`. A member cannot call these routes.
+- Step 08: an admin activates one `deposit_verified` investment with `POST /admin/deposits/{investmentId}/activate`. The server sets `active` and stores `activatedAt` and `activatedBy`. It does not post profit.
+- Step 09: EventBridge `cron(0 1 1 * ? *)` posts one 8 percent profit entry, `USER#<sub>` / `PROFIT#<investmentId>#<period>`. The same period cannot be posted twice. Members read only their own entries with `GET /profits`.
+- Step 10: `POST /withdrawals` requests posted profit minus pending or approved requests. The item is `USER#<sub>` / `WITHDRAWAL#<id>` with status `pending_review`. The client cannot set the owner. A zero or excess amount is rejected. Nothing is paid out.
+- Step 11: the same monthly run posts `USER#<recipientSub>` / `COMMISSION#<investmentId>#<period>#<generation>`. Generation 1 is 3 percent (`rateBps` 300). Generation 2 is 1 percent (`rateBps` 100). A missing sponsor is skipped. `GET /commissions` returns only the caller's entries. The investment Lambda may `GetItem` `questworld-members` only to read `sponsorUserId`.
+- Verified investment: `inv_099f028d-9317-430c-85b0-cb4ac14af129` is `active`. Deposit reference `QW-STEP06-HABIB-100`. `activatedAt` `2026-10-06T11:42:38.368Z`.
+- The first profit and commission post is scheduled for 2026-11-01 01:00 UTC. It has not run.
+- A withdrawal cannot be verified until that post.
+- Rates: investor 8 percent monthly, generation 1 is 3 percent, generation 2 is 1 percent. No payout.
+- No new table, GSI, wallet, or payout was added.
+- Next approved step: NONE. Do not add a payout.

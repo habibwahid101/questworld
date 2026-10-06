@@ -4,6 +4,7 @@
  * Creating a record does not take payment. Submitting a deposit reference only marks
  * that owned awaiting-deposit record as pending verification.
  * An admin review can only mark that pending record as deposit verified or rejected.
+ * An admin activation can only mark that verified record as active.
  */
 
 export const INVESTMENT_CURRENCY = "USDT";
@@ -40,6 +41,8 @@ export type InvestmentRecord = {
   submittedAt?: string;
   reviewedAt?: string;
   reviewedBy?: string;
+  activatedAt?: string;
+  activatedBy?: string;
 };
 
 export type InvestmentIdentity = {
@@ -73,11 +76,24 @@ export type DepositReviewResult =
   | { result: "not-found" }
   | { result: "rejected" };
 
+export type InvestmentActivation = {
+  investmentId: string;
+  activatedAt: string;
+  activatedBy: string;
+};
+
+export type InvestmentActivationResult =
+  | { result: "activated"; record: InvestmentRecord }
+  | { result: "not-found" }
+  | { result: "rejected" };
+
 export type InvestmentStore = {
   create(record: InvestmentRecord, idempotencyKey: string): Promise<CreateInvestmentResult>;
   submitDeposit(submission: DepositSubmission): Promise<DepositSubmissionResult>;
   listPendingDeposits(): Promise<InvestmentRecord[]>;
+  listVerifiedDeposits(): Promise<InvestmentRecord[]>;
   reviewDeposit(review: DepositReview): Promise<DepositReviewResult>;
+  activateInvestment(activation: InvestmentActivation): Promise<InvestmentActivationResult>;
   getById(ownerSub: string, investmentId: string): Promise<InvestmentRecord | null>;
   listByOwner(ownerSub: string): Promise<InvestmentRecord[]>;
 };
@@ -127,6 +143,7 @@ export function investmentFromStoredItem(item: Record<string, unknown>): Investm
     statusChangedAt: String(item.statusChangedAt),
     ...storedDepositFields(item),
     ...storedReviewFields(item),
+    ...storedActivationFields(item),
   };
 }
 
@@ -220,8 +237,11 @@ export async function handleInvestmentApi(input: {
         return errorBody(403, "forbidden", "Admin access is required.");
       }
       if (method === "GET" && path === "/admin/deposits") {
-        const investments = await input.store.listPendingDeposits();
-        return { statusCode: 200, body: { investments } };
+        const [investments, verified] = await Promise.all([
+          input.store.listPendingDeposits(),
+          input.store.listVerifiedDeposits(),
+        ]);
+        return { statusCode: 200, body: { investments, verified } };
       }
       const reviewInvestmentId = reviewIdFromPath(path);
       if (method === "POST" && reviewInvestmentId) {
@@ -229,6 +249,17 @@ export async function handleInvestmentApi(input: {
           investmentId: reviewInvestmentId,
           body: input.body,
           reviewedBy: identity.userId,
+          store: input.store,
+          now,
+        });
+        return { statusCode: 200, body: { investment: record } };
+      }
+      const activationInvestmentId = activationIdFromPath(path);
+      if (method === "POST" && activationInvestmentId) {
+        const record = await activateInvestment({
+          investmentId: activationInvestmentId,
+          body: input.body,
+          activatedBy: identity.userId,
           store: input.store,
           now,
         });
@@ -388,6 +419,41 @@ async function reviewDeposit(input: {
   return saved;
 }
 
+async function activateInvestment(input: {
+  investmentId: string;
+  body: unknown;
+  activatedBy: string;
+  store: InvestmentStore;
+  now: () => string;
+}): Promise<InvestmentRecord> {
+  assertNoActivationOverrides(input.body);
+  const outcome = await input.store.activateInvestment({
+    investmentId: input.investmentId,
+    activatedAt: input.now(),
+    activatedBy: input.activatedBy,
+  });
+  if (outcome.result === "not-found") {
+    throw new InvestmentRequestError(404, "investment_not_found", "That investment was not found.");
+  }
+  if (outcome.result === "rejected") {
+    throw new InvestmentRequestError(409, "activation_not_allowed", "Only a verified deposit can be activated.");
+  }
+  const saved = outcome.record;
+  if (saved.status !== "active" || saved.activatedBy !== input.activatedBy || saved.ownerSub.length === 0) {
+    throw new InvestmentRequestError(500, "activation_failed", "Could not activate that investment.");
+  }
+  return saved;
+}
+
+function assertNoActivationOverrides(body: unknown): void {
+  if (body === undefined || body === null) {
+    return;
+  }
+  if (typeof body !== "object" || Array.isArray(body) || Object.keys(body).length > 0) {
+    throw new InvestmentRequestError(400, "invalid_body", "The server chooses the activation.");
+  }
+}
+
 function decisionFromBody(body: unknown): ReviewDecision {
   if (!body || typeof body !== "object" || Array.isArray(body)) {
     throw new InvestmentRequestError(400, "invalid_body", "Choose verify or reject.");
@@ -451,6 +517,31 @@ function reviewIdFromPath(path: string): string | null {
     return null;
   }
   return match[1];
+}
+
+function activationIdFromPath(path: string): string | null {
+  const match = path.match(/^\/admin\/deposits\/([^/]+)\/activate$/);
+  if (!match?.[1] || !INVESTMENT_ID_PATTERN.test(match[1])) {
+    return null;
+  }
+  return match[1];
+}
+
+function storedActivationFields(item: Record<string, unknown>): Pick<InvestmentRecord, "activatedAt" | "activatedBy"> {
+  const fields: Pick<InvestmentRecord, "activatedAt" | "activatedBy"> = {};
+  if (item.activatedAt !== undefined) {
+    if (typeof item.activatedAt !== "string" || item.activatedAt.trim() === "") {
+      throw new InvestmentRequestError(500, "invalid_stored_activation", "That investment record is not valid.");
+    }
+    fields.activatedAt = item.activatedAt;
+  }
+  if (item.activatedBy !== undefined) {
+    if (typeof item.activatedBy !== "string" || item.activatedBy.trim() === "") {
+      throw new InvestmentRequestError(500, "invalid_stored_activation", "That investment record is not valid.");
+    }
+    fields.activatedBy = item.activatedBy;
+  }
+  return fields;
 }
 
 function storedReviewFields(item: Record<string, unknown>): Pick<InvestmentRecord, "reviewedAt" | "reviewedBy"> {

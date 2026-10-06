@@ -423,6 +423,81 @@ test("the API Gateway bracketed Admins claim is accepted and a member claim is n
   assert.equal((await store.getById("member-1", PENDING_ID))?.status, "pending_verification");
 });
 
+const VERIFIED_ID = "inv_44444444-4444-4444-8444-444444444444";
+const ACTIVATED_AT = "2026-10-06T12:00:00.000Z";
+
+function verifiedItem(investmentId: string, ownerSub: string) {
+  return {
+    ...pendingItem(investmentId, ownerSub),
+    status: "deposit_verified" as const,
+    reviewedAt: REVIEWED_AT,
+    reviewedBy: "admin-1",
+  };
+}
+
+function activate(store: InvestmentStore, userId: string, investmentId: string, body: unknown = {}, groups?: unknown) {
+  return handleInvestmentApi({
+    method: "POST",
+    path: `/admin/deposits/${investmentId}/activate`,
+    claims: groups === undefined ? claims(userId) : { sub: userId, "cognito:groups": groups },
+    body,
+    store,
+    now: () => ACTIVATED_AT,
+  });
+}
+
+test("only an admin can activate a verified deposit once", async () => {
+  const store = createMemoryInvestmentStore([
+    verifiedItem(VERIFIED_ID, "member-1"),
+    pendingItem(PENDING_ID, "member-2"),
+  ]);
+
+  const member = await activate(store, "member-1", VERIFIED_ID, {});
+  const otherGroup = await activate(store, "member-9", VERIFIED_ID, {}, ["Members"]);
+  assert.equal(member.statusCode, 403);
+  assert.equal(otherGroup.statusCode, 403);
+  assert.equal((await store.getById("member-1", VERIFIED_ID))?.status, "deposit_verified");
+
+  const pending = await activate(store, "admin-1", PENDING_ID, {}, "[Admins]");
+  assert.equal(pending.statusCode, 409);
+  assert.equal((await store.getById("member-2", PENDING_ID))?.status, "pending_verification");
+
+  const overridden = await activate(store, "admin-1", VERIFIED_ID, { status: "active", ownerSub: "admin-1", amountMinor: 1, planId: "premium" }, "[Admins]");
+  assert.equal(overridden.statusCode, 400);
+  assert.equal((await store.getById("member-1", VERIFIED_ID))?.status, "deposit_verified");
+
+  const list = await handleInvestmentApi({
+    method: "GET",
+    path: "/admin/deposits",
+    claims: { sub: "admin-1", "cognito:groups": "[Admins]" },
+    store,
+  });
+  const verified = list.body.verified as Array<{ investmentId: string }>;
+  assert.deepEqual(verified.map((item) => item.investmentId), [VERIFIED_ID]);
+
+  const activated = await activate(store, "admin-1", VERIFIED_ID, {}, "[Admins]");
+  assert.equal(activated.statusCode, 200);
+  const saved = activated.body.investment as {
+    status: string;
+    activatedBy: string;
+    activatedAt: string;
+    amountMinor: number;
+    planId: string;
+    ownerSub: string;
+  };
+  assert.equal(saved.status, "active");
+  assert.equal(saved.activatedBy, "admin-1");
+  assert.equal(saved.activatedAt, ACTIVATED_AT);
+  assert.equal(saved.amountMinor, 100_000_000);
+  assert.equal(saved.planId, "starter");
+  assert.equal(saved.ownerSub, "member-1");
+
+  const second = await activate(store, "admin-1", VERIFIED_ID, {}, "[Admins]");
+  assert.equal(second.statusCode, 409);
+  assert.equal(second.body.error, "activation_not_allowed");
+  assert.equal((await store.getById("member-1", VERIFIED_ID))?.status, "active");
+});
+
 test("a body user id is ignored because a missing token is unauthorized", async () => {
   const store = createMemoryInvestmentStore();
   const response = await handleInvestmentApi({

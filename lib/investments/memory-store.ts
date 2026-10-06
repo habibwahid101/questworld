@@ -4,6 +4,8 @@ import type {
   DepositReviewResult,
   DepositSubmission,
   DepositSubmissionResult,
+  InvestmentActivation,
+  InvestmentActivationResult,
   InvestmentRecord,
   InvestmentStore,
 } from "./service.ts";
@@ -65,6 +67,16 @@ export function createMemoryInvestmentStore(seed: readonly InvestmentRecord[] = 
             left.investmentId.localeCompare(right.investmentId),
         );
     },
+    async listVerifiedDeposits() {
+      return [...investments.values()]
+        .filter((record) => record.status === "deposit_verified")
+        .map((record) => structuredClone(record))
+        .sort(
+          (left, right) =>
+            (right.reviewedAt ?? right.createdAt).localeCompare(left.reviewedAt ?? left.createdAt) ||
+            left.investmentId.localeCompare(right.investmentId),
+        );
+    },
     async reviewDeposit(review: DepositReview): Promise<DepositReviewResult> {
       const found = [...investments.entries()].find(([, record]) => record.investmentId === review.investmentId);
       if (!found) {
@@ -84,6 +96,26 @@ export function createMemoryInvestmentStore(seed: readonly InvestmentRecord[] = 
       };
       investments.set(itemKey, record);
       return { result: "reviewed", record: structuredClone(record) };
+    },
+    async activateInvestment(activation: InvestmentActivation): Promise<InvestmentActivationResult> {
+      const found = [...investments.entries()].find(([, record]) => record.investmentId === activation.investmentId);
+      if (!found) {
+        return { result: "not-found" };
+      }
+      const [itemKey, current] = found;
+      if (current.status !== "deposit_verified") {
+        return { result: "rejected" };
+      }
+      const record: InvestmentRecord = {
+        ...current,
+        status: "active",
+        activatedAt: activation.activatedAt,
+        activatedBy: activation.activatedBy,
+        updatedAt: activation.activatedAt,
+        statusChangedAt: activation.activatedAt,
+      };
+      investments.set(itemKey, record);
+      return { result: "activated", record: structuredClone(record) };
     },
     async getById(ownerSub, investmentId) {
       const found = investments.get(`${ownerSub}#${investmentId}`);

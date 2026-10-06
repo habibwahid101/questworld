@@ -18,7 +18,11 @@ No expensive always-on infrastructure is approved. Do not add EC2, RDS, NAT Gate
 | GitHub connection | Amplify GitHub App for `https://github.com/habibwahid101/questworld`. No personal access token |
 | Member API | DEPLOYED. `QuestworldApi`, `https://tp85xfa9z1.execute-api.ap-south-1.amazonaws.com` |
 | DynamoDB `questworld-members` | DEPLOYED. ACTIVE, `PAY_PER_REQUEST` |
+| DynamoDB `questworld-investments` | DEPLOYED. ACTIVE, `PAY_PER_REQUEST`, no GSI |
+| EventBridge monthly schedule | DEPLOYED. `cron(0 1 1 * ? *)`. The first run is 2026-11-01 01:00 UTC and has not happened. |
+| Steps 06–11 | DEPLOYED. Deposit, review, activation, profit, withdrawal request, and commission ledger. No payout. |
 | Step 04 | COMPLETE. Production Amplify build for `6597138938f1a399289e7e10709312146cea1899` succeeded |
+| Amplify job 15 | SUCCEED at `2026-10-06T14:30:52Z` for main `6362e96a3e3aac9c3048e3730799b14380f3f346` |
 
 The frontend reads these public values through [`lib/auth/config.ts`](../lib/auth/config.ts). Blank `NEXT_PUBLIC_COGNITO_USER_POOL_ID` and `NEXT_PUBLIC_COGNITO_CLIENT_ID` use the deployed pool and client. Set those variables only to override them. Do not commit `.env`, `.env.local`, or `.env.production`. `.env.example` keeps empty placeholders.
 
@@ -55,7 +59,7 @@ Referral codes are not Cognito attributes. The browser keeps an optional code in
 - WAF
 - App Runner
 - Load balancers
-- DynamoDB financial tables, S3 application buckets, EventBridge schedules, payment wallets, and financial Lambdas
+- DynamoDB tables beyond `questworld-members` and `questworld-investments`, S3 application buckets, payment wallets, and payout Lambdas
 - A second Amplify app
 
 ## Member data (Step 04)
@@ -99,9 +103,24 @@ Verified on production:
 - `anis.softlab@gmail.com` is `USER#c1b39d3a-8011-7053-dc8d-a24ca993c5cb` and sees only `inv_60224d9f-4134-4ebd-9c45-afdc56ae262e`, Starter, 100 USDT, recorded `2026-10-05T15:09:35.467Z`.
 - The earlier empty list was a different signed-in user, not a page filter. No code change was required.
 
-The investment Lambda is allowed `dynamodb:GetItem`, `dynamodb:PutItem`, and `dynamodb:Query` on that table only. It cannot read `questworld-members`. On 2026-10-05, `QuestworldAuth`, `QuestworldApi`, and `QuestworldHosting` had no differences. No new Amplify variable is required.
+The investment Lambda was limited in Step 05 to `dynamodb:GetItem`, `dynamodb:PutItem`, and `dynamodb:Query` on `questworld-investments`. Steps 07–11 added `dynamodb:Scan` and `dynamodb:UpdateItem` on that table, and `dynamodb:GetItem` on `questworld-members` for `sponsorUserId` only. On 2026-10-05, `QuestworldAuth`, `QuestworldApi`, and `QuestworldHosting` had no differences. No new Amplify variable was required for Steps 06–11.
 
-Payment, deposit, wallet, verification, activation, profit, withdrawal, commission, and admin investment operations are out of scope. Do not run `cdk deploy --all`.
+Payment processing, wallet balances, and payouts are out of scope. Deposit submission, admin review, activation, the profit ledger, withdrawal requests, and the commission ledger are deployed in Steps 06–11 below. Do not run `cdk deploy --all`.
+
+## Steps 06–11
+
+Steps 06 through 11 are DEPLOYED on `QuestworldApi` and `questworld-investments`. Production is `https://main.d1xja8a1py5jgx.amplifyapp.com`. Amplify job 15 for main `6362e96a3e3aac9c3048e3730799b14380f3f346` succeeded at `2026-10-06T14:30:52Z`. There is no payout and no new table.
+
+| Step | What is deployed |
+| --- | --- |
+| 06 | `POST /investments/{investmentId}/deposit`. One reference for an owned investment in `awaiting_deposit`. The server sets `pending_verification`. |
+| 07 | `GET /admin/deposits` and `POST /admin/deposits/{investmentId}/review`. An `Admins` user sets `deposit_verified` or `rejected`. |
+| 08 | `POST /admin/deposits/{investmentId}/activate`. An admin activates a `deposit_verified` investment. The server sets `active`. |
+| 09 | Monthly EventBridge run posts 8 percent profit at `USER#<sub>` / `PROFIT#<investmentId>#<period>`. `GET /profits` is owner-only. |
+| 10 | `GET /withdrawals` and `POST /withdrawals`. The server sets `pending_review` for an amount within posted profit minus pending or approved requests. |
+| 11 | The same monthly run posts generation 1 at 3 percent and generation 2 at 1 percent: `USER#<recipientSub>` / `COMMISSION#<investmentId>#<period>#<generation>`. `GET /commissions` is owner-only. |
+
+Verified record: `inv_099f028d-9317-430c-85b0-cb4ac14af129` is `active`, deposit reference `QW-STEP06-HABIB-100`, `activatedAt` `2026-10-06T11:42:38.368Z`. The first profit and commission post is scheduled for 2026-11-01 01:00 UTC and has not run. A withdrawal cannot be verified until that post. Rates are investor 8 percent monthly, generation 1 is 3 percent, and generation 2 is 1 percent. No payout.
 
 ## CDK assets
 
@@ -109,7 +128,7 @@ Payment, deposit, wallet, verification, activation, profit, withdrawal, commissi
 
 ## Deploy
 
-Cognito, Amplify, the member API, and the investment API are already deployed in `ap-south-1`. On 2026-10-05 the diffs for `QuestworldAuth`, `QuestworldApi`, and `QuestworldHosting` had no differences. Do not redeploy a stack whose diff is empty.
+Cognito, Amplify, the member API, and Steps 05–11 on `QuestworldApi` are already deployed in `ap-south-1`. On 2026-10-05 the diffs for `QuestworldAuth`, `QuestworldApi`, and `QuestworldHosting` had no differences. Later API changes were deployed before each Step 06–11 merge. Do not redeploy a stack whose diff is empty.
 
 If infrastructure itself changes later, run these from an authorized `questworld-admin` session in AWS CloudShell, or from any shell that already has that role. Do not create access keys. Do not use the root account.
 

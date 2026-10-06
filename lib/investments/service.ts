@@ -154,12 +154,20 @@ function adminGroups(value: unknown): string[] {
   if (!trimmed) {
     return [];
   }
-  if (trimmed.startsWith("[")) {
+  if (trimmed.startsWith("[") && trimmed.endsWith("]")) {
     try {
-      return adminGroups(JSON.parse(trimmed) as unknown);
+      const parsed = JSON.parse(trimmed) as unknown;
+      if (Array.isArray(parsed)) {
+        return adminGroups(parsed);
+      }
     } catch {
-      return [];
+      // The HTTP API JWT authorizer sends one group as "[Admins]", which is not JSON.
     }
+    return trimmed
+      .slice(1, -1)
+      .split(",")
+      .map((entry) => entry.trim().replace(/^["']|["']$/g, ""))
+      .filter((entry) => entry.length > 0);
   }
   return trimmed
     .split(",")

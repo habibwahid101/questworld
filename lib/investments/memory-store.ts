@@ -1,5 +1,7 @@
 import type {
   CreateInvestmentResult,
+  DepositReview,
+  DepositReviewResult,
   DepositSubmission,
   DepositSubmissionResult,
   InvestmentRecord,
@@ -52,6 +54,36 @@ export function createMemoryInvestmentStore(seed: readonly InvestmentRecord[] = 
       });
       idempotency.set(requestKey, submission.investmentId);
       return { result: "submitted" };
+    },
+    async listPendingDeposits() {
+      return [...investments.values()]
+        .filter((record) => record.status === "pending_verification")
+        .map((record) => structuredClone(record))
+        .sort(
+          (left, right) =>
+            (right.submittedAt ?? right.createdAt).localeCompare(left.submittedAt ?? left.createdAt) ||
+            left.investmentId.localeCompare(right.investmentId),
+        );
+    },
+    async reviewDeposit(review: DepositReview): Promise<DepositReviewResult> {
+      const found = [...investments.entries()].find(([, record]) => record.investmentId === review.investmentId);
+      if (!found) {
+        return { result: "not-found" };
+      }
+      const [itemKey, current] = found;
+      if (current.status !== "pending_verification") {
+        return { result: "rejected" };
+      }
+      const record: InvestmentRecord = {
+        ...current,
+        status: review.decision,
+        reviewedAt: review.reviewedAt,
+        reviewedBy: review.reviewedBy,
+        updatedAt: review.reviewedAt,
+        statusChangedAt: review.reviewedAt,
+      };
+      investments.set(itemKey, record);
+      return { result: "reviewed", record: structuredClone(record) };
     },
     async getById(ownerSub, investmentId) {
       const found = investments.get(`${ownerSub}#${investmentId}`);

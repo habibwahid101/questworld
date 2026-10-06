@@ -108,7 +108,7 @@ export class ApiStack extends cdk.Stack {
       removalPolicy: cdk.RemovalPolicy.DESTROY,
     });
     const investmentsFn = new nodejs.NodejsFunction(this, "InvestmentsFunction", {
-      description: "Records awaiting-deposit investments and one deposit reference. No payment gateway, wallet, or activation.",
+      description: "Records investments, one deposit reference, and admin review. No activation, wallet, or commission.",
       runtime: lambda.Runtime.NODEJS_22_X,
       entry: path.join(__dirname, "../lambda/investments/index.ts"),
       handler: "handler",
@@ -126,7 +126,7 @@ export class ApiStack extends cdk.Stack {
     });
     investmentsFn.addToRolePolicy(
       new iam.PolicyStatement({
-        actions: ["dynamodb:GetItem", "dynamodb:PutItem", "dynamodb:Query", "dynamodb:UpdateItem"],
+        actions: ["dynamodb:GetItem", "dynamodb:PutItem", "dynamodb:Query", "dynamodb:Scan", "dynamodb:UpdateItem"],
         resources: [investmentsTable.tableArn],
       }),
     );
@@ -145,6 +145,18 @@ export class ApiStack extends cdk.Stack {
     });
     httpApi.addRoutes({
       path: "/investments/{investmentId}/deposit",
+      methods: [apigwv2.HttpMethod.POST],
+      integration: investmentIntegration,
+      authorizer,
+    });
+    httpApi.addRoutes({
+      path: "/admin/deposits",
+      methods: [apigwv2.HttpMethod.GET],
+      integration: investmentIntegration,
+      authorizer,
+    });
+    httpApi.addRoutes({
+      path: "/admin/deposits/{investmentId}/review",
       methods: [apigwv2.HttpMethod.POST],
       integration: investmentIntegration,
       authorizer,

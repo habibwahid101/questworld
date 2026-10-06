@@ -9,12 +9,14 @@ import type {
   InvestmentRecord,
   InvestmentStore,
   ProfitEntry,
+  CommissionEntry,
   WithdrawalRequest,
 } from "./service.ts";
 
 export function createMemoryInvestmentStore(seed: readonly InvestmentRecord[] = []): InvestmentStore {
   const investments = new Map<string, InvestmentRecord>();
   const profits = new Map<string, ProfitEntry>();
+  const commissions = new Map<string, CommissionEntry>();
   const withdrawals = new Map<string, WithdrawalRequest>();
   const idempotency = new Map<string, string>();
   for (const record of seed) {
@@ -140,6 +142,25 @@ export function createMemoryInvestmentStore(seed: readonly InvestmentRecord[] = 
         .map((entry) => structuredClone(entry))
         .sort(
           (left, right) => right.period.localeCompare(left.period) || left.investmentId.localeCompare(right.investmentId),
+        );
+    },
+    async putCommission(entry: CommissionEntry) {
+      const key = `${entry.recipientSub}#${entry.investmentId}#${entry.period}#${entry.generation}`;
+      if (commissions.has(key)) {
+        return "duplicate";
+      }
+      commissions.set(key, structuredClone(entry));
+      return "created";
+    },
+    async listCommissions(recipientSub) {
+      return [...commissions.values()]
+        .filter((entry) => entry.recipientSub === recipientSub)
+        .map((entry) => structuredClone(entry))
+        .sort(
+          (left, right) =>
+            right.period.localeCompare(left.period) ||
+            left.generation - right.generation ||
+            left.investmentId.localeCompare(right.investmentId),
         );
     },
     async putWithdrawal(request: WithdrawalRequest) {

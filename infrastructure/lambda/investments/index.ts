@@ -3,10 +3,12 @@ import { DynamoDBDocumentClient, GetCommand, PutCommand, QueryCommand, ScanComma
 import {
   handleInvestmentApi,
   investmentFromStoredItem,
+  postMonthlyCommissions,
   postMonthlyProfits,
   previousUtcMonth,
   profitFromStoredItem,
   withdrawalFromStoredItem,
+  commissionFromStoredItem,
   type CreateInvestmentResult,
   type DepositReview,
   type DepositReviewResult,
@@ -17,6 +19,7 @@ import {
   type InvestmentRecord,
   type InvestmentStore,
   type ProfitEntry,
+  type CommissionEntry,
   type WithdrawalRequest,
 } from "../../../lib/investments/service";
 
@@ -27,7 +30,9 @@ const MAX_SCAN_ITEMS = 200;
 const SCAN_PAGE_LIMIT = 50;
 const MAX_PROFIT_SCAN_ITEMS = 500;
 const PROFIT_PREFIX = "PROFIT#";
+const COMMISSION_PREFIX = "COMMISSION#";
 const WITHDRAWAL_PREFIX = "WITHDRAWAL#";
+const MEMBER_PROFILE_SK = "PROFILE";
 
 type ApiGatewayEvent = {
   source?: string;
@@ -52,18 +57,19 @@ export async function handler(event: ApiGatewayEvent): Promise<{
   body: string;
 }> {
   const tableName = process.env.INVESTMENTS_TABLE_NAME;
-  if (!tableName) {
+  const membersTableName = process.env.MEMBERS_TABLE_NAME;
+  if (!tableName || !membersTableName) {
     return json(500, { error: "configuration", message: "Investment storage is not configured." });
   }
 
   if (event.source === "aws.events") {
     const postedAt = typeof event.time === "string" ? event.time : new Date().toISOString();
-    const summary = await postMonthlyProfits({
-      store: createDynamoInvestmentStore(tableName),
-      period: previousUtcMonth(postedAt),
-      postedAt,
-    });
-    return json(200, summary);
+    const period = previousUtcMonth(postedAt);
+    const store = createDynamoInvestmentStore(tableName);
+    const sponsors = { sponsorOf: (userId: string) => sponsorOf(membersTableName, userId) };
+    const profits = await postMonthlyProfits({ store, period, postedAt });
+    const commissions = await postMonthlyCommissions({ store, sponsors, period, postedAt });
+    return json(200, { profits, commissions });
   }
 
   let body: unknown;
@@ -258,6 +264,54 @@ export function createDynamoInvestmentStore(tableName: string): InvestmentStore 
       } while (startKey);
       return records.sort(
         (left, right) => right.period.localeCompare(left.period) || left.investmentId.localeCompare(right.investmentId),
+      );
+    },
+    async putCommission(entry) {
+      try {
+        await document.send(
+          new PutCommand({
+            TableName: tableName,
+            Item: {
+              pk: userKey(entry.recipientSub),
+              sk: `${COMMISSION_PREFIX}${entry.investmentId}#${entry.period}#${entry.generation}`,
+              ...entry,
+            },
+            ConditionExpression: "attribute_not_exists(pk) AND attribute_not_exists(sk)",
+          }),
+        );
+        return "created";
+      } catch (caught) {
+        if (caught && typeof caught === "object" && (caught as { name?: string }).name === "ConditionalCheckFailedException") {
+          return "duplicate";
+        }
+        throw caught;
+      }
+    },
+    async listCommissions(recipientSub) {
+      const records: CommissionEntry[] = [];
+      let startKey: Record<string, unknown> | undefined;
+      do {
+        const response = await document.send(
+          new QueryCommand({
+            TableName: tableName,
+            KeyConditionExpression: "pk = :pk AND begins_with(sk, :prefix)",
+            ExpressionAttributeValues: {
+              ":pk": userKey(recipientSub),
+              ":prefix": COMMISSION_PREFIX,
+            },
+            ExclusiveStartKey: startKey,
+          }),
+        );
+        for (const item of response.Items ?? []) {
+          records.push(commissionFromStoredItem(item));
+        }
+        startKey = response.LastEvaluatedKey;
+      } while (startKey);
+      return records.sort(
+        (left, right) =>
+          right.period.localeCompare(left.period) ||
+          left.generation - right.generation ||
+          left.investmentId.localeCompare(right.investmentId),
       );
     },
     async putWithdrawal(request) {
@@ -547,6 +601,18 @@ async function scanMatches(
     startKey = response.LastEvaluatedKey;
   } while (startKey && read < MAX_SCAN_ITEMS && matches.length < 50);
   return matches;
+}
+
+async function sponsorOf(membersTableName: string, userId: string): Promise<string | null> {
+  const response = await document.send(
+    new GetCommand({
+      TableName: membersTableName,
+      Key: { pk: userKey(userId), sk: MEMBER_PROFILE_SK },
+      ProjectionExpression: "sponsorUserId",
+    }),
+  );
+  const sponsorUserId = response.Item?.sponsorUserId;
+  return typeof sponsorUserId === "string" && sponsorUserId.trim() ? sponsorUserId.trim() : null;
 }
 
 function userKey(userId: string): string {

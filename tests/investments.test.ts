@@ -8,11 +8,13 @@ import {
   investmentCatalog,
   investmentFromStoredItem,
   isAdminClaims,
+  postCommissionsForInvestment,
   postProfitForInvestment,
   previousUtcMonth,
   type InvestmentRecord,
   type InvestmentStore,
   type ProfitEntry,
+  type SponsorDirectory,
   type WithdrawalRequest,
 } from "../lib/investments/service.ts";
 
@@ -515,7 +517,7 @@ test("a body user id is ignored because a missing token is unauthorized", async 
   assert.equal(response.statusCode, 401);
 });
 
-test("the investment Lambda policy does not include the members table", () => {
+test("the investment Lambda reads member profiles only to resolve sponsors", () => {
   const source = readFileSync(new URL("../infrastructure/lib/api-stack.ts", import.meta.url), "utf8");
   const investmentPolicy = source.slice(source.indexOf("investmentsFn.addToRolePolicy"));
   assert.match(investmentPolicy, /dynamodb:GetItem/);
@@ -524,10 +526,15 @@ test("the investment Lambda policy does not include the members table", () => {
   assert.match(investmentPolicy, /dynamodb:UpdateItem/);
   assert.match(investmentPolicy, /dynamodb:Scan/);
   assert.match(investmentPolicy, /resources: \[investmentsTable\.tableArn\]/);
-  assert.doesNotMatch(investmentPolicy, /resources: \[table\.tableArn\]/);
-  assert.doesNotMatch(investmentPolicy, /questworld-members/);
-  assert.doesNotMatch(investmentPolicy, /dynamodb:\*/);
-  assert.doesNotMatch(investmentPolicy, /dynamodb:DeleteItem/);
+  const membersRead = investmentPolicy.slice(investmentPolicy.lastIndexOf("investmentsFn.addToRolePolicy"));
+  assert.match(membersRead, /actions: \["dynamodb:GetItem"\]/);
+  assert.match(membersRead, /resources: \[table\.tableArn\]/);
+  assert.doesNotMatch(membersRead, /dynamodb:PutItem/);
+  assert.doesNotMatch(membersRead, /dynamodb:UpdateItem/);
+  assert.doesNotMatch(membersRead, /dynamodb:Query/);
+  assert.doesNotMatch(membersRead, /dynamodb:Scan/);
+  assert.doesNotMatch(membersRead, /dynamodb:\*/);
+  assert.doesNotMatch(membersRead, /dynamodb:DeleteItem/);
 });
 
 test("monthly profit posts once for an active investment and only the owner can read it", async () => {
@@ -712,4 +719,102 @@ test("a member can request posted profit and cannot read another member's reques
   });
   assert.deepEqual(foreignList.body.withdrawals, []);
   assert.equal(foreignList.body.availableMinor, 0);
+});
+
+test("monthly commissions post generation 1 and 2 once and skip a missing sponsor", async () => {
+  const investor: InvestmentRecord = {
+    investmentId: ACTIVE_ID,
+    ownerSub: "member-1",
+    planId: "starter",
+    planName: "Starter",
+    amountMinor: 100_000_000,
+    currency: "USDT",
+    scale: 6,
+    status: "active",
+    createdAt: NOW,
+    updatedAt: NOW,
+    statusChangedAt: NOW,
+  };
+  const alone: InvestmentRecord = { ...investor, investmentId: PENDING_ID, ownerSub: "member-4" };
+  const store = createMemoryInvestmentStore([investor, alone]);
+  const sponsors: SponsorDirectory = {
+    async sponsorOf(userId: string) {
+      if (userId === "member-1") {
+        return "member-2";
+      }
+      if (userId === "member-2") {
+        return "member-3";
+      }
+      if (userId === "member-5") {
+        return "member-6";
+      }
+      return null;
+    },
+  };
+  const period = "2026-10";
+  const postedAt = "2026-11-01T01:00:00.000Z";
+
+  const profit = await postProfitForInvestment({ record: investor, period, postedAt, store });
+  assert.equal(profit.result, "posted");
+  if (profit.result === "posted") {
+    assert.equal(profit.entry.rateBps, 800);
+    assert.equal(profit.entry.profitMinor, 8_000_000);
+  }
+
+  const posted = await postCommissionsForInvestment({ record: investor, period, postedAt, store, sponsors });
+  assert.deepEqual(
+    posted.map((entry) => entry.result),
+    ["posted", "posted"],
+  );
+  const generation1 = (await store.listCommissions("member-2"))[0];
+  const generation2 = (await store.listCommissions("member-3"))[0];
+  assert.equal(generation1?.generation, 1);
+  assert.equal(generation1?.rateBps, 300);
+  assert.equal(generation1?.commissionMinor, 3_000_000);
+  assert.equal(generation2?.generation, 2);
+  assert.equal(generation2?.rateBps, 100);
+  assert.equal(generation2?.commissionMinor, 1_000_000);
+  assert.equal((await store.listCommissions("member-1")).length, 0);
+  assert.equal((await store.getById("member-1", ACTIVE_ID))?.status, "active");
+  assert.equal((await store.getById("member-1", ACTIVE_ID))?.amountMinor, 100_000_000);
+
+  const missing = await postCommissionsForInvestment({ record: alone, period, postedAt, store, sponsors });
+  assert.deepEqual(
+    missing.map((entry) => entry.result),
+    ["skipped", "skipped"],
+  );
+  assert.equal((await store.listCommissions("member-4")).length, 0);
+
+  const directOnly: InvestmentRecord = { ...investor, investmentId: VERIFIED_ID, ownerSub: "member-5" };
+  const partial = await postCommissionsForInvestment({ record: directOnly, period, postedAt, store, sponsors });
+  assert.deepEqual(
+    partial.map((entry) => entry.result),
+    ["posted", "skipped"],
+  );
+  assert.equal((await store.listCommissions("member-6"))[0]?.generation, 1);
+  assert.equal((await store.listCommissions("member-6"))[0]?.rateBps, 300);
+
+  const duplicate = await postCommissionsForInvestment({ record: investor, period, postedAt, store, sponsors });
+  assert.deepEqual(
+    duplicate.map((entry) => entry.result),
+    ["duplicate", "duplicate"],
+  );
+  assert.equal((await store.listCommissions("member-2")).length, 1);
+  assert.equal((await store.listCommissions("member-3")).length, 1);
+
+  const sponsor = await handleInvestmentApi({ method: "GET", path: "/commissions", claims: claims("member-2"), store });
+  const sponsorRows = sponsor.body.commissions as Array<{ generation: number; recipientSub: string }>;
+  assert.equal(sponsor.statusCode, 200);
+  assert.deepEqual(
+    sponsorRows.map((entry) => entry.generation),
+    [1],
+  );
+  const other = await handleInvestmentApi({
+    method: "GET",
+    path: "/commissions",
+    claims: claims("member-1"),
+    body: { ownerSub: "member-2" },
+    store,
+  });
+  assert.deepEqual(other.body.commissions, []);
 });

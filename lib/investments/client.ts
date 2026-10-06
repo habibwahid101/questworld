@@ -1,6 +1,6 @@
 import { getIdToken } from "@/lib/auth/cognito";
 import { isMemberApiConfigured, readMemberApiUrl } from "@/lib/members/config";
-import type { InvestmentRecord } from "@/lib/investments/service";
+import type { InvestmentRecord, ProfitEntry } from "@/lib/investments/service";
 
 export class InvestmentClientError extends Error {
   readonly code: string;
@@ -32,6 +32,11 @@ export async function submitCurrentDeposit(
     throw new InvestmentClientError("investment_request_failed", "Could not save that deposit reference.");
   }
   return payload.investment;
+}
+
+export async function listCurrentProfits(): Promise<ProfitEntry[]> {
+  const payload = await investmentRequest<{ profits?: ProfitEntry[] }>("GET", "/profits");
+  return payload.profits ?? [];
 }
 
 export async function listPendingDeposits(): Promise<InvestmentRecord[]> {

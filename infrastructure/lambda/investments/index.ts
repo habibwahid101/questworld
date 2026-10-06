@@ -1,9 +1,11 @@
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
-import { DynamoDBDocumentClient, GetCommand, QueryCommand, TransactWriteCommand } from "@aws-sdk/lib-dynamodb";
+import { DynamoDBDocumentClient, GetCommand, QueryCommand, ScanCommand, TransactWriteCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
 import {
   handleInvestmentApi,
   investmentFromStoredItem,
   type CreateInvestmentResult,
+  type DepositReview,
+  type DepositReviewResult,
   type DepositSubmission,
   type DepositSubmissionResult,
   type InvestmentRecord,
@@ -13,6 +15,8 @@ import {
 const INVESTMENT_PREFIX = "INVESTMENT#";
 const IDEMPOTENCY_PREFIX = "IDEMPOTENCY#";
 const DEPOSIT_IDEMPOTENCY_PREFIX = "IDEMPOTENCY#DEPOSIT#";
+const MAX_SCAN_ITEMS = 200;
+const SCAN_PAGE_LIMIT = 50;
 
 type ApiGatewayEvent = {
   rawPath?: string;
@@ -151,6 +155,23 @@ export function createDynamoInvestmentStore(tableName: string): InvestmentStore 
         return depositCancellation(caught, tableName, submission);
       }
     },
+    async listPendingDeposits() {
+      const items = await scanMatches(tableName, {
+        FilterExpression: "#status = :pending AND begins_with(sk, :prefix)",
+        ExpressionAttributeNames: { "#status": "status" },
+        ExpressionAttributeValues: { ":pending": "pending_verification", ":prefix": INVESTMENT_PREFIX },
+      });
+      return items
+        .map((item) => itemToInvestment(item))
+        .sort(
+          (left, right) =>
+            (right.submittedAt ?? right.createdAt).localeCompare(left.submittedAt ?? left.createdAt) ||
+            left.investmentId.localeCompare(right.investmentId),
+        );
+    },
+    async reviewDeposit(review) {
+      return reviewStoredDeposit(tableName, review);
+    },
     async getById(ownerSub, investmentId) {
       const response = await document.send(
         new GetCommand({
@@ -248,6 +269,78 @@ function cancellationReasons(caught: unknown): string[] {
     return [];
   }
   return (record.CancellationReasons ?? []).map((reason) => reason.Code ?? "");
+}
+
+async function reviewStoredDeposit(tableName: string, review: DepositReview): Promise<DepositReviewResult> {
+  const items = await scanMatches(tableName, {
+    FilterExpression: "sk = :sk AND #status = :pending",
+    ExpressionAttributeNames: { "#status": "status" },
+    ExpressionAttributeValues: {
+      ":sk": `${INVESTMENT_PREFIX}${review.investmentId}`,
+      ":pending": "pending_verification",
+    },
+  });
+  const item = items[0];
+  if (!item || items.length !== 1) {
+    return { result: "not-found" };
+  }
+  try {
+    const response = await document.send(
+      new UpdateCommand({
+        TableName: tableName,
+        Key: { pk: item.pk, sk: item.sk },
+        UpdateExpression:
+          "SET #status = :decision, reviewedAt = :reviewedAt, reviewedBy = :reviewedBy, updatedAt = :reviewedAt, statusChangedAt = :reviewedAt",
+        ConditionExpression: "#status = :pending",
+        ExpressionAttributeNames: { "#status": "status" },
+        ExpressionAttributeValues: {
+          ":decision": review.decision,
+          ":pending": "pending_verification",
+          ":reviewedAt": review.reviewedAt,
+          ":reviewedBy": review.reviewedBy,
+        },
+        ReturnValues: "ALL_NEW",
+      }),
+    );
+    if (!response.Attributes) {
+      return { result: "not-found" };
+    }
+    return { result: "reviewed", record: itemToInvestment(response.Attributes) };
+  } catch (caught) {
+    if (caught && typeof caught === "object" && (caught as { name?: string }).name === "ConditionalCheckFailedException") {
+      return { result: "rejected" };
+    }
+    throw caught;
+  }
+}
+
+async function scanMatches(
+  tableName: string,
+  query: {
+    FilterExpression: string;
+    ExpressionAttributeNames: Record<string, string>;
+    ExpressionAttributeValues: Record<string, string>;
+  },
+): Promise<Record<string, unknown>[]> {
+  const matches: Record<string, unknown>[] = [];
+  let startKey: Record<string, unknown> | undefined;
+  let read = 0;
+  do {
+    const response = await document.send(
+      new ScanCommand({
+        TableName: tableName,
+        FilterExpression: query.FilterExpression,
+        ExpressionAttributeNames: query.ExpressionAttributeNames,
+        ExpressionAttributeValues: query.ExpressionAttributeValues,
+        ExclusiveStartKey: startKey,
+        Limit: SCAN_PAGE_LIMIT,
+      }),
+    );
+    read += response.ScannedCount ?? 0;
+    matches.push(...(response.Items ?? []));
+    startKey = response.LastEvaluatedKey;
+  } while (startKey && read < MAX_SCAN_ITEMS && matches.length < 50);
+  return matches;
 }
 
 function userKey(userId: string): string {

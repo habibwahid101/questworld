@@ -10,6 +10,8 @@ import { isMemberApiConfigured } from "@/lib/members/config";
 const statusLabel: Record<InvestmentStatus, string> = {
   awaiting_deposit: "Awaiting deposit",
   pending_verification: "Pending verification",
+  deposit_verified: "Deposit verified",
+  rejected: "Rejected",
   active: "Active",
 };
 

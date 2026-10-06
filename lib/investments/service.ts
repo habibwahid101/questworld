@@ -3,6 +3,7 @@
  * Cognito `sub` is the owner. The client cannot choose it, the amount, or the status.
  * Creating a record does not take payment. Submitting a deposit reference only marks
  * that owned awaiting-deposit record as pending verification.
+ * An admin review can only mark that pending record as deposit verified or rejected.
  */
 
 export const INVESTMENT_CURRENCY = "USDT";
@@ -19,7 +20,9 @@ export const investmentCatalog = {
 } as const;
 
 export type PlanId = keyof typeof investmentCatalog;
-export type InvestmentStatus = "awaiting_deposit" | "pending_verification" | "active";
+export type InvestmentStatus = "awaiting_deposit" | "pending_verification" | "deposit_verified" | "rejected" | "active";
+export const REVIEW_DECISIONS = ["deposit_verified", "rejected"] as const;
+export type ReviewDecision = (typeof REVIEW_DECISIONS)[number];
 
 export type InvestmentRecord = {
   investmentId: string;
@@ -35,6 +38,8 @@ export type InvestmentRecord = {
   statusChangedAt: string;
   depositReference?: string;
   submittedAt?: string;
+  reviewedAt?: string;
+  reviewedBy?: string;
 };
 
 export type InvestmentIdentity = {
@@ -56,9 +61,23 @@ export type DepositSubmission = {
 
 export type DepositSubmissionResult = { result: "submitted" } | { result: "exists" } | { result: "not-found" } | { result: "rejected" };
 
+export type DepositReview = {
+  investmentId: string;
+  decision: ReviewDecision;
+  reviewedAt: string;
+  reviewedBy: string;
+};
+
+export type DepositReviewResult =
+  | { result: "reviewed"; record: InvestmentRecord }
+  | { result: "not-found" }
+  | { result: "rejected" };
+
 export type InvestmentStore = {
   create(record: InvestmentRecord, idempotencyKey: string): Promise<CreateInvestmentResult>;
   submitDeposit(submission: DepositSubmission): Promise<DepositSubmissionResult>;
+  listPendingDeposits(): Promise<InvestmentRecord[]>;
+  reviewDeposit(review: DepositReview): Promise<DepositReviewResult>;
   getById(ownerSub: string, investmentId: string): Promise<InvestmentRecord | null>;
   listByOwner(ownerSub: string): Promise<InvestmentRecord[]>;
 };
@@ -81,7 +100,13 @@ const IDEMPOTENCY_PATTERN = /^[A-Za-z0-9_-]{8,128}$/;
 const DEPOSIT_REFERENCE_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:-]{3,119}$/;
 
 export function readStoredInvestmentStatus(value: unknown): InvestmentStatus {
-  if (value === "awaiting_deposit" || value === "pending_verification" || value === "active") {
+  if (
+    value === "awaiting_deposit" ||
+    value === "pending_verification" ||
+    value === "deposit_verified" ||
+    value === "rejected" ||
+    value === "active"
+  ) {
     return value;
   }
   throw new InvestmentRequestError(500, "invalid_stored_status", "That investment record is not valid.");
@@ -101,6 +126,7 @@ export function investmentFromStoredItem(item: Record<string, unknown>): Investm
     updatedAt: String(item.updatedAt),
     statusChangedAt: String(item.statusChangedAt),
     ...storedDepositFields(item),
+    ...storedReviewFields(item),
   };
 }
 
@@ -109,6 +135,36 @@ export function identityFromClaims(
 ): InvestmentIdentity | null {
   const userId = typeof claims?.sub === "string" ? claims.sub.trim() : "";
   return userId ? { userId } : null;
+}
+
+const ADMIN_GROUP = "Admins";
+
+export function isAdminClaims(claims: Record<string, unknown> | undefined): boolean {
+  return adminGroups(claims?.["cognito:groups"]).includes(ADMIN_GROUP);
+}
+
+function adminGroups(value: unknown): string[] {
+  if (Array.isArray(value)) {
+    return value.flatMap((entry) => adminGroups(entry));
+  }
+  if (typeof value !== "string") {
+    return [];
+  }
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return [];
+  }
+  if (trimmed.startsWith("[")) {
+    try {
+      return adminGroups(JSON.parse(trimmed) as unknown);
+    } catch {
+      return [];
+    }
+  }
+  return trimmed
+    .split(",")
+    .map((entry) => entry.trim())
+    .filter((entry) => entry.length > 0);
 }
 
 export function createInvestmentId(random: () => string = () => crypto.randomUUID()): string {
@@ -151,6 +207,28 @@ export async function handleInvestmentApi(input: {
   const newInvestmentId = input.newInvestmentId ?? createInvestmentId;
 
   try {
+    if (path === "/admin/deposits" || path.startsWith("/admin/deposits/")) {
+      if (!isAdminClaims(input.claims)) {
+        return errorBody(403, "forbidden", "Admin access is required.");
+      }
+      if (method === "GET" && path === "/admin/deposits") {
+        const investments = await input.store.listPendingDeposits();
+        return { statusCode: 200, body: { investments } };
+      }
+      const reviewInvestmentId = reviewIdFromPath(path);
+      if (method === "POST" && reviewInvestmentId) {
+        const record = await reviewDeposit({
+          investmentId: reviewInvestmentId,
+          body: input.body,
+          reviewedBy: identity.userId,
+          store: input.store,
+          now,
+        });
+        return { statusCode: 200, body: { investment: record } };
+      }
+      return errorBody(404, "not_found", "That investment request does not exist.");
+    }
+
     if (method === "POST" && path === "/investments") {
       const record = await createInvestment({
         ownerSub: identity.userId,
@@ -275,6 +353,48 @@ async function submitDeposit(input: {
   return saved;
 }
 
+async function reviewDeposit(input: {
+  investmentId: string;
+  body: unknown;
+  reviewedBy: string;
+  store: InvestmentStore;
+  now: () => string;
+}): Promise<InvestmentRecord> {
+  const decision = decisionFromBody(input.body);
+  const outcome = await input.store.reviewDeposit({
+    investmentId: input.investmentId,
+    decision,
+    reviewedAt: input.now(),
+    reviewedBy: input.reviewedBy,
+  });
+  if (outcome.result === "not-found") {
+    throw new InvestmentRequestError(404, "investment_not_found", "That investment was not found.");
+  }
+  if (outcome.result === "rejected") {
+    throw new InvestmentRequestError(409, "review_not_allowed", "Only a pending deposit can be reviewed.");
+  }
+  const saved = outcome.record;
+  if (saved.status !== decision || saved.reviewedBy !== input.reviewedBy || saved.ownerSub.length === 0) {
+    throw new InvestmentRequestError(500, "review_failed", "Could not save that review.");
+  }
+  return saved;
+}
+
+function decisionFromBody(body: unknown): ReviewDecision {
+  if (!body || typeof body !== "object" || Array.isArray(body)) {
+    throw new InvestmentRequestError(400, "invalid_body", "Choose verify or reject.");
+  }
+  const source = body as Record<string, unknown>;
+  const extra = Object.keys(source).filter((key) => key !== "decision");
+  if (extra.length > 0) {
+    throw new InvestmentRequestError(400, "invalid_body", "Only the review decision can be submitted.");
+  }
+  if (source.decision !== "deposit_verified" && source.decision !== "rejected") {
+    throw new InvestmentRequestError(400, "invalid_decision", "Choose verify or reject.");
+  }
+  return source.decision;
+}
+
 function referenceFromBody(body: unknown): string {
   if (!body || typeof body !== "object" || Array.isArray(body)) {
     throw new InvestmentRequestError(400, "invalid_body", "Enter the deposit reference.");
@@ -315,6 +435,31 @@ function readIdempotencyKey(value: string | undefined): string {
     );
   }
   return key;
+}
+
+function reviewIdFromPath(path: string): string | null {
+  const match = path.match(/^\/admin\/deposits\/([^/]+)\/review$/);
+  if (!match?.[1] || !INVESTMENT_ID_PATTERN.test(match[1])) {
+    return null;
+  }
+  return match[1];
+}
+
+function storedReviewFields(item: Record<string, unknown>): Pick<InvestmentRecord, "reviewedAt" | "reviewedBy"> {
+  const fields: Pick<InvestmentRecord, "reviewedAt" | "reviewedBy"> = {};
+  if (item.reviewedAt !== undefined) {
+    if (typeof item.reviewedAt !== "string" || item.reviewedAt.trim() === "") {
+      throw new InvestmentRequestError(500, "invalid_stored_review", "That investment record is not valid.");
+    }
+    fields.reviewedAt = item.reviewedAt;
+  }
+  if (item.reviewedBy !== undefined) {
+    if (typeof item.reviewedBy !== "string" || item.reviewedBy.trim() === "") {
+      throw new InvestmentRequestError(500, "invalid_stored_review", "That investment record is not valid.");
+    }
+    fields.reviewedBy = item.reviewedBy;
+  }
+  return fields;
 }
 
 function depositIdFromPath(path: string): string | null {

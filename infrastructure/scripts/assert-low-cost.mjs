@@ -110,7 +110,13 @@ function expectExactActions(tableName, expected) {
 }
 
 expectExactActions("questworld-members", ["dynamodb:GetItem", "dynamodb:PutItem", "dynamodb:UpdateItem"]);
-expectExactActions("questworld-investments", ["dynamodb:GetItem", "dynamodb:PutItem", "dynamodb:Query", "dynamodb:UpdateItem"]);
+expectExactActions("questworld-investments", [
+  "dynamodb:GetItem",
+  "dynamodb:PutItem",
+  "dynamodb:Query",
+  "dynamodb:Scan",
+  "dynamodb:UpdateItem",
+]);
 if (actionsByTable.size !== 2) {
   throw new Error(`Unexpected DynamoDB policy targets: ${[...actionsByTable.keys()].join(", ")}`);
 }

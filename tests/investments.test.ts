@@ -286,6 +286,117 @@ test("an investment that is not awaiting deposit cannot receive a reference", as
   assert.equal((await store.getById("member-1", ACTIVE_ID))?.depositReference, undefined);
 });
 
+const PENDING_ID = "inv_33333333-3333-4333-8333-333333333333";
+const REVIEWED_AT = "2026-10-06T06:00:00.000Z";
+
+function pendingItem(investmentId: string, ownerSub: string, status: "pending_verification" | "awaiting_deposit" = "pending_verification") {
+  return {
+    investmentId,
+    ownerSub,
+    planId: "starter" as const,
+    planName: "Starter",
+    amountMinor: 100_000_000,
+    currency: "USDT" as const,
+    scale: 6 as const,
+    status,
+    createdAt: NOW,
+    updatedAt: NOW,
+    statusChangedAt: NOW,
+    depositReference: "TX123456",
+    submittedAt: "2026-10-05T15:09:35.467Z",
+  };
+}
+
+function review(
+  store: InvestmentStore,
+  userId: string,
+  investmentId: string,
+  body: unknown,
+  groups?: unknown,
+) {
+  return handleInvestmentApi({
+    method: "POST",
+    path: `/admin/deposits/${investmentId}/review`,
+    claims: groups === undefined ? claims(userId) : { sub: userId, "cognito:groups": groups },
+    body,
+    store,
+    now: () => REVIEWED_AT,
+  });
+}
+
+test("only an admin can list and review a pending deposit", async () => {
+  const store = createMemoryInvestmentStore([
+    pendingItem(PENDING_ID, "member-1"),
+    pendingItem(ACTIVE_ID, "member-2", "awaiting_deposit"),
+  ]);
+
+  const memberList = await handleInvestmentApi({
+    method: "GET",
+    path: "/admin/deposits",
+    claims: claims("member-1"),
+    store,
+  });
+  const memberReview = await review(store, "member-1", PENDING_ID, { decision: "deposit_verified" });
+  const otherGroup = await review(store, "member-9", PENDING_ID, { decision: "rejected" }, ["Members"]);
+  assert.equal(memberList.statusCode, 403);
+  assert.equal(memberReview.statusCode, 403);
+  assert.equal(otherGroup.statusCode, 403);
+  assert.equal((await store.getById("member-1", PENDING_ID))?.status, "pending_verification");
+
+  const list = await handleInvestmentApi({
+    method: "GET",
+    path: "/admin/deposits",
+    claims: { sub: "admin-1", "cognito:groups": "Admins" },
+    store,
+  });
+  const visible = list.body.investments as Array<{ investmentId: string }>;
+  assert.equal(list.statusCode, 200);
+  assert.deepEqual(visible.map((item) => item.investmentId), [PENDING_ID]);
+
+  const overridden = await review(store, "admin-1", PENDING_ID, {
+    decision: "deposit_verified",
+    status: "active",
+    ownerSub: "admin-1",
+    amountMinor: 1,
+    planId: "premium",
+  }, ["Admins"]);
+  assert.equal(overridden.statusCode, 400);
+  assert.equal((await store.getById("member-1", PENDING_ID))?.status, "pending_verification");
+
+  const activeDecision = await review(store, "admin-1", PENDING_ID, { decision: "active" }, ["Admins"]);
+  assert.equal(activeDecision.statusCode, 400);
+
+  const verified = await review(store, "admin-1", PENDING_ID, { decision: "deposit_verified" }, ["Admins"]);
+  assert.equal(verified.statusCode, 200);
+  const saved = verified.body.investment as {
+    status: string;
+    reviewedBy: string;
+    reviewedAt: string;
+    amountMinor: number;
+    planId: string;
+    ownerSub: string;
+  };
+  assert.equal(saved.status, "deposit_verified");
+  assert.equal(saved.reviewedBy, "admin-1");
+  assert.equal(saved.reviewedAt, REVIEWED_AT);
+  assert.equal(saved.amountMinor, 100_000_000);
+  assert.equal(saved.planId, "starter");
+  assert.equal(saved.ownerSub, "member-1");
+
+  const second = await review(store, "admin-1", PENDING_ID, { decision: "rejected" }, ["Admins"]);
+  assert.equal(second.statusCode, 409);
+  assert.equal(second.body.error, "review_not_allowed");
+  assert.equal((await store.getById("member-1", PENDING_ID))?.status, "deposit_verified");
+});
+
+test("a deposit that is not pending cannot be reviewed", async () => {
+  const store = createMemoryInvestmentStore([pendingItem(ACTIVE_ID, "member-1", "awaiting_deposit")]);
+  const rejected = await review(store, "admin-1", ACTIVE_ID, { decision: "rejected" }, ["Admins"]);
+  assert.equal(rejected.statusCode, 409);
+  assert.equal((await store.getById("member-1", ACTIVE_ID))?.status, "awaiting_deposit");
+  assert.equal((await store.getById("member-1", ACTIVE_ID))?.reviewedBy, undefined);
+});
+
 test("a body user id is ignored because a missing token is unauthorized", async () => {
   const store = createMemoryInvestmentStore();
   const response = await handleInvestmentApi({
@@ -305,10 +416,10 @@ test("the investment Lambda policy does not include the members table", () => {
   assert.match(investmentPolicy, /dynamodb:PutItem/);
   assert.match(investmentPolicy, /dynamodb:Query/);
   assert.match(investmentPolicy, /dynamodb:UpdateItem/);
+  assert.match(investmentPolicy, /dynamodb:Scan/);
   assert.match(investmentPolicy, /resources: \[investmentsTable\.tableArn\]/);
   assert.doesNotMatch(investmentPolicy, /resources: \[table\.tableArn\]/);
   assert.doesNotMatch(investmentPolicy, /questworld-members/);
   assert.doesNotMatch(investmentPolicy, /dynamodb:\*/);
-  assert.doesNotMatch(investmentPolicy, /dynamodb:Scan/);
   assert.doesNotMatch(investmentPolicy, /dynamodb:DeleteItem/);
 });

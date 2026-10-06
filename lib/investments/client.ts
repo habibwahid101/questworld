@@ -34,6 +34,26 @@ export async function submitCurrentDeposit(
   return payload.investment;
 }
 
+export async function listPendingDeposits(): Promise<InvestmentRecord[]> {
+  const payload = await investmentRequest<{ investments?: InvestmentRecord[] }>("GET", "/admin/deposits");
+  return payload.investments ?? [];
+}
+
+export async function reviewPendingDeposit(
+  investmentId: string,
+  decision: "deposit_verified" | "rejected",
+): Promise<InvestmentRecord> {
+  const payload = await investmentRequest<{ investment?: InvestmentRecord }>(
+    "POST",
+    `/admin/deposits/${investmentId}/review`,
+    { decision },
+  );
+  if (!payload.investment) {
+    throw new InvestmentClientError("investment_request_failed", "Could not save that review.");
+  }
+  return payload.investment;
+}
+
 export async function createCurrentInvestment(planId: string, idempotencyKey: string): Promise<InvestmentRecord> {
   const payload = await investmentRequest<{ investment?: InvestmentRecord }>("POST", "/investments", { planId }, idempotencyKey);
   if (!payload.investment) {

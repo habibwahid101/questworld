@@ -1,13 +1,8 @@
 import type { Metadata } from "next";
-import { PagePlaceholder } from "@/components/shared/PagePlaceholder";
+import { AdminDepositsPanel } from "@/components/admin/AdminDepositsPanel";
 
 export const metadata: Metadata = { title: "Deposits" };
 
 export default function AdminDepositsPage() {
-  return (
-    <PagePlaceholder
-      title="Deposits"
-      description="Deposit review and confirmation actions are intentionally unimplemented."
-    />
-  );
+  return <AdminDepositsPanel />;
 }

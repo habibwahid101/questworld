@@ -1,6 +1,6 @@
 import { getIdToken } from "@/lib/auth/cognito";
 import { isMemberApiConfigured, readMemberApiUrl } from "@/lib/members/config";
-import type { InvestmentRecord, ProfitEntry, WithdrawalRequest } from "@/lib/investments/service";
+import type { CommissionEntry, InvestmentRecord, ProfitEntry, WithdrawalRequest } from "@/lib/investments/service";
 
 export class InvestmentClientError extends Error {
   readonly code: string;
@@ -37,6 +37,11 @@ export async function submitCurrentDeposit(
 export async function listCurrentProfits(): Promise<ProfitEntry[]> {
   const payload = await investmentRequest<{ profits?: ProfitEntry[] }>("GET", "/profits");
   return payload.profits ?? [];
+}
+
+export async function listCurrentCommissions(): Promise<CommissionEntry[]> {
+  const payload = await investmentRequest<{ commissions?: CommissionEntry[] }>("GET", "/commissions");
+  return payload.commissions ?? [];
 }
 
 export async function listCurrentWithdrawals(): Promise<{ withdrawals: WithdrawalRequest[]; availableMinor: number }> {

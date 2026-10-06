@@ -110,7 +110,7 @@ export class ApiStack extends cdk.Stack {
       removalPolicy: cdk.RemovalPolicy.DESTROY,
     });
     const investmentsFn = new nodejs.NodejsFunction(this, "InvestmentsFunction", {
-      description: "Records investments, the monthly profit ledger, and withdrawal requests. No payout or commission.",
+      description: "Records investments, profit, withdrawal requests, and referral commissions. No payout.",
       runtime: lambda.Runtime.NODEJS_22_X,
       entry: path.join(__dirname, "../lambda/investments/index.ts"),
       handler: "handler",
@@ -119,6 +119,7 @@ export class ApiStack extends cdk.Stack {
       logGroup: investmentLogs,
       environment: {
         INVESTMENTS_TABLE_NAME: investmentsTable.tableName,
+        MEMBERS_TABLE_NAME: table.tableName,
       },
       bundling: {
         minify: false,
@@ -130,6 +131,12 @@ export class ApiStack extends cdk.Stack {
       new iam.PolicyStatement({
         actions: ["dynamodb:GetItem", "dynamodb:PutItem", "dynamodb:Query", "dynamodb:Scan", "dynamodb:UpdateItem"],
         resources: [investmentsTable.tableArn],
+      }),
+    );
+    investmentsFn.addToRolePolicy(
+      new iam.PolicyStatement({
+        actions: ["dynamodb:GetItem"],
+        resources: [table.tableArn],
       }),
     );
     const investmentIntegration = new integrations.HttpLambdaIntegration("InvestmentsIntegration", investmentsFn);
@@ -171,6 +178,12 @@ export class ApiStack extends cdk.Stack {
     });
     httpApi.addRoutes({
       path: "/profits",
+      methods: [apigwv2.HttpMethod.GET],
+      integration: investmentIntegration,
+      authorizer,
+    });
+    httpApi.addRoutes({
+      path: "/commissions",
       methods: [apigwv2.HttpMethod.GET],
       integration: investmentIntegration,
       authorizer,

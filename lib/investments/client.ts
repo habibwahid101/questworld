@@ -39,6 +39,23 @@ export async function listPendingDeposits(): Promise<InvestmentRecord[]> {
   return payload.investments ?? [];
 }
 
+export async function listVerifiedDeposits(): Promise<InvestmentRecord[]> {
+  const payload = await investmentRequest<{ verified?: InvestmentRecord[] }>("GET", "/admin/deposits");
+  return payload.verified ?? [];
+}
+
+export async function activateVerifiedInvestment(investmentId: string): Promise<InvestmentRecord> {
+  const payload = await investmentRequest<{ investment?: InvestmentRecord }>(
+    "POST",
+    `/admin/deposits/${investmentId}/activate`,
+    {},
+  );
+  if (!payload.investment) {
+    throw new InvestmentClientError("investment_request_failed", "Could not activate that investment.");
+  }
+  return payload.investment;
+}
+
 export async function reviewPendingDeposit(
   investmentId: string,
   decision: "deposit_verified" | "rejected",

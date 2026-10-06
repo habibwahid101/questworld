@@ -8,6 +8,8 @@ import {
   type DepositReviewResult,
   type DepositSubmission,
   type DepositSubmissionResult,
+  type InvestmentActivation,
+  type InvestmentActivationResult,
   type InvestmentRecord,
   type InvestmentStore,
 } from "../../../lib/investments/service";
@@ -169,8 +171,25 @@ export function createDynamoInvestmentStore(tableName: string): InvestmentStore 
             left.investmentId.localeCompare(right.investmentId),
         );
     },
+    async listVerifiedDeposits() {
+      const items = await scanMatches(tableName, {
+        FilterExpression: "#status = :verified AND begins_with(sk, :prefix)",
+        ExpressionAttributeNames: { "#status": "status" },
+        ExpressionAttributeValues: { ":verified": "deposit_verified", ":prefix": INVESTMENT_PREFIX },
+      });
+      return items
+        .map((item) => itemToInvestment(item))
+        .sort(
+          (left, right) =>
+            (right.reviewedAt ?? right.createdAt).localeCompare(left.reviewedAt ?? left.createdAt) ||
+            left.investmentId.localeCompare(right.investmentId),
+        );
+    },
     async reviewDeposit(review) {
       return reviewStoredDeposit(tableName, review);
+    },
+    async activateInvestment(activation) {
+      return activateStoredInvestment(tableName, activation);
     },
     async getById(ownerSub, investmentId) {
       const response = await document.send(
@@ -314,6 +333,52 @@ async function reviewStoredDeposit(tableName: string, review: DepositReview): Pr
   }
 }
 
+async function activateStoredInvestment(
+  tableName: string,
+  activation: InvestmentActivation,
+): Promise<InvestmentActivationResult> {
+  const items = await scanMatches(tableName, {
+    FilterExpression: "sk = :sk",
+    ExpressionAttributeNames: {},
+    ExpressionAttributeValues: { ":sk": `${INVESTMENT_PREFIX}${activation.investmentId}` },
+  });
+  const item = items[0];
+  if (!item || items.length !== 1) {
+    return { result: "not-found" };
+  }
+  if (item.status !== "deposit_verified") {
+    return { result: "rejected" };
+  }
+  try {
+    const response = await document.send(
+      new UpdateCommand({
+        TableName: tableName,
+        Key: { pk: item.pk, sk: item.sk },
+        UpdateExpression:
+          "SET #status = :active, activatedAt = :activatedAt, activatedBy = :activatedBy, updatedAt = :activatedAt, statusChangedAt = :activatedAt",
+        ConditionExpression: "#status = :verified",
+        ExpressionAttributeNames: { "#status": "status" },
+        ExpressionAttributeValues: {
+          ":active": "active",
+          ":verified": "deposit_verified",
+          ":activatedAt": activation.activatedAt,
+          ":activatedBy": activation.activatedBy,
+        },
+        ReturnValues: "ALL_NEW",
+      }),
+    );
+    if (!response.Attributes) {
+      return { result: "not-found" };
+    }
+    return { result: "activated", record: itemToInvestment(response.Attributes) };
+  } catch (caught) {
+    if (caught && typeof caught === "object" && (caught as { name?: string }).name === "ConditionalCheckFailedException") {
+      return { result: "rejected" };
+    }
+    throw caught;
+  }
+}
+
 async function scanMatches(
   tableName: string,
   query: {
@@ -330,7 +395,9 @@ async function scanMatches(
       new ScanCommand({
         TableName: tableName,
         FilterExpression: query.FilterExpression,
-        ExpressionAttributeNames: query.ExpressionAttributeNames,
+        ...(Object.keys(query.ExpressionAttributeNames).length > 0
+          ? { ExpressionAttributeNames: query.ExpressionAttributeNames }
+          : {}),
         ExpressionAttributeValues: query.ExpressionAttributeValues,
         ExclusiveStartKey: startKey,
         Limit: SCAN_PAGE_LIMIT,

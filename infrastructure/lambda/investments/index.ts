@@ -6,6 +6,7 @@ import {
   postMonthlyProfits,
   previousUtcMonth,
   profitFromStoredItem,
+  withdrawalFromStoredItem,
   type CreateInvestmentResult,
   type DepositReview,
   type DepositReviewResult,
@@ -16,6 +17,7 @@ import {
   type InvestmentRecord,
   type InvestmentStore,
   type ProfitEntry,
+  type WithdrawalRequest,
 } from "../../../lib/investments/service";
 
 const INVESTMENT_PREFIX = "INVESTMENT#";
@@ -25,6 +27,7 @@ const MAX_SCAN_ITEMS = 200;
 const SCAN_PAGE_LIMIT = 50;
 const MAX_PROFIT_SCAN_ITEMS = 500;
 const PROFIT_PREFIX = "PROFIT#";
+const WITHDRAWAL_PREFIX = "WITHDRAWAL#";
 
 type ApiGatewayEvent = {
   source?: string;
@@ -255,6 +258,51 @@ export function createDynamoInvestmentStore(tableName: string): InvestmentStore 
       } while (startKey);
       return records.sort(
         (left, right) => right.period.localeCompare(left.period) || left.investmentId.localeCompare(right.investmentId),
+      );
+    },
+    async putWithdrawal(request) {
+      try {
+        await document.send(
+          new PutCommand({
+            TableName: tableName,
+            Item: {
+              pk: userKey(request.ownerSub),
+              sk: `${WITHDRAWAL_PREFIX}${request.withdrawalId}`,
+              ...request,
+            },
+            ConditionExpression: "attribute_not_exists(pk) AND attribute_not_exists(sk)",
+          }),
+        );
+        return "created";
+      } catch (caught) {
+        if (caught && typeof caught === "object" && (caught as { name?: string }).name === "ConditionalCheckFailedException") {
+          return "duplicate";
+        }
+        throw caught;
+      }
+    },
+    async listWithdrawals(ownerSub) {
+      const records: WithdrawalRequest[] = [];
+      let startKey: Record<string, unknown> | undefined;
+      do {
+        const response = await document.send(
+          new QueryCommand({
+            TableName: tableName,
+            KeyConditionExpression: "pk = :pk AND begins_with(sk, :prefix)",
+            ExpressionAttributeValues: {
+              ":pk": userKey(ownerSub),
+              ":prefix": WITHDRAWAL_PREFIX,
+            },
+            ExclusiveStartKey: startKey,
+          }),
+        );
+        for (const item of response.Items ?? []) {
+          records.push(withdrawalFromStoredItem(item));
+        }
+        startKey = response.LastEvaluatedKey;
+      } while (startKey);
+      return records.sort(
+        (left, right) => right.createdAt.localeCompare(left.createdAt) || left.withdrawalId.localeCompare(right.withdrawalId),
       );
     },
     async getById(ownerSub, investmentId) {

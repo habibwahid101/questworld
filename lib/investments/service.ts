@@ -7,6 +7,7 @@
  * An admin activation can only mark that verified record as active.
  * A scheduled job can append one 8 percent profit entry for an active investment.
  * That entry does not change the investment amount or status.
+ * A member can request a withdrawal of posted profit. The request does not pay out.
  */
 
 export const INVESTMENT_CURRENCY = "USDT";
@@ -69,6 +70,19 @@ export type ProfitEntry = {
 
 export type ProfitPostResult = { result: "posted"; entry: ProfitEntry } | { result: "duplicate" } | { result: "skipped" };
 
+export type WithdrawalStatus = "pending_review" | "approved";
+
+export type WithdrawalRequest = {
+  withdrawalId: string;
+  ownerSub: string;
+  amountMinor: number;
+  currency: typeof INVESTMENT_CURRENCY;
+  scale: typeof INVESTMENT_SCALE;
+  status: WithdrawalStatus;
+  createdAt: string;
+  updatedAt: string;
+};
+
 export type CreateInvestmentResult =
   | { result: "created" }
   | { result: "exists"; investmentId: string }
@@ -117,6 +131,8 @@ export type InvestmentStore = {
   listActiveInvestments(): Promise<InvestmentRecord[]>;
   putProfit(entry: ProfitEntry): Promise<"created" | "duplicate">;
   listProfits(ownerSub: string): Promise<ProfitEntry[]>;
+  putWithdrawal(request: WithdrawalRequest): Promise<"created" | "duplicate">;
+  listWithdrawals(ownerSub: string): Promise<WithdrawalRequest[]>;
   getById(ownerSub: string, investmentId: string): Promise<InvestmentRecord | null>;
   listByOwner(ownerSub: string): Promise<InvestmentRecord[]>;
 };
@@ -217,6 +233,43 @@ function adminGroups(value: unknown): string[] {
 
 export function createInvestmentId(random: () => string = () => crypto.randomUUID()): string {
   return `inv_${random()}`;
+}
+
+export function createWithdrawalId(random: () => string = () => crypto.randomUUID()): string {
+  return `wd_${random()}`;
+}
+
+export function availableWithdrawalMinor(profits: readonly ProfitEntry[], withdrawals: readonly WithdrawalRequest[]): number {
+  const posted = profits.reduce((sum, entry) => sum + entry.profitMinor, 0);
+  const reserved = withdrawals
+    .filter((request) => request.status === "pending_review" || request.status === "approved")
+    .reduce((sum, request) => sum + request.amountMinor, 0);
+  const available = posted - reserved;
+  return available > 0 ? available : 0;
+}
+
+export function withdrawalFromStoredItem(item: Record<string, unknown>): WithdrawalRequest {
+  const status = item.status;
+  if (status !== "pending_review" && status !== "approved") {
+    throw new InvestmentRequestError(500, "invalid_stored_withdrawal", "That withdrawal record is not valid.");
+  }
+  const amountMinor = Number(item.amountMinor);
+  if (!Number.isSafeInteger(amountMinor) || amountMinor <= 0 || item.currency !== INVESTMENT_CURRENCY || item.scale !== INVESTMENT_SCALE) {
+    throw new InvestmentRequestError(500, "invalid_stored_withdrawal", "That withdrawal record is not valid.");
+  }
+  if (typeof item.withdrawalId !== "string" || typeof item.ownerSub !== "string" || typeof item.createdAt !== "string") {
+    throw new InvestmentRequestError(500, "invalid_stored_withdrawal", "That withdrawal record is not valid.");
+  }
+  return {
+    withdrawalId: item.withdrawalId,
+    ownerSub: item.ownerSub,
+    amountMinor,
+    currency: INVESTMENT_CURRENCY,
+    scale: INVESTMENT_SCALE,
+    status,
+    createdAt: item.createdAt,
+    updatedAt: typeof item.updatedAt === "string" ? item.updatedAt : item.createdAt,
+  };
 }
 
 export function formatUsdtAmount(amountMinor: number, scale = INVESTMENT_SCALE): string {
@@ -352,6 +405,7 @@ export async function handleInvestmentApi(input: {
   store: InvestmentStore;
   now?: () => string;
   newInvestmentId?: () => string;
+  newWithdrawalId?: () => string;
 }): Promise<{ statusCode: number; body: Record<string, unknown> }> {
   const identity = identityFromClaims(input.claims);
   if (!identity) {
@@ -362,11 +416,32 @@ export async function handleInvestmentApi(input: {
   const path = normalizePath(input.path);
   const now = input.now ?? (() => new Date().toISOString());
   const newInvestmentId = input.newInvestmentId ?? createInvestmentId;
+  const newWithdrawalId = input.newWithdrawalId ?? createWithdrawalId;
 
   try {
     if (method === "GET" && path === "/profits") {
       const profits = await input.store.listProfits(identity.userId);
       return { statusCode: 200, body: { profits } };
+    }
+    if (path === "/withdrawals") {
+      if (method === "GET") {
+        const withdrawals = await input.store.listWithdrawals(identity.userId);
+        const profits = await input.store.listProfits(identity.userId);
+        return {
+          statusCode: 200,
+          body: { withdrawals, availableMinor: availableWithdrawalMinor(profits, withdrawals) },
+        };
+      }
+      if (method === "POST") {
+        const withdrawal = await requestWithdrawal({
+          ownerSub: identity.userId,
+          body: input.body,
+          store: input.store,
+          now,
+          newWithdrawalId,
+        });
+        return { statusCode: 200, body: { withdrawal } };
+      }
     }
     if (path === "/admin/deposits" || path.startsWith("/admin/deposits/")) {
       if (!isAdminClaims(input.claims)) {
@@ -661,6 +736,55 @@ function activationIdFromPath(path: string): string | null {
     return null;
   }
   return match[1];
+}
+
+async function requestWithdrawal(input: {
+  ownerSub: string;
+  body: unknown;
+  store: InvestmentStore;
+  now: () => string;
+  newWithdrawalId: () => string;
+}): Promise<WithdrawalRequest> {
+  const amountMinor = withdrawalAmountFromBody(input.body);
+  const [profits, withdrawals] = await Promise.all([
+    input.store.listProfits(input.ownerSub),
+    input.store.listWithdrawals(input.ownerSub),
+  ]);
+  if (amountMinor > availableWithdrawalMinor(profits, withdrawals)) {
+    throw new InvestmentRequestError(409, "withdrawal_above_available", "That amount is above the available profit.");
+  }
+  const createdAt = input.now();
+  const request: WithdrawalRequest = {
+    withdrawalId: input.newWithdrawalId(),
+    ownerSub: input.ownerSub,
+    amountMinor,
+    currency: INVESTMENT_CURRENCY,
+    scale: INVESTMENT_SCALE,
+    status: "pending_review",
+    createdAt,
+    updatedAt: createdAt,
+  };
+  const saved = await input.store.putWithdrawal(request);
+  if (saved === "duplicate") {
+    throw new InvestmentRequestError(409, "withdrawal_exists", "That withdrawal already exists.");
+  }
+  return request;
+}
+
+function withdrawalAmountFromBody(body: unknown): number {
+  if (!body || typeof body !== "object" || Array.isArray(body)) {
+    throw new InvestmentRequestError(400, "invalid_body", "Enter a withdrawal amount above zero.");
+  }
+  const record = body as Record<string, unknown>;
+  const keys = Object.keys(record);
+  if (keys.length !== 1 || keys[0] !== "amountMinor") {
+    throw new InvestmentRequestError(400, "invalid_body", "The server calculates the withdrawal.");
+  }
+  const amountMinor = record.amountMinor;
+  if (typeof amountMinor !== "number" || !Number.isSafeInteger(amountMinor) || amountMinor <= 0) {
+    throw new InvestmentRequestError(400, "invalid_amount", "Enter a withdrawal amount above zero.");
+  }
+  return amountMinor;
 }
 
 function storedActivationFields(item: Record<string, unknown>): Pick<InvestmentRecord, "activatedAt" | "activatedBy"> {

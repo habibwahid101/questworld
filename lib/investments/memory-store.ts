@@ -8,10 +8,12 @@ import type {
   InvestmentActivationResult,
   InvestmentRecord,
   InvestmentStore,
+  ProfitEntry,
 } from "./service.ts";
 
 export function createMemoryInvestmentStore(seed: readonly InvestmentRecord[] = []): InvestmentStore {
   const investments = new Map<string, InvestmentRecord>();
+  const profits = new Map<string, ProfitEntry>();
   const idempotency = new Map<string, string>();
   for (const record of seed) {
     investments.set(`${record.ownerSub}#${record.investmentId}`, structuredClone(record));
@@ -116,6 +118,27 @@ export function createMemoryInvestmentStore(seed: readonly InvestmentRecord[] = 
       };
       investments.set(itemKey, record);
       return { result: "activated", record: structuredClone(record) };
+    },
+    async listActiveInvestments() {
+      return [...investments.values()]
+        .filter((record) => record.status === "active")
+        .map((record) => structuredClone(record));
+    },
+    async putProfit(entry: ProfitEntry) {
+      const key = `${entry.ownerSub}#${entry.investmentId}#${entry.period}`;
+      if (profits.has(key)) {
+        return "duplicate";
+      }
+      profits.set(key, structuredClone(entry));
+      return "created";
+    },
+    async listProfits(ownerSub) {
+      return [...profits.values()]
+        .filter((entry) => entry.ownerSub === ownerSub)
+        .map((entry) => structuredClone(entry))
+        .sort(
+          (left, right) => right.period.localeCompare(left.period) || left.investmentId.localeCompare(right.investmentId),
+        );
     },
     async getById(ownerSub, investmentId) {
       const found = investments.get(`${ownerSub}#${investmentId}`);

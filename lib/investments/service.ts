@@ -5,13 +5,17 @@
  * that owned awaiting-deposit record as pending verification.
  * An admin review can only mark that pending record as deposit verified or rejected.
  * An admin activation can only mark that verified record as active.
+ * A scheduled job can append one 8 percent profit entry for an active investment.
+ * That entry does not change the investment amount or status.
  */
 
 export const INVESTMENT_CURRENCY = "USDT";
 export const INVESTMENT_SCALE = 6;
 export const CREATABLE_INVESTMENT_STATUS = "awaiting_deposit";
+export const MONTHLY_PROFIT_RATE_BPS = 800;
 
 const MICRO_USDT = 1_000_000;
+const PERIOD_PATTERN = /^\d{4}-(0[1-9]|1[0-2])$/;
 
 export const investmentCatalog = {
   starter: { planId: "starter", planName: "Starter", amountMinor: 100 * MICRO_USDT },
@@ -48,6 +52,22 @@ export type InvestmentRecord = {
 export type InvestmentIdentity = {
   userId: string;
 };
+
+export type ProfitEntry = {
+  investmentId: string;
+  ownerSub: string;
+  period: string;
+  rateBps: typeof MONTHLY_PROFIT_RATE_BPS;
+  profitMinor: number;
+  principalMinor: number;
+  currency: typeof INVESTMENT_CURRENCY;
+  scale: typeof INVESTMENT_SCALE;
+  planId: PlanId;
+  planName: string;
+  postedAt: string;
+};
+
+export type ProfitPostResult = { result: "posted"; entry: ProfitEntry } | { result: "duplicate" } | { result: "skipped" };
 
 export type CreateInvestmentResult =
   | { result: "created" }
@@ -94,6 +114,9 @@ export type InvestmentStore = {
   listVerifiedDeposits(): Promise<InvestmentRecord[]>;
   reviewDeposit(review: DepositReview): Promise<DepositReviewResult>;
   activateInvestment(activation: InvestmentActivation): Promise<InvestmentActivationResult>;
+  listActiveInvestments(): Promise<InvestmentRecord[]>;
+  putProfit(entry: ProfitEntry): Promise<"created" | "duplicate">;
+  listProfits(ownerSub: string): Promise<ProfitEntry[]>;
   getById(ownerSub: string, investmentId: string): Promise<InvestmentRecord | null>;
   listByOwner(ownerSub: string): Promise<InvestmentRecord[]>;
 };
@@ -211,6 +234,115 @@ export function formatUsdtAmount(amountMinor: number, scale = INVESTMENT_SCALE):
   return `${wholeText}.${fractionText} USDT`;
 }
 
+export function monthlyProfitMinor(amountMinor: number): number {
+  if (!Number.isSafeInteger(amountMinor) || amountMinor < 0) {
+    throw new InvestmentRequestError(500, "invalid_profit_amount", "That investment amount cannot earn profit.");
+  }
+  const profitMinor = Math.floor((amountMinor * MONTHLY_PROFIT_RATE_BPS) / 10_000);
+  if (!Number.isSafeInteger(profitMinor) || profitMinor < 0) {
+    throw new InvestmentRequestError(500, "invalid_profit_amount", "That investment amount cannot earn profit.");
+  }
+  return profitMinor;
+}
+
+export function previousUtcMonth(isoTime: string): string {
+  const date = new Date(isoTime);
+  if (Number.isNaN(date.getTime())) {
+    throw new InvestmentRequestError(500, "invalid_profit_period", "The profit period is not valid.");
+  }
+  const previous = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth() - 1, 1));
+  return `${previous.getUTCFullYear()}-${String(previous.getUTCMonth() + 1).padStart(2, "0")}`;
+}
+
+export async function postProfitForInvestment(input: {
+  record: InvestmentRecord;
+  period: string;
+  postedAt: string;
+  store: InvestmentStore;
+}): Promise<ProfitPostResult> {
+  assertProfitPeriod(input.period);
+  if (input.record.status !== "active") {
+    return { result: "skipped" };
+  }
+  const entry: ProfitEntry = {
+    investmentId: input.record.investmentId,
+    ownerSub: input.record.ownerSub,
+    period: input.period,
+    rateBps: MONTHLY_PROFIT_RATE_BPS,
+    profitMinor: monthlyProfitMinor(input.record.amountMinor),
+    principalMinor: input.record.amountMinor,
+    currency: INVESTMENT_CURRENCY,
+    scale: INVESTMENT_SCALE,
+    planId: input.record.planId,
+    planName: input.record.planName,
+    postedAt: input.postedAt,
+  };
+  const saved = await input.store.putProfit(entry);
+  if (saved === "duplicate") {
+    return { result: "duplicate" };
+  }
+  return { result: "posted", entry };
+}
+
+export async function postMonthlyProfits(input: {
+  store: InvestmentStore;
+  period: string;
+  postedAt: string;
+}): Promise<{ posted: number; duplicate: number; skipped: number }> {
+  assertProfitPeriod(input.period);
+  const active = await input.store.listActiveInvestments();
+  const summary = { posted: 0, duplicate: 0, skipped: 0 };
+  for (const record of active) {
+    const outcome = await postProfitForInvestment({
+      record,
+      period: input.period,
+      postedAt: input.postedAt,
+      store: input.store,
+    });
+    summary[outcome.result === "posted" ? "posted" : outcome.result === "duplicate" ? "duplicate" : "skipped"] += 1;
+  }
+  return summary;
+}
+
+export function profitFromStoredItem(item: Record<string, unknown>): ProfitEntry {
+  const period = typeof item.period === "string" ? item.period : "";
+  assertProfitPeriod(period);
+  if (item.rateBps !== MONTHLY_PROFIT_RATE_BPS) {
+    throw new InvestmentRequestError(500, "invalid_stored_profit", "That profit record is not valid.");
+  }
+  const principalMinor = Number(item.principalMinor);
+  const profitMinor = Number(item.profitMinor);
+  if (profitMinor !== monthlyProfitMinor(principalMinor)) {
+    throw new InvestmentRequestError(500, "invalid_stored_profit", "That profit record is not valid.");
+  }
+  const planId = item.planId as PlanId;
+  if (!investmentCatalog[planId] || item.currency !== INVESTMENT_CURRENCY || item.scale !== INVESTMENT_SCALE) {
+    throw new InvestmentRequestError(500, "invalid_stored_profit", "That profit record is not valid.");
+  }
+  if (typeof item.investmentId !== "string" || typeof item.ownerSub !== "string" || typeof item.postedAt !== "string") {
+    throw new InvestmentRequestError(500, "invalid_stored_profit", "That profit record is not valid.");
+  }
+  return {
+    investmentId: item.investmentId,
+    ownerSub: item.ownerSub,
+    period,
+    rateBps: MONTHLY_PROFIT_RATE_BPS,
+    profitMinor,
+    principalMinor,
+    currency: INVESTMENT_CURRENCY,
+    scale: INVESTMENT_SCALE,
+    planId,
+    planName: String(item.planName),
+    postedAt: item.postedAt,
+  };
+}
+
+function assertProfitPeriod(period: string): void {
+  if (!PERIOD_PATTERN.test(period)) {
+    throw new InvestmentRequestError(500, "invalid_profit_period", "The profit period is not valid.");
+  }
+}
+
 export async function handleInvestmentApi(input: {
   method: string;
   path: string;
@@ -232,6 +364,10 @@ export async function handleInvestmentApi(input: {
   const newInvestmentId = input.newInvestmentId ?? createInvestmentId;
 
   try {
+    if (method === "GET" && path === "/profits") {
+      const profits = await input.store.listProfits(identity.userId);
+      return { statusCode: 200, body: { profits } };
+    }
     if (path === "/admin/deposits" || path.startsWith("/admin/deposits/")) {
       if (!isAdminClaims(input.claims)) {
         return errorBody(403, "forbidden", "Admin access is required.");

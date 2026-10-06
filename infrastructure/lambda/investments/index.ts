@@ -1,8 +1,11 @@
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
-import { DynamoDBDocumentClient, GetCommand, QueryCommand, ScanCommand, TransactWriteCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
+import { DynamoDBDocumentClient, GetCommand, PutCommand, QueryCommand, ScanCommand, TransactWriteCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
 import {
   handleInvestmentApi,
   investmentFromStoredItem,
+  postMonthlyProfits,
+  previousUtcMonth,
+  profitFromStoredItem,
   type CreateInvestmentResult,
   type DepositReview,
   type DepositReviewResult,
@@ -12,6 +15,7 @@ import {
   type InvestmentActivationResult,
   type InvestmentRecord,
   type InvestmentStore,
+  type ProfitEntry,
 } from "../../../lib/investments/service";
 
 const INVESTMENT_PREFIX = "INVESTMENT#";
@@ -19,8 +23,12 @@ const IDEMPOTENCY_PREFIX = "IDEMPOTENCY#";
 const DEPOSIT_IDEMPOTENCY_PREFIX = "IDEMPOTENCY#DEPOSIT#";
 const MAX_SCAN_ITEMS = 200;
 const SCAN_PAGE_LIMIT = 50;
+const MAX_PROFIT_SCAN_ITEMS = 500;
+const PROFIT_PREFIX = "PROFIT#";
 
 type ApiGatewayEvent = {
+  source?: string;
+  time?: string;
   rawPath?: string;
   body?: string | null;
   headers?: Record<string, string | undefined>;
@@ -43,6 +51,16 @@ export async function handler(event: ApiGatewayEvent): Promise<{
   const tableName = process.env.INVESTMENTS_TABLE_NAME;
   if (!tableName) {
     return json(500, { error: "configuration", message: "Investment storage is not configured." });
+  }
+
+  if (event.source === "aws.events") {
+    const postedAt = typeof event.time === "string" ? event.time : new Date().toISOString();
+    const summary = await postMonthlyProfits({
+      store: createDynamoInvestmentStore(tableName),
+      period: previousUtcMonth(postedAt),
+      postedAt,
+    });
+    return json(200, summary);
   }
 
   let body: unknown;
@@ -190,6 +208,54 @@ export function createDynamoInvestmentStore(tableName: string): InvestmentStore 
     },
     async activateInvestment(activation) {
       return activateStoredInvestment(tableName, activation);
+    },
+    async listActiveInvestments() {
+      return scanActiveInvestments(tableName);
+    },
+    async putProfit(entry) {
+      try {
+        await document.send(
+          new PutCommand({
+            TableName: tableName,
+            Item: {
+              pk: userKey(entry.ownerSub),
+              sk: `${PROFIT_PREFIX}${entry.investmentId}#${entry.period}`,
+              ...entry,
+            },
+            ConditionExpression: "attribute_not_exists(pk) AND attribute_not_exists(sk)",
+          }),
+        );
+        return "created";
+      } catch (caught) {
+        if (caught && typeof caught === "object" && (caught as { name?: string }).name === "ConditionalCheckFailedException") {
+          return "duplicate";
+        }
+        throw caught;
+      }
+    },
+    async listProfits(ownerSub) {
+      const records: ProfitEntry[] = [];
+      let startKey: Record<string, unknown> | undefined;
+      do {
+        const response = await document.send(
+          new QueryCommand({
+            TableName: tableName,
+            KeyConditionExpression: "pk = :pk AND begins_with(sk, :prefix)",
+            ExpressionAttributeValues: {
+              ":pk": userKey(ownerSub),
+              ":prefix": PROFIT_PREFIX,
+            },
+            ExclusiveStartKey: startKey,
+          }),
+        );
+        for (const item of response.Items ?? []) {
+          records.push(profitFromStoredItem(item));
+        }
+        startKey = response.LastEvaluatedKey;
+      } while (startKey);
+      return records.sort(
+        (left, right) => right.period.localeCompare(left.period) || left.investmentId.localeCompare(right.investmentId),
+      );
     },
     async getById(ownerSub, investmentId) {
       const response = await document.send(
@@ -377,6 +443,31 @@ async function activateStoredInvestment(
     }
     throw caught;
   }
+}
+
+async function scanActiveInvestments(tableName: string): Promise<InvestmentRecord[]> {
+  const matches: Record<string, unknown>[] = [];
+  let startKey: Record<string, unknown> | undefined;
+  let read = 0;
+  do {
+    const response = await document.send(
+      new ScanCommand({
+        TableName: tableName,
+        FilterExpression: "#status = :active AND begins_with(sk, :prefix)",
+        ExpressionAttributeNames: { "#status": "status" },
+        ExpressionAttributeValues: { ":active": "active", ":prefix": INVESTMENT_PREFIX },
+        ExclusiveStartKey: startKey,
+        Limit: SCAN_PAGE_LIMIT,
+      }),
+    );
+    read += response.ScannedCount ?? 0;
+    matches.push(...(response.Items ?? []));
+    startKey = response.LastEvaluatedKey;
+    if (startKey && read >= MAX_PROFIT_SCAN_ITEMS) {
+      throw new Error("profit_scan_limit");
+    }
+  } while (startKey);
+  return matches.map((item) => itemToInvestment(item));
 }
 
 async function scanMatches(

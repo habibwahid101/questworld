@@ -8,6 +8,9 @@ import {
   investmentCatalog,
   investmentFromStoredItem,
   isAdminClaims,
+  postProfitForInvestment,
+  previousUtcMonth,
+  type InvestmentRecord,
   type InvestmentStore,
 } from "../lib/investments/service.ts";
 
@@ -523,4 +526,71 @@ test("the investment Lambda policy does not include the members table", () => {
   assert.doesNotMatch(investmentPolicy, /questworld-members/);
   assert.doesNotMatch(investmentPolicy, /dynamodb:\*/);
   assert.doesNotMatch(investmentPolicy, /dynamodb:DeleteItem/);
+});
+
+test("monthly profit posts once for an active investment and only the owner can read it", async () => {
+  const active: InvestmentRecord = {
+    investmentId: ACTIVE_ID,
+    ownerSub: "member-1",
+    planId: "starter",
+    planName: "Starter",
+    amountMinor: 100_000_000,
+    currency: "USDT",
+    scale: 6,
+    status: "active",
+    createdAt: NOW,
+    updatedAt: NOW,
+    statusChangedAt: NOW,
+  };
+  const waiting: InvestmentRecord = { ...active, investmentId: PENDING_ID, status: "deposit_verified" };
+  const store = createMemoryInvestmentStore([active, waiting]);
+  const period = "2026-10";
+  const postedAt = "2026-11-01T01:00:00.000Z";
+  assert.equal(previousUtcMonth(postedAt), period);
+  assert.equal(previousUtcMonth("2026-01-01T01:00:00.000Z"), "2025-12");
+
+  const skipped = await postProfitForInvestment({
+    record: waiting,
+    period,
+    postedAt,
+    store,
+  });
+  assert.equal(skipped.result, "skipped");
+  assert.equal((await store.listProfits("member-1")).length, 0);
+
+  const posted = await postProfitForInvestment({ record: active, period, postedAt, store });
+  assert.equal(posted.result, "posted");
+  if (posted.result !== "posted") {
+    return;
+  }
+  assert.equal(posted.entry.profitMinor, 8_000_000);
+  assert.equal(posted.entry.rateBps, 800);
+  assert.equal(posted.entry.period, period);
+  assert.equal(posted.entry.principalMinor, 100_000_000);
+  const unchanged = await store.getById("member-1", ACTIVE_ID);
+  assert.equal(unchanged?.status, "active");
+  assert.equal(unchanged?.amountMinor, 100_000_000);
+
+  const duplicate = await postProfitForInvestment({ record: active, period, postedAt, store });
+  assert.equal(duplicate.result, "duplicate");
+  assert.equal((await store.listProfits("member-1")).length, 1);
+
+  const owner = await handleInvestmentApi({ method: "GET", path: "/profits", claims: claims("member-1"), store });
+  const profits = owner.body.profits as Array<{ investmentId: string; profitMinor: number }>;
+  assert.equal(owner.statusCode, 200);
+  assert.deepEqual(
+    profits.map((entry) => entry.investmentId),
+    [ACTIVE_ID],
+  );
+  assert.equal(profits[0]?.profitMinor, 8_000_000);
+
+  const other = await handleInvestmentApi({
+    method: "GET",
+    path: "/profits",
+    claims: claims("member-2"),
+    body: { ownerSub: "member-1" },
+    store,
+  });
+  assert.equal(other.statusCode, 200);
+  assert.deepEqual(other.body.profits, []);
 });

@@ -4,6 +4,8 @@ import * as apigwv2 from "aws-cdk-lib/aws-apigatewayv2";
 import * as authorizers from "aws-cdk-lib/aws-apigatewayv2-authorizers";
 import * as integrations from "aws-cdk-lib/aws-apigatewayv2-integrations";
 import * as dynamodb from "aws-cdk-lib/aws-dynamodb";
+import * as events from "aws-cdk-lib/aws-events";
+import * as targets from "aws-cdk-lib/aws-events-targets";
 import * as iam from "aws-cdk-lib/aws-iam";
 import * as lambda from "aws-cdk-lib/aws-lambda";
 import * as nodejs from "aws-cdk-lib/aws-lambda-nodejs";
@@ -108,7 +110,7 @@ export class ApiStack extends cdk.Stack {
       removalPolicy: cdk.RemovalPolicy.DESTROY,
     });
     const investmentsFn = new nodejs.NodejsFunction(this, "InvestmentsFunction", {
-      description: "Records investments, deposit review, and activation. No profit, wallet, or commission.",
+      description: "Records investments and posts the monthly profit ledger. No wallet, withdrawal, or commission.",
       runtime: lambda.Runtime.NODEJS_22_X,
       entry: path.join(__dirname, "../lambda/investments/index.ts"),
       handler: "handler",
@@ -166,6 +168,17 @@ export class ApiStack extends cdk.Stack {
       methods: [apigwv2.HttpMethod.POST],
       integration: investmentIntegration,
       authorizer,
+    });
+    httpApi.addRoutes({
+      path: "/profits",
+      methods: [apigwv2.HttpMethod.GET],
+      integration: investmentIntegration,
+      authorizer,
+    });
+    new events.Rule(this, "MonthlyProfitSchedule", {
+      description: "Posts one 8 percent profit ledger entry per active investment for the previous UTC month.",
+      schedule: events.Schedule.cron({ minute: "0", hour: "1", day: "1" }),
+      targets: [new targets.LambdaFunction(investmentsFn)],
     });
 
     this.apiEndpoint = httpApi.apiEndpoint;

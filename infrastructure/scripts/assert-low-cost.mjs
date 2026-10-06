@@ -121,5 +121,13 @@ if (actionsByTable.size !== 2) {
   throw new Error(`Unexpected DynamoDB policy targets: ${[...actionsByTable.keys()].join(", ")}`);
 }
 
+const schedules = Object.values(apiTemplate.Resources ?? {}).filter((resource) => resource.Type === "AWS::Events::Rule");
+if (schedules.length !== 1 || !String(schedules[0].Properties?.ScheduleExpression ?? "").startsWith("cron(")) {
+  throw new Error("QuestworldApi must contain one monthly profit cron rule.");
+}
+if ([...tables.values()].some((name) => name !== "questworld-members" && name !== "questworld-investments")) {
+  throw new Error("QuestworldApi has an unexpected table.");
+}
+
 console.log("Low-cost resource check passed.");
 console.log([...found].sort().join("\n"));

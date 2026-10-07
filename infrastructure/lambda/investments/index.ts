@@ -503,6 +503,37 @@ export function createDynamoInvestmentStore(tableName: string): InvestmentStore 
         (left, right) => right.createdAt.localeCompare(left.createdAt) || left.investmentId.localeCompare(right.investmentId),
       );
     },
+    async getDepositAddress() {
+      const response = await document.send(
+        new GetCommand({
+          TableName: tableName,
+          Key: { pk: "SETTINGS", sk: "DEPOSIT_ADDRESS" },
+        }),
+      );
+      const item = response.Item;
+      if (!item || typeof item.address !== "string") {
+        return null;
+      }
+      return {
+        address: item.address,
+        updatedAt: typeof item.updatedAt === "string" ? item.updatedAt : "",
+        updatedBy: typeof item.updatedBy === "string" ? item.updatedBy : "",
+      };
+    },
+    async saveDepositAddress(record) {
+      await document.send(
+        new PutCommand({
+          TableName: tableName,
+          Item: {
+            pk: "SETTINGS",
+            sk: "DEPOSIT_ADDRESS",
+            address: record.address,
+            updatedAt: record.updatedAt,
+            updatedBy: record.updatedBy,
+          },
+        }),
+      );
+    },
   };
 }
 

@@ -3,8 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
-import { createCurrentInvestment, InvestmentClientError, listCurrentInvestments, submitCurrentDeposit } from "@/lib/investments/client";
-import { readBinanceDepositAddress } from "@/lib/deposits/address";
+import { createCurrentInvestment, InvestmentClientError, listCurrentInvestments, readCurrentDepositAddress, submitCurrentDeposit } from "@/lib/investments/client";
 import { formatUsdtAmount, type InvestmentRecord, type InvestmentStatus, type PlanId } from "@/lib/investments/service";
 import { isMemberApiConfigured } from "@/lib/members/config";
 
@@ -32,12 +31,14 @@ export function InvestmentsPanel() {
   const [references, setReferences] = useState<Record<string, string>>({});
   const [screenshots, setScreenshots] = useState<Record<string, File | null>>({});
   const [copied, setCopied] = useState(false);
+  const [depositAddress, setDepositAddress] = useState("");
   const pendingKeys = useRef<Partial<Record<PlanId, string>>>({});
   const depositKeys = useRef<Record<string, string>>({});
 
   const load = useCallback(async () => {
-    const records = await listCurrentInvestments();
+    const [records, address] = await Promise.all([listCurrentInvestments(), readCurrentDepositAddress()]);
     setInvestments(records);
+    setDepositAddress(address);
     setMessage(null);
   }, []);
 
@@ -156,6 +157,7 @@ export function InvestmentsPanel() {
                 saving={savingPlan !== null || savingDepositId !== null}
                 submitting={savingDepositId === investment.investmentId}
                 copied={copied}
+                address={depositAddress}
                 onReference={(value) => setReferences((current) => ({ ...current, [investment.investmentId]: value }))}
                 onScreenshot={(file) => setScreenshots((current) => ({ ...current, [investment.investmentId]: file }))}
                 onCopy={async (address) => {
@@ -180,6 +182,7 @@ function DepositReferenceForm({
   saving,
   submitting,
   copied,
+  address,
   onReference,
   onScreenshot,
   onCopy,
@@ -190,12 +193,12 @@ function DepositReferenceForm({
   saving: boolean;
   submitting: boolean;
   copied: boolean;
+  address: string;
   onReference: (value: string) => void;
   onScreenshot: (file: File | null) => void;
   onCopy: (address: string) => Promise<void>;
   onSubmit: () => void;
 }) {
-  const address = readBinanceDepositAddress(process.env.NEXT_PUBLIC_BINANCE_DEPOSIT_ADDRESS);
   return (
     <form
       style={{ marginTop: 16 }}

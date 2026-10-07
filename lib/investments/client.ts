@@ -69,6 +69,19 @@ export async function requestCurrentWithdrawal(amountMinor: number): Promise<Wit
   return payload.withdrawal;
 }
 
+export async function readCurrentDepositAddress(): Promise<string> {
+  const payload = await investmentRequest<{ address?: string }>("GET", "/deposit-address");
+  return payload.address ?? "";
+}
+
+export async function saveDepositAddress(address: string): Promise<string> {
+  const payload = await investmentRequest<{ address?: string }>("PUT", "/admin/deposit-address", { address });
+  if (!payload.address) {
+    throw new InvestmentClientError("investment_request_failed", "Could not save that Binance deposit address.");
+  }
+  return payload.address;
+}
+
 export async function listPendingDeposits(): Promise<InvestmentRecord[]> {
   const payload = await investmentRequest<{ investments?: InvestmentRecord[] }>("GET", "/admin/deposits");
   return payload.investments ?? [];

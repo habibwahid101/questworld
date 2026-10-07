@@ -118,5 +118,5 @@ test("an unconfigured Binance address is not invented", () => {
   assert.equal(readBinanceDepositAddress(undefined), "");
   assert.equal(readBinanceDepositAddress("  "), "");
   assert.equal(readBinanceDepositAddress("PASTE THE ADDRESS HERE"), "");
-  assert.equal(readBinanceDepositAddress("TExampleAddress"), "TExampleAddress");
+  assert.equal(readBinanceDepositAddress("TExampleAddress"), "");
 });

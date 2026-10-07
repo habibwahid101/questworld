@@ -10,6 +10,7 @@ import type {
   InvestmentStore,
   ProfitEntry,
   CommissionEntry,
+  DepositAddress,
   WithdrawalRequest,
 } from "./service.ts";
 
@@ -19,6 +20,7 @@ export function createMemoryInvestmentStore(seed: readonly InvestmentRecord[] = 
   const commissions = new Map<string, CommissionEntry>();
   const withdrawals = new Map<string, WithdrawalRequest>();
   const idempotency = new Map<string, string>();
+  let depositAddress: DepositAddress | null = null;
   for (const record of seed) {
     investments.set(`${record.ownerSub}#${record.investmentId}`, structuredClone(record));
   }
@@ -190,6 +192,12 @@ export function createMemoryInvestmentStore(seed: readonly InvestmentRecord[] = 
         .filter((record) => record.ownerSub === ownerSub)
         .map((record) => structuredClone(record))
         .sort((left, right) => right.createdAt.localeCompare(left.createdAt) || left.investmentId.localeCompare(right.investmentId));
+    },
+    async getDepositAddress() {
+      return depositAddress ? structuredClone(depositAddress) : null;
+    },
+    async saveDepositAddress(record) {
+      depositAddress = structuredClone(record);
     },
   };
 }

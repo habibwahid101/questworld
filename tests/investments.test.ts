@@ -856,3 +856,58 @@ test("monthly commissions post generation 1 and 2 once and skip a missing sponso
   });
   assert.deepEqual(other.body.commissions, []);
 });
+
+const ADDRESS_FIXTURE = "T123456789012345678901234567890123";
+
+test("only an admin can save the Binance deposit address and a member can read it", async () => {
+  const store = createMemoryInvestmentStore();
+  const empty = await handleInvestmentApi({
+    method: "GET",
+    path: "/deposit-address",
+    claims: claims("member-1"),
+    store,
+  });
+  assert.equal(empty.statusCode, 200);
+  assert.equal(empty.body.address, "");
+
+  const denied = await handleInvestmentApi({
+    method: "PUT",
+    path: "/admin/deposit-address",
+    claims: claims("member-1"),
+    body: { address: ADDRESS_FIXTURE },
+    store,
+  });
+  assert.equal(denied.statusCode, 403);
+  assert.equal(await store.getDepositAddress(), null);
+
+  const rejected = await handleInvestmentApi({
+    method: "PUT",
+    path: "/admin/deposit-address",
+    claims: { sub: "admin-1", "cognito:groups": "[Admins]" },
+    body: { address: "PASTE THE ADDRESS HERE", ownerSub: "member-1" },
+    store,
+  });
+  assert.equal(rejected.statusCode, 400);
+  assert.equal(await store.getDepositAddress(), null);
+
+  const saved = await handleInvestmentApi({
+    method: "PUT",
+    path: "/admin/deposit-address",
+    claims: { sub: "admin-1", "cognito:groups": "[Admins]" },
+    body: { address: ` ${ADDRESS_FIXTURE} ` },
+    store,
+    now: () => "2026-10-07T00:00:00.000Z",
+  });
+  assert.equal(saved.statusCode, 200);
+  assert.equal(saved.body.address, ADDRESS_FIXTURE);
+  assert.equal((await store.getDepositAddress())?.updatedBy, "admin-1");
+
+  const read = await handleInvestmentApi({
+    method: "GET",
+    path: "/deposit-address",
+    claims: claims("member-1"),
+    store,
+  });
+  assert.equal(read.statusCode, 200);
+  assert.equal(read.body.address, ADDRESS_FIXTURE);
+});

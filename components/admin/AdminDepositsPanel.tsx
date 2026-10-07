@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
-import { InvestmentClientError, activateVerifiedInvestment, listPendingDeposits, listVerifiedDeposits, reviewPendingDeposit } from "@/lib/investments/client";
+import { InvestmentClientError, activateVerifiedInvestment, listPendingDeposits, listVerifiedDeposits, readCurrentDepositAddress, reviewPendingDeposit, saveDepositAddress } from "@/lib/investments/client";
 import { formatUsdtAmount, type InvestmentRecord } from "@/lib/investments/service";
 import { isMemberApiConfigured } from "@/lib/members/config";
 
@@ -13,11 +13,20 @@ export function AdminDepositsPanel() {
   const [message, setMessage] = useState<string | null>(null);
   const [loading, setLoading] = useState(isMemberApiConfigured());
   const [savingId, setSavingId] = useState<string | null>(null);
+  const [depositAddress, setDepositAddress] = useState("");
+  const [addressDraft, setAddressDraft] = useState("");
+  const [savingAddress, setSavingAddress] = useState(false);
 
   const load = useCallback(async () => {
-    const [pendingDeposits, verifiedDeposits] = await Promise.all([listPendingDeposits(), listVerifiedDeposits()]);
+    const [pendingDeposits, verifiedDeposits, address] = await Promise.all([
+      listPendingDeposits(),
+      listVerifiedDeposits(),
+      readCurrentDepositAddress(),
+    ]);
     setPending(pendingDeposits);
     setVerified(verifiedDeposits);
+    setDepositAddress(address);
+    setAddressDraft(address);
     setMessage(null);
   }, []);
 
@@ -43,7 +52,7 @@ export function AdminDepositsPanel() {
   }, [load]);
 
   async function decide(investmentId: string, decision: "deposit_verified" | "rejected") {
-    if (savingId) {
+    if (savingId || savingAddress) {
       return;
     }
     setSavingId(investmentId);
@@ -59,8 +68,27 @@ export function AdminDepositsPanel() {
     }
   }
 
+  async function saveAddress() {
+    if (savingId || savingAddress) {
+      return;
+    }
+    setSavingAddress(true);
+    setMessage(null);
+    try {
+      const saved = await saveDepositAddress(addressDraft.trim());
+      setDepositAddress(saved);
+      setAddressDraft(saved);
+      setMessage("Binance deposit address saved.");
+    } catch (caught) {
+      const error = caught instanceof InvestmentClientError ? caught : new InvestmentClientError("investment_request_failed", "Could not save that Binance deposit address.");
+      setMessage(error.message);
+    } finally {
+      setSavingAddress(false);
+    }
+  }
+
   async function activate(investmentId: string) {
-    if (savingId) {
+    if (savingId || savingAddress) {
       return;
     }
     setSavingId(investmentId);
@@ -92,6 +120,26 @@ export function AdminDepositsPanel() {
         <p className="lead" style={{ marginTop: 12 }}>
           Review a pending deposit, then activate a verified one. This does not post profit or move money.
         </p>
+        <form
+          style={{ marginTop: 16 }}
+          onSubmit={(event) => {
+            event.preventDefault();
+            void saveAddress();
+          }}
+        >
+          <label htmlFor="binance-deposit-address">Binance deposit address</label>
+          {depositAddress ? null : <p style={{ marginTop: 8 }}>The Binance deposit address is not configured.</p>}
+          <input
+            id="binance-deposit-address"
+            value={addressDraft}
+            autoComplete="off"
+            onChange={(event) => setAddressDraft(event.target.value)}
+            style={{ display: "block", width: "100%", marginTop: 8 }}
+          />
+          <Button type="submit" disabled={savingAddress || savingId !== null} style={{ marginTop: 12 }}>
+            {savingAddress ? "Saving…" : "Save address"}
+          </Button>
+        </form>
         {message ? <p style={{ marginTop: 16 }}>{message}</p> : null}
       </Card>
       {loading ? (

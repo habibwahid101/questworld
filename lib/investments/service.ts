@@ -12,6 +12,7 @@
  */
 
 import { AdminGroupError, changeAdminGroup, type AdminGroupDirectory } from "../admin/groups.ts";
+import { readBinanceDepositAddress } from "../deposits/address.ts";
 
 export const INVESTMENT_CURRENCY = "USDT";
 export const INVESTMENT_SCALE = 6;
@@ -163,6 +164,12 @@ export type InvestmentActivationResult =
   | { result: "not-found" }
   | { result: "rejected" };
 
+export type DepositAddress = {
+  address: string;
+  updatedAt: string;
+  updatedBy: string;
+};
+
 export type InvestmentStore = {
   create(record: InvestmentRecord, idempotencyKey: string): Promise<CreateInvestmentResult>;
   submitDeposit(submission: DepositSubmission): Promise<DepositSubmissionResult>;
@@ -179,6 +186,8 @@ export type InvestmentStore = {
   listWithdrawals(ownerSub: string): Promise<WithdrawalRequest[]>;
   getById(ownerSub: string, investmentId: string): Promise<InvestmentRecord | null>;
   listByOwner(ownerSub: string): Promise<InvestmentRecord[]>;
+  getDepositAddress(): Promise<DepositAddress | null>;
+  saveDepositAddress(record: DepositAddress): Promise<void>;
 };
 
 export class InvestmentRequestError extends Error {
@@ -659,6 +668,22 @@ export async function handleInvestmentApi(input: {
         throw caught;
       }
     }
+    if (method === "GET" && path === "/deposit-address") {
+      const saved = await input.store.getDepositAddress();
+      return { statusCode: 200, body: { address: readBinanceDepositAddress(saved?.address) } };
+    }
+    if (method === "PUT" && path === "/admin/deposit-address") {
+      if (!isAdminClaims(input.claims)) {
+        return errorBody(403, "forbidden", "Admin access is required.");
+      }
+      const address = depositAddressFromBody(input.body);
+      await input.store.saveDepositAddress({
+        address,
+        updatedAt: now(),
+        updatedBy: identity.userId,
+      });
+      return { statusCode: 200, body: { address } };
+    }
     if (path === "/admin/deposits" || path.startsWith("/admin/deposits/")) {
       if (!isAdminClaims(input.claims)) {
         return errorBody(403, "forbidden", "Admin access is required.");
@@ -908,6 +933,22 @@ function decisionFromBody(body: unknown): ReviewDecision {
     throw new InvestmentRequestError(400, "invalid_decision", "Choose verify or reject.");
   }
   return source.decision;
+}
+
+function depositAddressFromBody(body: unknown): string {
+  if (!body || typeof body !== "object" || Array.isArray(body)) {
+    throw new InvestmentRequestError(400, "invalid_body", "Enter the Binance deposit address.");
+  }
+  const source = body as Record<string, unknown>;
+  const extra = Object.keys(source).filter((key) => key !== "address");
+  if (extra.length > 0) {
+    throw new InvestmentRequestError(400, "invalid_body", "Only the Binance deposit address can be saved.");
+  }
+  const address = readBinanceDepositAddress(typeof source.address === "string" ? source.address : undefined);
+  if (!address) {
+    throw new InvestmentRequestError(400, "invalid_address", "Enter the Binance deposit address.");
+  }
+  return address;
 }
 
 function depositFromBody(body: unknown): { reference: string; proof: DepositProof | null } {

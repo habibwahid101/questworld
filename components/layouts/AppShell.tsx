@@ -57,13 +57,15 @@ export function AppShell({ title, homeHref, items, children }: AppShellProps) {
       </aside>
       <div className={styles.main}>
         <div className={styles.topbar}>
-          <strong>{title}</strong>
-          <div className={styles.topActions}>
+          <strong className={styles.topTitle}>{title}</strong>
+          <div className={styles.topCenter}>
             {shellSwitch ? (
               <Link className={styles.logoutButton} href={shellSwitch.href}>
                 {shellSwitch.label}
               </Link>
             ) : null}
+          </div>
+          <div className={styles.topActions}>
             <button className={styles.logoutButton} type="button" onClick={() => void onLogout()} disabled={signingOut}>
               {signingOut ? "Please wait…" : "Log out"}
             </button>

@@ -21,17 +21,29 @@ export async function submitCurrentDeposit(
   investmentId: string,
   reference: string,
   idempotencyKey: string,
+  screenshot?: { contentType: string; dataBase64: string },
 ): Promise<InvestmentRecord> {
   const payload = await investmentRequest<{ investment?: InvestmentRecord }>(
     "POST",
     `/investments/${investmentId}/deposit`,
-    { reference },
+    screenshot ? { reference, screenshot } : { reference },
     idempotencyKey,
   );
   if (!payload.investment) {
     throw new InvestmentClientError("investment_request_failed", "Could not save that deposit reference.");
   }
   return payload.investment;
+}
+
+export async function changeMemberAdminGroup(
+  email: string,
+  action: "grant" | "remove",
+): Promise<{ result: string; message: string }> {
+  const payload = await investmentRequest<{ result?: string; message?: string }>("POST", "/admin/members/group", { email, action });
+  return {
+    result: payload.result ?? "unchanged",
+    message: payload.message ?? "They must log in again before this change takes effect.",
+  };
 }
 
 export async function listCurrentProfits(): Promise<ProfitEntry[]> {

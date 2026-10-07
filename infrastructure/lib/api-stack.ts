@@ -10,12 +10,14 @@ import * as iam from "aws-cdk-lib/aws-iam";
 import * as lambda from "aws-cdk-lib/aws-lambda";
 import * as nodejs from "aws-cdk-lib/aws-lambda-nodejs";
 import * as logs from "aws-cdk-lib/aws-logs";
+import * as s3 from "aws-cdk-lib/aws-s3";
 import { Construct } from "constructs";
 import { CANONICAL_WEB_ORIGIN, PUBLIC_USER_POOL_CLIENT_ID, PUBLIC_USER_POOL_ID } from "./public-ids";
 
 /**
  * Member profiles and awaiting-deposit investments.
- * Investments use a separate table and Lambda. They do not read questworld-members.
+ * Investments use a separate table and Lambda. Sponsor lookup may read one member profile attribute.
+ * Deposit screenshots go to a private bucket. Group changes use Cognito admin APIs.
  * Referral uniqueness stays a REFERRAL#code item in the members table.
  * GitHub authorization is not managed here.
  */
@@ -109,8 +111,15 @@ export class ApiStack extends cdk.Stack {
       retention: logs.RetentionDays.ONE_WEEK,
       removalPolicy: cdk.RemovalPolicy.DESTROY,
     });
+    const depositProofs = new s3.Bucket(this, "DepositProofs", {
+      blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
+      encryption: s3.BucketEncryption.S3_MANAGED,
+      enforceSSL: true,
+      objectOwnership: s3.ObjectOwnership.BUCKET_OWNER_ENFORCED,
+      removalPolicy: cdk.RemovalPolicy.RETAIN,
+    });
     const investmentsFn = new nodejs.NodejsFunction(this, "InvestmentsFunction", {
-      description: "Records investments, profit, withdrawal requests, and referral commissions. No payout.",
+      description: "Records investments, profit, withdrawal requests, referral commissions, and deposit proof. No payout.",
       runtime: lambda.Runtime.NODEJS_22_X,
       entry: path.join(__dirname, "../lambda/investments/index.ts"),
       handler: "handler",
@@ -120,6 +129,8 @@ export class ApiStack extends cdk.Stack {
       environment: {
         INVESTMENTS_TABLE_NAME: investmentsTable.tableName,
         MEMBERS_TABLE_NAME: table.tableName,
+        USER_POOL_ID: PUBLIC_USER_POOL_ID,
+        DEPOSIT_PROOF_BUCKET: depositProofs.bucketName,
       },
       bundling: {
         minify: false,
@@ -131,6 +142,32 @@ export class ApiStack extends cdk.Stack {
       new iam.PolicyStatement({
         actions: ["dynamodb:GetItem", "dynamodb:PutItem", "dynamodb:Query", "dynamodb:Scan", "dynamodb:UpdateItem"],
         resources: [investmentsTable.tableArn],
+      }),
+    );
+    investmentsFn.addToRolePolicy(
+      new iam.PolicyStatement({
+        actions: ["s3:PutObject"],
+        resources: [depositProofs.arnForObjects("deposit-proofs/*")],
+      }),
+    );
+    investmentsFn.addToRolePolicy(
+      new iam.PolicyStatement({
+        actions: [
+          "cognito-idp:AdminAddUserToGroup",
+          "cognito-idp:AdminListGroupsForUser",
+          "cognito-idp:AdminRemoveUserFromGroup",
+          "cognito-idp:AdminUserGlobalSignOut",
+          "cognito-idp:ListUsers",
+          "cognito-idp:ListUsersInGroup",
+        ],
+        resources: [
+          cdk.Stack.of(this).formatArn({
+            service: "cognito-idp",
+            resource: "userpool",
+            resourceName: PUBLIC_USER_POOL_ID,
+            arnFormat: cdk.ArnFormat.SLASH_RESOURCE_NAME,
+          }),
+        ],
       }),
     );
     investmentsFn.addToRolePolicy(
@@ -172,6 +209,12 @@ export class ApiStack extends cdk.Stack {
     });
     httpApi.addRoutes({
       path: "/admin/deposits/{investmentId}/activate",
+      methods: [apigwv2.HttpMethod.POST],
+      integration: investmentIntegration,
+      authorizer,
+    });
+    httpApi.addRoutes({
+      path: "/admin/members/group",
       methods: [apigwv2.HttpMethod.POST],
       integration: investmentIntegration,
       authorizer,

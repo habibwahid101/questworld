@@ -13,6 +13,7 @@ import {
   previousUtcMonth,
   type InvestmentRecord,
   type InvestmentStore,
+  type DepositProofStore,
   type ProfitEntry,
   type SponsorDirectory,
   type WithdrawalRequest,
@@ -207,6 +208,7 @@ function deposit(
   investmentId: string,
   body: unknown,
   idempotencyKey = "deposit-key-1",
+  proofStore?: DepositProofStore,
 ) {
   return handleInvestmentApi({
     method: "POST",
@@ -215,6 +217,7 @@ function deposit(
     body,
     idempotencyKey,
     store,
+    proofStore,
     now: () => SUBMITTED_AT,
   });
 }
@@ -292,6 +295,41 @@ test("an investment that is not awaiting deposit cannot receive a reference", as
   assert.equal(rejected.statusCode, 409);
   assert.equal((await store.getById("member-1", ACTIVE_ID))?.status, "active");
   assert.equal((await store.getById("member-1", ACTIVE_ID))?.depositReference, undefined);
+});
+
+test("a deposit screenshot is stored privately and a missing one is allowed", async () => {
+  const store = createMemoryInvestmentStore();
+  await post(store, "member-1", { planId: "starter" }, "idem-proof-create", fixedId(OWNED_ID));
+  const saved: string[] = [];
+  const proofStore: DepositProofStore = {
+    async put(input) {
+      saved.push(`${input.ownerSub}/${input.investmentId}/${input.proof.contentType}/${input.proof.bytes.byteLength}`);
+      return `deposit-proofs/${input.ownerSub}/${input.investmentId}/proof`;
+    },
+  };
+  const png = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]).toString("base64");
+  const withProof = await deposit(
+    store,
+    "member-1",
+    OWNED_ID,
+    { reference: "TX123456", screenshot: { contentType: "image/png", dataBase64: png } },
+    "deposit-proof",
+    proofStore,
+  );
+  assert.equal(withProof.statusCode, 200);
+  assert.equal((withProof.body.investment as { status: string }).status, "pending_verification");
+  assert.equal((await store.getById("member-1", OWNED_ID))?.depositProofKey, "deposit-proofs/member-1/" + OWNED_ID + "/proof");
+  assert.equal(saved.length, 1);
+
+  await post(store, "member-1", { planId: "growth" }, "idem-proof-plain", fixedId(ACTIVE_ID));
+  const plain = await deposit(store, "member-1", ACTIVE_ID, { reference: "TX654321" }, "deposit-plain");
+  assert.equal(plain.statusCode, 200);
+  assert.equal((await store.getById("member-1", ACTIVE_ID))?.depositProofKey, undefined);
+  assert.equal((await store.getById("member-1", ACTIVE_ID))?.status, "pending_verification");
+
+  const rejectedAddress = await deposit(store, "member-1", ACTIVE_ID, { reference: "TX654321", address: "invented" }, "deposit-address");
+  assert.equal(rejectedAddress.statusCode, 400);
+  assert.equal((await store.getById("member-1", ACTIVE_ID))?.status, "pending_verification");
 });
 
 const PENDING_ID = "inv_33333333-3333-4333-8333-333333333333";

@@ -59,6 +59,7 @@ export function createMemoryInvestmentStore(seed: readonly InvestmentRecord[] = 
         submittedAt: submission.submittedAt,
         updatedAt: submission.submittedAt,
         statusChangedAt: submission.submittedAt,
+        ...(submission.depositProofKey ? { depositProofKey: submission.depositProofKey } : {}),
       });
       idempotency.set(requestKey, submission.investmentId);
       return { result: "submitted" };

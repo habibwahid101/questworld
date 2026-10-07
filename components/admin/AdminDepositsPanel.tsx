@@ -108,6 +108,7 @@ export function AdminDepositsPanel() {
             <p className="eyebrow">{investment.planName}</p>
             <h2>{formatUsdtAmount(investment.amountMinor, investment.scale)}</h2>
             <p style={{ marginTop: 10 }}>Reference {investment.depositReference ?? "—"}</p>
+            {investment.depositProofKey ? <p>Screenshot on file</p> : null}
             <p>Submitted {investment.submittedAt ? new Date(investment.submittedAt).toLocaleString() : "—"}</p>
             <div className="grid-2" style={{ marginTop: 16 }}>
               <Button disabled={savingId !== null} onClick={() => void decide(investment.investmentId, "deposit_verified")}>

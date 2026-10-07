@@ -11,6 +11,8 @@
  * The same monthly run records sponsor commissions. It does not pay them.
  */
 
+import { AdminGroupError, changeAdminGroup, type AdminGroupDirectory } from "../admin/groups.ts";
+
 export const INVESTMENT_CURRENCY = "USDT";
 export const INVESTMENT_SCALE = 6;
 export const CREATABLE_INVESTMENT_STATUS = "awaiting_deposit";
@@ -51,6 +53,7 @@ export type InvestmentRecord = {
   reviewedBy?: string;
   activatedAt?: string;
   activatedBy?: string;
+  depositProofKey?: string;
 };
 
 export type InvestmentIdentity = {
@@ -123,6 +126,16 @@ export type DepositSubmission = {
   depositReference: string;
   submittedAt: string;
   idempotencyKey: string;
+  depositProofKey?: string;
+};
+
+export type DepositProof = {
+  contentType: "image/jpeg" | "image/png" | "image/webp";
+  bytes: Uint8Array;
+};
+
+export type DepositProofStore = {
+  put(input: { ownerSub: string; investmentId: string; proof: DepositProof }): Promise<string>;
 };
 
 export type DepositSubmissionResult = { result: "submitted" } | { result: "exists" } | { result: "not-found" } | { result: "rejected" };
@@ -580,6 +593,8 @@ export async function handleInvestmentApi(input: {
   now?: () => string;
   newInvestmentId?: () => string;
   newWithdrawalId?: () => string;
+  proofStore?: DepositProofStore;
+  adminGroups?: AdminGroupDirectory;
 }): Promise<{ statusCode: number; body: Record<string, unknown> }> {
   const identity = identityFromClaims(input.claims);
   if (!identity) {
@@ -619,6 +634,29 @@ export async function handleInvestmentApi(input: {
           newWithdrawalId,
         });
         return { statusCode: 200, body: { withdrawal } };
+      }
+    }
+    if (method === "POST" && path === "/admin/members/group") {
+      if (!isAdminClaims(input.claims)) {
+        return errorBody(403, "forbidden", "Admin access is required.");
+      }
+      if (!input.adminGroups) {
+        return errorBody(500, "configuration", "Administrator group changes are not configured.");
+      }
+      const actorEmail = typeof input.claims?.email === "string" ? input.claims.email : "";
+      try {
+        const result = await changeAdminGroup({
+          actorSub: identity.userId,
+          actorEmail,
+          body: input.body,
+          directory: input.adminGroups,
+        });
+        return { statusCode: 200, body: result };
+      } catch (caught) {
+        if (caught instanceof AdminGroupError) {
+          return errorBody(caught.statusCode, caught.code, caught.message);
+        }
+        throw caught;
       }
     }
     if (path === "/admin/deposits" || path.startsWith("/admin/deposits/")) {
@@ -691,6 +729,7 @@ export async function handleInvestmentApi(input: {
         body: input.body,
         idempotencyKey: input.idempotencyKey,
         store: input.store,
+        proofStore: input.proofStore,
         now,
       });
       return { statusCode: 200, body: { investment: record } };
@@ -757,16 +796,29 @@ async function submitDeposit(input: {
   body: unknown;
   idempotencyKey: string | undefined;
   store: InvestmentStore;
+  proofStore?: DepositProofStore;
   now: () => string;
 }): Promise<InvestmentRecord> {
-  const depositReference = referenceFromBody(input.body);
+  const { reference, proof } = depositFromBody(input.body);
   const idempotencyKey = readIdempotencyKey(input.idempotencyKey);
+  let depositProofKey: string | undefined;
+  if (proof) {
+    if (!input.proofStore) {
+      throw new InvestmentRequestError(500, "configuration", "Deposit screenshots are not configured.");
+    }
+    depositProofKey = await input.proofStore.put({
+      ownerSub: input.ownerSub,
+      investmentId: input.investmentId,
+      proof,
+    });
+  }
   const outcome = await input.store.submitDeposit({
     ownerSub: input.ownerSub,
     investmentId: input.investmentId,
-    depositReference,
+    depositReference: reference,
     submittedAt: input.now(),
     idempotencyKey,
+    depositProofKey,
   });
   if (outcome.result === "not-found") {
     throw new InvestmentRequestError(404, "investment_not_found", "That investment was not found.");
@@ -858,19 +910,55 @@ function decisionFromBody(body: unknown): ReviewDecision {
   return source.decision;
 }
 
-function referenceFromBody(body: unknown): string {
+function depositFromBody(body: unknown): { reference: string; proof: DepositProof | null } {
   if (!body || typeof body !== "object" || Array.isArray(body)) {
     throw new InvestmentRequestError(400, "invalid_body", "Enter the deposit reference.");
   }
   const source = body as Record<string, unknown>;
-  const extra = Object.keys(source).filter((key) => key !== "reference");
+  const extra = Object.keys(source).filter((key) => key !== "reference" && key !== "screenshot");
   if (extra.length > 0) {
-    throw new InvestmentRequestError(400, "invalid_body", "Only the deposit reference can be submitted.");
+    throw new InvestmentRequestError(400, "invalid_body", "Only the deposit reference and an optional screenshot can be submitted.");
   }
   if (typeof source.reference !== "string" || !DEPOSIT_REFERENCE_PATTERN.test(source.reference.trim())) {
     throw new InvestmentRequestError(400, "invalid_reference", "Enter the deposit reference from your transfer.");
   }
-  return source.reference.trim();
+  return { reference: source.reference.trim(), proof: screenshotFromBody(source.screenshot) };
+}
+
+function screenshotFromBody(value: unknown): DepositProof | null {
+  if (value === undefined) {
+    return null;
+  }
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new InvestmentRequestError(400, "invalid_screenshot", "The screenshot must be a JPEG, PNG, or WebP image.");
+  }
+  const source = value as Record<string, unknown>;
+  const extra = Object.keys(source).filter((key) => key !== "contentType" && key !== "dataBase64");
+  if (extra.length > 0 || source.contentType === undefined || source.dataBase64 === undefined) {
+    throw new InvestmentRequestError(400, "invalid_screenshot", "The screenshot must be a JPEG, PNG, or WebP image.");
+  }
+  const contentType = source.contentType;
+  if (contentType !== "image/jpeg" && contentType !== "image/png" && contentType !== "image/webp") {
+    throw new InvestmentRequestError(400, "invalid_screenshot", "The screenshot must be a JPEG, PNG, or WebP image.");
+  }
+  if (typeof source.dataBase64 !== "string" || source.dataBase64.trim() === "") {
+    throw new InvestmentRequestError(400, "invalid_screenshot", "The screenshot must be a JPEG, PNG, or WebP image.");
+  }
+  const bytes = Buffer.from(source.dataBase64, "base64");
+  if (bytes.byteLength === 0 || bytes.byteLength > 1_500_000 || !matchesImage(bytes, contentType)) {
+    throw new InvestmentRequestError(400, "invalid_screenshot", "The screenshot must be a JPEG, PNG, or WebP image under 1.5 MB.");
+  }
+  return { contentType, bytes };
+}
+
+function matchesImage(bytes: Uint8Array, contentType: DepositProof["contentType"]): boolean {
+  if (contentType === "image/jpeg") {
+    return bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff;
+  }
+  if (contentType === "image/png") {
+    return bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4e && bytes[3] === 0x47;
+  }
+  return bytes[0] === 0x52 && bytes[1] === 0x49 && bytes[2] === 0x46 && bytes[3] === 0x46 && bytes[8] === 0x57 && bytes[9] === 0x45 && bytes[10] === 0x42 && bytes[11] === 0x50;
 }
 
 function planFromBody(body: unknown): (typeof investmentCatalog)[PlanId] {
@@ -1007,8 +1095,8 @@ function depositIdFromPath(path: string): string | null {
   return match[1];
 }
 
-function storedDepositFields(item: Record<string, unknown>): Pick<InvestmentRecord, "depositReference" | "submittedAt"> {
-  const fields: Pick<InvestmentRecord, "depositReference" | "submittedAt"> = {};
+function storedDepositFields(item: Record<string, unknown>): Pick<InvestmentRecord, "depositReference" | "submittedAt" | "depositProofKey"> {
+  const fields: Pick<InvestmentRecord, "depositReference" | "submittedAt" | "depositProofKey"> = {};
   if (item.depositReference !== undefined) {
     if (typeof item.depositReference !== "string" || item.depositReference.trim() === "") {
       throw new InvestmentRequestError(500, "invalid_stored_deposit", "That investment record is not valid.");
@@ -1020,6 +1108,12 @@ function storedDepositFields(item: Record<string, unknown>): Pick<InvestmentReco
       throw new InvestmentRequestError(500, "invalid_stored_deposit", "That investment record is not valid.");
     }
     fields.submittedAt = item.submittedAt;
+  }
+  if (item.depositProofKey !== undefined) {
+    if (typeof item.depositProofKey !== "string" || item.depositProofKey.trim() === "" || item.depositProofKey.includes("://")) {
+      throw new InvestmentRequestError(500, "invalid_stored_deposit", "That investment record is not valid.");
+    }
+    fields.depositProofKey = item.depositProofKey;
   }
   return fields;
 }

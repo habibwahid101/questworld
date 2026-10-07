@@ -74,6 +74,7 @@ for (const [id, resource] of Object.entries(apiTemplate.Resources ?? {})) {
 }
 
 const actionsByTable = new Map();
+const otherActions = [];
 for (const resource of Object.values(apiTemplate.Resources ?? {})) {
   if (resource.Type !== "AWS::IAM::Policy") {
     continue;
@@ -81,19 +82,23 @@ for (const resource of Object.values(apiTemplate.Resources ?? {})) {
   for (const statement of resource.Properties?.PolicyDocument?.Statement ?? []) {
     const actions = Array.isArray(statement.Action) ? statement.Action : [statement.Action];
     const resources = Array.isArray(statement.Resource) ? statement.Resource : [statement.Resource];
-    if (resources.length !== 1) {
-      throw new Error("Each QuestworldApi DynamoDB statement must target one table.");
+    if (actions.every((action) => String(action).startsWith("dynamodb:"))) {
+      if (resources.length !== 1) {
+        throw new Error("Each QuestworldApi DynamoDB statement must target one table.");
+      }
+      const tableId = resources[0]?.["Fn::GetAtt"]?.[0];
+      const tableName = tables.get(tableId);
+      if (!tableName || resources[0]?.["Fn::GetAtt"]?.[1] !== "Arn") {
+        throw new Error("QuestworldApi DynamoDB access must use a table ARN.");
+      }
+      const granted = actionsByTable.get(tableName) ?? new Set();
+      for (const action of actions) {
+        granted.add(action);
+      }
+      actionsByTable.set(tableName, granted);
+      continue;
     }
-    const tableId = resources[0]?.["Fn::GetAtt"]?.[0];
-    const tableName = tables.get(tableId);
-    if (!tableName || resources[0]?.["Fn::GetAtt"]?.[1] !== "Arn") {
-      throw new Error("QuestworldApi DynamoDB access must use a table ARN.");
-    }
-    const granted = actionsByTable.get(tableName) ?? new Set();
-    for (const action of actions) {
-      granted.add(action);
-    }
-    actionsByTable.set(tableName, granted);
+    otherActions.push(actions.map(String));
   }
 }
 
@@ -127,6 +132,41 @@ if (schedules.length !== 1 || !String(schedules[0].Properties?.ScheduleExpressio
 }
 if ([...tables.values()].some((name) => name !== "questworld-members" && name !== "questworld-investments")) {
   throw new Error("QuestworldApi has an unexpected table.");
+}
+
+const buckets = Object.values(apiTemplate.Resources ?? {}).filter((resource) => resource.Type === "AWS::S3::Bucket");
+if (buckets.length !== 1) {
+  throw new Error("QuestworldApi must contain one private deposit-proof bucket.");
+}
+const access = buckets[0].Properties?.PublicAccessBlockConfiguration ?? {};
+if (!access.BlockPublicAcls || !access.BlockPublicPolicy || !access.IgnorePublicAcls || !access.RestrictPublicBuckets) {
+  throw new Error("The deposit-proof bucket must block public access.");
+}
+if (buckets[0].Properties?.WebsiteConfiguration || buckets[0].DeletionPolicy !== "Retain") {
+  throw new Error("The deposit-proof bucket must stay private and retained.");
+}
+const flatActions = otherActions.flat();
+if (flatActions.some((action) => action === "s3:*" || action.startsWith("s3:") && action !== "s3:PutObject")) {
+  throw new Error(`Deposit proof storage allows unexpected S3 actions: ${flatActions.join(", ")}`);
+}
+if (!flatActions.includes("s3:PutObject")) {
+  throw new Error("Deposit proof storage is missing s3:PutObject.");
+}
+const cognitoActions = [
+  "cognito-idp:AdminAddUserToGroup",
+  "cognito-idp:AdminListGroupsForUser",
+  "cognito-idp:AdminRemoveUserFromGroup",
+  "cognito-idp:AdminUserGlobalSignOut",
+  "cognito-idp:ListUsers",
+  "cognito-idp:ListUsersInGroup",
+];
+for (const action of cognitoActions) {
+  if (!flatActions.includes(action)) {
+    throw new Error(`Administrator group management is missing ${action}.`);
+  }
+}
+if (flatActions.some((action) => action.startsWith("cognito-idp:") && !cognitoActions.includes(action))) {
+  throw new Error("Administrator group management grants an unexpected Cognito action.");
 }
 
 console.log("Low-cost resource check passed.");

@@ -1,5 +1,16 @@
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
+import {
+  AdminAddUserToGroupCommand,
+  AdminListGroupsForUserCommand,
+  AdminRemoveUserFromGroupCommand,
+  AdminUserGlobalSignOutCommand,
+  CognitoIdentityProviderClient,
+  ListUsersCommand,
+  ListUsersInGroupCommand,
+} from "@aws-sdk/client-cognito-identity-provider";
+import { PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import { DynamoDBDocumentClient, GetCommand, PutCommand, QueryCommand, ScanCommand, TransactWriteCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
+import type { AdminGroupDirectory } from "../../../lib/admin/groups";
 import {
   handleInvestmentApi,
   investmentFromStoredItem,
@@ -50,6 +61,8 @@ type ApiGatewayEvent = {
 const document = DynamoDBDocumentClient.from(new DynamoDBClient({}), {
   marshallOptions: { removeUndefinedValues: true },
 });
+const cognito = new CognitoIdentityProviderClient({});
+const proofStorage = new S3Client({});
 
 export async function handler(event: ApiGatewayEvent): Promise<{
   statusCode: number;
@@ -89,9 +102,105 @@ export async function handler(event: ApiGatewayEvent): Promise<{
     body,
     idempotencyKey: headerValue(event.headers, "idempotency-key"),
     store: createDynamoInvestmentStore(tableName),
+    proofStore: process.env.DEPOSIT_PROOF_BUCKET ? createProofStore(process.env.DEPOSIT_PROOF_BUCKET) : undefined,
+    adminGroups: process.env.USER_POOL_ID ? createAdminDirectory(process.env.USER_POOL_ID) : undefined,
   });
 
   return json(result.statusCode, result.body);
+}
+
+function createProofStore(bucket: string) {
+  return {
+    async put(input: { ownerSub: string; investmentId: string; proof: { bytes: Uint8Array; contentType: string } }) {
+      const key = `deposit-proofs/${input.ownerSub}/${input.investmentId}/${crypto.randomUUID()}`;
+      await proofStorage.send(
+        new PutObjectCommand({
+          Bucket: bucket,
+          Key: key,
+          Body: input.proof.bytes,
+          ContentType: input.proof.contentType,
+          ServerSideEncryption: "AES256",
+        }),
+      );
+      return key;
+    },
+  };
+}
+
+function createAdminDirectory(userPoolId: string): AdminGroupDirectory {
+  return {
+    async findByEmail(email) {
+      const response = await cognito.send(
+        new ListUsersCommand({
+          UserPoolId: userPoolId,
+          Filter: `email = "${email.replaceAll('"', "")}"`,
+          Limit: 2,
+        }),
+      );
+      const user = response.Users?.[0];
+      if (!user?.Username) {
+        return null;
+      }
+      const found = user.Attributes?.find((attribute) => attribute.Name === "email")?.Value ?? email;
+      return { username: user.Username, email: found };
+    },
+    async groupsFor(username) {
+      const response = await cognito.send(
+        new AdminListGroupsForUserCommand({
+          UserPoolId: userPoolId,
+          Username: username,
+        }),
+      );
+      return (response.Groups ?? []).flatMap((group) => (group.GroupName ? [group.GroupName] : []));
+    },
+    async listAdminUsernames() {
+      const names: string[] = [];
+      let next: string | undefined;
+      do {
+        const response = await cognito.send(
+          new ListUsersInGroupCommand({
+            UserPoolId: userPoolId,
+            GroupName: "Admins",
+            Limit: 60,
+            NextToken: next,
+          }),
+        );
+        for (const user of response.Users ?? []) {
+          if (user.Username) {
+            names.push(user.Username);
+          }
+        }
+        next = response.NextToken;
+      } while (next && names.length < 300);
+      return names;
+    },
+    async grant(username) {
+      await cognito.send(
+        new AdminAddUserToGroupCommand({
+          UserPoolId: userPoolId,
+          Username: username,
+          GroupName: "Admins",
+        }),
+      );
+    },
+    async remove(username) {
+      await cognito.send(
+        new AdminRemoveUserFromGroupCommand({
+          UserPoolId: userPoolId,
+          Username: username,
+          GroupName: "Admins",
+        }),
+      );
+    },
+    async signOut(username) {
+      await cognito.send(
+        new AdminUserGlobalSignOutCommand({
+          UserPoolId: userPoolId,
+          Username: username,
+        }),
+      );
+    },
+  };
 }
 
 function json(statusCode: number, body: Record<string, unknown>) {
@@ -153,7 +262,8 @@ export function createDynamoInvestmentStore(tableName: string): InvestmentStore 
                   TableName: tableName,
                   Key: { pk: userKey(submission.ownerSub), sk: `${INVESTMENT_PREFIX}${submission.investmentId}` },
                   UpdateExpression:
-                    "SET #status = :pending, depositReference = :reference, submittedAt = :submittedAt, updatedAt = :submittedAt, statusChangedAt = :submittedAt",
+                    "SET #status = :pending, depositReference = :reference, submittedAt = :submittedAt, updatedAt = :submittedAt, statusChangedAt = :submittedAt" +
+                    (submission.depositProofKey ? ", depositProofKey = :proofKey" : ""),
                   ConditionExpression: "#status = :awaiting AND ownerSub = :owner",
                   ExpressionAttributeNames: { "#status": "status" },
                   ExpressionAttributeValues: {
@@ -162,6 +272,7 @@ export function createDynamoInvestmentStore(tableName: string): InvestmentStore 
                     ":reference": submission.depositReference,
                     ":submittedAt": submission.submittedAt,
                     ":owner": submission.ownerSub,
+                    ...(submission.depositProofKey ? { ":proofKey": submission.depositProofKey } : {}),
                   },
                 },
               },

@@ -4,6 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useAuth } from "@/components/auth/AuthProvider";
+import { adminSwitchTarget } from "@/lib/auth/shell";
 import { BrandMark } from "@/components/ui/BrandMark";
 import type { NavItem } from "@/types";
 import { classNames } from "@/utils/format";
@@ -19,8 +20,9 @@ type AppShellProps = {
 export function AppShell({ title, homeHref, items, children }: AppShellProps) {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
-  const { logout } = useAuth();
+  const { logout, user } = useAuth();
   const [signingOut, setSigningOut] = useState(false);
+  const shellSwitch = user?.isAdmin ? adminSwitchTarget(pathname) : null;
 
   async function onLogout() {
     if (signingOut) {
@@ -57,6 +59,11 @@ export function AppShell({ title, homeHref, items, children }: AppShellProps) {
         <div className={styles.topbar}>
           <strong>{title}</strong>
           <div className={styles.topActions}>
+            {shellSwitch ? (
+              <Link className={styles.logoutButton} href={shellSwitch.href}>
+                {shellSwitch.label}
+              </Link>
+            ) : null}
             <button className={styles.logoutButton} type="button" onClick={() => void onLogout()} disabled={signingOut}>
               {signingOut ? "Please wait…" : "Log out"}
             </button>

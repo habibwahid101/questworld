@@ -66,7 +66,7 @@ export function AppShell({ title, homeHref, items, children }: AppShellProps) {
             ) : null}
           </div>
           <div className={styles.topActions}>
-            <button className={styles.logoutButton} type="button" onClick={() => void onLogout()} disabled={signingOut}>
+            <button className={classNames(styles.logoutButton, styles.topLogout)} type="button" onClick={() => void onLogout()} disabled={signingOut}>
               {signingOut ? "Please wait…" : "Log out"}
             </button>
             <button
@@ -86,6 +86,9 @@ export function AppShell({ title, homeHref, items, children }: AppShellProps) {
                 {item.label}
               </Link>
             ))}
+            <button className={styles.mobileLogout} type="button" onClick={() => void onLogout()} disabled={signingOut}>
+              {signingOut ? "Please wait…" : "Log out"}
+            </button>
           </nav>
         ) : null}
         <div className={styles.content}>{children}</div>

@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 import { INITIAL_DEPOSIT_ADDRESSES } from "../lib/deposits/address.ts";
+import { PLAN_DESCRIPTIONS, PLAN_RATE_NOTE, planMonthlyRateLabel } from "../lib/investments/plan-copy.ts";
 import { createMemoryInvestmentStore } from "../lib/investments/memory-store.ts";
 import {
   handleInvestmentApi,
@@ -936,4 +937,26 @@ test("deposit addresses keep BEP20 and TRC20, reject a member, and allow an admi
   });
   assert.equal(read.body.bep20, REPLACEMENT_BEP20);
   assert.equal(read.body.trc20, REPLACEMENT_TRC20);
+});
+
+test("plan cards use the catalog amounts, the given descriptions, and mark 8 percent as not a payout", () => {
+  assert.deepEqual(
+    Object.values(investmentCatalog).map((plan) => [plan.planId, plan.amountMinor]),
+    [
+      ["starter", 100_000_000],
+      ["growth", 1_000_000_000],
+      ["professional", 10_000_000_000],
+      ["premium", 100_000_000_000],
+    ],
+  );
+  assert.equal(PLAN_DESCRIPTIONS.starter, "Entry plan for a first investment.");
+  assert.equal(PLAN_DESCRIPTIONS.growth, "A larger plan with the same monthly rate.");
+  assert.equal(PLAN_DESCRIPTIONS.professional, "A higher plan with the same monthly rate.");
+  assert.equal(PLAN_DESCRIPTIONS.premium, "The largest listed plan with the same monthly rate.");
+  assert.equal(planMonthlyRateLabel(), "8% monthly");
+  assert.equal(PLAN_RATE_NOTE, "Not a payout.");
+  const panel = readFileSync(new URL("../components/member/InvestmentsPanel.tsx", import.meta.url), "utf8");
+  assert.match(panel, /"Choose"/);
+  assert.match(panel, /formatUsdtAmount\(plan\.amountMinor\)/);
+  assert.doesNotMatch(panel, /createCurrentInvestment\([^)]*amount/);
 });

@@ -4,7 +4,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { createCurrentInvestment, InvestmentClientError, listCurrentInvestments, readCurrentDepositAddresses, submitCurrentDeposit, type DepositWallets } from "@/lib/investments/client";
-import { formatUsdtAmount, type InvestmentRecord, type InvestmentStatus, type PlanId } from "@/lib/investments/service";
+import { formatUsdtAmount, investmentCatalog, type InvestmentRecord, type InvestmentStatus, type PlanId } from "@/lib/investments/service";
+import { PLAN_DESCRIPTIONS, PLAN_RATE_NOTE, planMonthlyRateLabel } from "@/lib/investments/plan-copy";
 import { isMemberApiConfigured } from "@/lib/members/config";
 import styles from "./InvestmentsPanel.module.css";
 
@@ -15,13 +16,6 @@ const statusLabel: Record<InvestmentStatus, string> = {
   rejected: "Rejected",
   active: "Active",
 };
-
-const plans: readonly { id: PlanId; label: string }[] = [
-  { id: "starter", label: "Starter" },
-  { id: "growth", label: "Growth" },
-  { id: "professional", label: "Professional" },
-  { id: "premium", label: "Premium" },
-];
 
 export function InvestmentsPanel() {
   const [investments, setInvestments] = useState<InvestmentRecord[]>([]);
@@ -121,17 +115,26 @@ export function InvestmentsPanel() {
         <p className="lead" style={{ marginTop: 12 }}>
           Choose a listed plan to record an investment. A deposit reference is stored for review. This does not move money.
         </p>
-        <div className="grid-2" style={{ marginTop: 20 }}>
-          {plans.map((plan) => (
-            <Button
-              key={plan.id}
-              variant="secondary"
-              disabled={savingPlan !== null || savingDepositId !== null}
-              onClick={() => void choosePlan(plan.id)}
-            >
-              {savingPlan === plan.id ? "Recording…" : plan.label}
-            </Button>
-          ))}
+        <div className={styles.plans}>
+          {(Object.keys(investmentCatalog) as PlanId[]).map((planId) => {
+            const plan = investmentCatalog[planId];
+            return (
+              <Card key={planId} className={styles.plan}>
+                <p className="eyebrow">{plan.planName}</p>
+                <h2>{formatUsdtAmount(plan.amountMinor)}</h2>
+                <p className={styles.description}>{PLAN_DESCRIPTIONS[planId]}</p>
+                <p className={styles.rate}>{planMonthlyRateLabel()}</p>
+                <p className={styles.note}>{PLAN_RATE_NOTE}</p>
+                <Button
+                  type="button"
+                  disabled={savingPlan !== null || savingDepositId !== null}
+                  onClick={() => void choosePlan(planId)}
+                >
+                  {savingPlan === planId ? "Recording…" : "Choose"}
+                </Button>
+              </Card>
+            );
+          })}
         </div>
         {message ? <p style={{ marginTop: 16 }}>{message}</p> : null}
       </Card>

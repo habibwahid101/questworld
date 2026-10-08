@@ -86,6 +86,11 @@ export function createMemoryInvestmentStore(seed: readonly InvestmentRecord[] = 
             left.investmentId.localeCompare(right.investmentId),
         );
     },
+    async listAllInvestments() {
+      return [...investments.values()]
+        .map((record) => structuredClone(record))
+        .sort((left, right) => right.createdAt.localeCompare(left.createdAt) || left.investmentId.localeCompare(right.investmentId));
+    },
     async reviewDeposit(review: DepositReview): Promise<DepositReviewResult> {
       const found = [...investments.entries()].find(([, record]) => record.investmentId === review.investmentId);
       if (!found) {
@@ -147,6 +152,11 @@ export function createMemoryInvestmentStore(seed: readonly InvestmentRecord[] = 
           (left, right) => right.period.localeCompare(left.period) || left.investmentId.localeCompare(right.investmentId),
         );
     },
+    async listAllProfits() {
+      return [...profits.values()]
+        .map((entry) => structuredClone(entry))
+        .sort((left, right) => right.period.localeCompare(left.period) || left.investmentId.localeCompare(right.investmentId));
+    },
     async putCommission(entry: CommissionEntry) {
       const key = `${entry.recipientSub}#${entry.investmentId}#${entry.period}#${entry.generation}`;
       if (commissions.has(key)) {
@@ -158,6 +168,16 @@ export function createMemoryInvestmentStore(seed: readonly InvestmentRecord[] = 
     async listCommissions(recipientSub) {
       return [...commissions.values()]
         .filter((entry) => entry.recipientSub === recipientSub)
+        .map((entry) => structuredClone(entry))
+        .sort(
+          (left, right) =>
+            right.period.localeCompare(left.period) ||
+            left.generation - right.generation ||
+            left.investmentId.localeCompare(right.investmentId),
+        );
+    },
+    async listAllCommissions() {
+      return [...commissions.values()]
         .map((entry) => structuredClone(entry))
         .sort(
           (left, right) =>
@@ -182,6 +202,11 @@ export function createMemoryInvestmentStore(seed: readonly InvestmentRecord[] = 
           (left, right) =>
             right.createdAt.localeCompare(left.createdAt) || left.withdrawalId.localeCompare(right.withdrawalId),
         );
+    },
+    async listAllWithdrawals() {
+      return [...withdrawals.values()]
+        .map((request) => structuredClone(request))
+        .sort((left, right) => right.createdAt.localeCompare(left.createdAt) || left.withdrawalId.localeCompare(right.withdrawalId));
     },
     async getById(ownerSub, investmentId) {
       const found = investments.get(`${ownerSub}#${investmentId}`);

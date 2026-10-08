@@ -987,6 +987,92 @@ test("dashboard cards read existing totals and do not write records", () => {
   assert.match(admin, /listVerifiedDeposits/);
   assert.match(admin, /listStoredMembers/);
   assert.doesNotMatch(admin, /There is no member list to read/);
-  assert.match(admin, /There is no pending-withdrawal list to read/);
+  assert.match(admin, /listAdminInvestments/);
+  assert.match(admin, /record\.status === "active"/);
+  assert.doesNotMatch(admin, /There is no pending-withdrawal list to read/);
   assert.doesNotMatch(admin, /members:\s*0|pendingWithdrawals\s*=\s*0|Darmelk/);
+});
+
+test("admin trace lists are read-only and a member cannot read them", async () => {
+  const statuses = ["awaiting_deposit", "pending_verification", "deposit_verified", "rejected", "active"] as const;
+  const store = createMemoryInvestmentStore(statuses.map((status, index) => ({
+    ...pendingItem(`inv_${index}`, "member-1", status === "awaiting_deposit" || status === "pending_verification" ? status : "pending_verification"),
+    status,
+    createdAt: `2026-10-0${index + 1}T00:00:00.000Z`,
+  })));
+  await store.putProfit({
+    investmentId: "inv_4",
+    ownerSub: "member-1",
+    period: "2026-10",
+    rateBps: 800,
+    profitMinor: 8_000_000,
+    principalMinor: 100_000_000,
+    currency: "USDT",
+    scale: 6,
+    planId: "starter",
+    planName: "Starter",
+    postedAt: NOW,
+  });
+  await store.putCommission({
+    investmentId: "inv_4",
+    recipientSub: "sponsor-1",
+    period: "2026-10",
+    generation: 1,
+    rateBps: 300,
+    commissionMinor: 3_000_000,
+    principalMinor: 100_000_000,
+    currency: "USDT",
+    scale: 6,
+    planId: "starter",
+    planName: "Starter",
+    postedAt: NOW,
+  });
+  await store.putWithdrawal({
+    withdrawalId: "wd_1",
+    ownerSub: "member-1",
+    amountMinor: 8_000_000,
+    currency: "USDT",
+    scale: 6,
+    status: "pending_review",
+    createdAt: NOW,
+    updatedAt: NOW,
+  });
+  const adminClaims = { sub: "admin-1", email: "admin@example.com", "cognito:groups": "[Admins]" };
+  const investments = await handleInvestmentApi({ method: "GET", path: "/admin/investments", claims: adminClaims, store });
+  assert.equal(investments.statusCode, 200);
+  assert.deepEqual(
+    (investments.body.investments as Array<{ status: string }>).map((item) => item.status).sort(),
+    [...statuses].sort(),
+  );
+  const profits = await handleInvestmentApi({ method: "GET", path: "/admin/profits", claims: adminClaims, store });
+  assert.equal((profits.body.profits as unknown[]).length, 1);
+  const commissions = await handleInvestmentApi({ method: "GET", path: "/admin/commissions", claims: adminClaims, store });
+  assert.equal((commissions.body.commissions as Array<{ rateBps: number }>)[0]?.rateBps, 300);
+  const withdrawals = await handleInvestmentApi({ method: "GET", path: "/admin/withdrawals", claims: adminClaims, store });
+  assert.equal((withdrawals.body.withdrawals as unknown[]).length, 1);
+  const denied = await handleInvestmentApi({
+    method: "GET",
+    path: "/admin/investments",
+    claims: { sub: "member-1", "cognito:groups": "[Members]" },
+    store,
+  });
+  assert.equal(denied.statusCode, 403);
+  const empty = await handleInvestmentApi({
+    method: "GET",
+    path: "/admin/profits",
+    claims: adminClaims,
+    store: createMemoryInvestmentStore(),
+  });
+  assert.deepEqual(empty.body.profits, []);
+  const source = readFileSync(new URL("../infrastructure/lib/api-stack.ts", import.meta.url), "utf8");
+  assert.match(source, /path: "\/admin\/investments"/);
+  assert.match(source, /path: "\/admin\/profits"/);
+  assert.match(source, /path: "\/admin\/commissions"/);
+  assert.match(source, /path: "\/admin\/withdrawals"/);
+  assert.doesNotMatch(source, /path: "\/admin\/withdrawals"[\s\S]{0,120}HttpMethod\.POST/);
+  const profitsPanel = readFileSync(new URL("../components/admin/AdminProfitsPanel.tsx", import.meta.url), "utf8");
+  const withdrawalsPanel = readFileSync(new URL("../components/admin/AdminWithdrawalsPanel.tsx", import.meta.url), "utf8");
+  assert.match(profitsPanel, /The November schedule has not run/);
+  assert.match(withdrawalsPanel, /does not approve or pay a withdrawal/);
+  assert.doesNotMatch(withdrawalsPanel, /<Button|Pay out/);
 });

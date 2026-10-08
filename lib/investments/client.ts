@@ -103,6 +103,26 @@ export async function listPendingDeposits(): Promise<InvestmentRecord[]> {
   return payload.investments ?? [];
 }
 
+export async function listAdminInvestments(): Promise<InvestmentRecord[]> {
+  const payload = await investmentRequest<{ investments?: InvestmentRecord[] }>("GET", "/admin/investments");
+  return payload.investments ?? [];
+}
+
+export async function listAdminProfits(): Promise<ProfitEntry[]> {
+  const payload = await investmentRequest<{ profits?: ProfitEntry[] }>("GET", "/admin/profits");
+  return payload.profits ?? [];
+}
+
+export async function listAdminCommissions(): Promise<CommissionEntry[]> {
+  const payload = await investmentRequest<{ commissions?: CommissionEntry[] }>("GET", "/admin/commissions");
+  return payload.commissions ?? [];
+}
+
+export async function listAdminWithdrawals(): Promise<WithdrawalRequest[]> {
+  const payload = await investmentRequest<{ withdrawals?: WithdrawalRequest[] }>("GET", "/admin/withdrawals");
+  return payload.withdrawals ?? [];
+}
+
 export async function listVerifiedDeposits(): Promise<InvestmentRecord[]> {
   const payload = await investmentRequest<{ verified?: InvestmentRecord[] }>("GET", "/admin/deposits");
   return payload.verified ?? [];

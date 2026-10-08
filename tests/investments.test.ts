@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
+import { INITIAL_DEPOSIT_ADDRESSES } from "../lib/deposits/address.ts";
 import { createMemoryInvestmentStore } from "../lib/investments/memory-store.ts";
 import {
   handleInvestmentApi,
@@ -857,49 +858,64 @@ test("monthly commissions post generation 1 and 2 once and skip a missing sponso
   assert.deepEqual(other.body.commissions, []);
 });
 
-const ADDRESS_FIXTURE = "T123456789012345678901234567890123";
+const REPLACEMENT_BEP20 = "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+const REPLACEMENT_TRC20 = "T111111111111111111111111111111111";
 
-test("only an admin can save the Binance deposit address and a member can read it", async () => {
+test("deposit addresses keep BEP20 and TRC20, reject a member, and allow an admin replacement", async () => {
   const store = createMemoryInvestmentStore();
-  const empty = await handleInvestmentApi({
+  const initial = await handleInvestmentApi({
     method: "GET",
     path: "/deposit-address",
     claims: claims("member-1"),
     store,
   });
-  assert.equal(empty.statusCode, 200);
-  assert.equal(empty.body.address, "");
+  assert.equal(initial.statusCode, 200);
+  assert.equal(initial.body.bep20, INITIAL_DEPOSIT_ADDRESSES.BEP20);
+  assert.equal(initial.body.trc20, INITIAL_DEPOSIT_ADDRESSES.TRC20);
+  assert.equal(await store.getDepositAddress(), null);
 
   const denied = await handleInvestmentApi({
     method: "PUT",
     path: "/admin/deposit-address",
     claims: claims("member-1"),
-    body: { address: ADDRESS_FIXTURE },
+    body: { bep20: REPLACEMENT_BEP20 },
     store,
   });
   assert.equal(denied.statusCode, 403);
   assert.equal(await store.getDepositAddress(), null);
 
-  const rejected = await handleInvestmentApi({
+  const thirdNetwork = await handleInvestmentApi({
     method: "PUT",
     path: "/admin/deposit-address",
     claims: { sub: "admin-1", "cognito:groups": "[Admins]" },
-    body: { address: "PASTE THE ADDRESS HERE", ownerSub: "member-1" },
+    body: { erc20: REPLACEMENT_BEP20 },
     store,
   });
-  assert.equal(rejected.statusCode, 400);
+  assert.equal(thirdNetwork.statusCode, 400);
   assert.equal(await store.getDepositAddress(), null);
 
-  const saved = await handleInvestmentApi({
+  const replaceBep20 = await handleInvestmentApi({
     method: "PUT",
     path: "/admin/deposit-address",
     claims: { sub: "admin-1", "cognito:groups": "[Admins]" },
-    body: { address: ` ${ADDRESS_FIXTURE} ` },
+    body: { bep20: ` ${REPLACEMENT_BEP20} ` },
     store,
-    now: () => "2026-10-07T00:00:00.000Z",
+    now: () => "2026-10-08T00:00:00.000Z",
   });
-  assert.equal(saved.statusCode, 200);
-  assert.equal(saved.body.address, ADDRESS_FIXTURE);
+  assert.equal(replaceBep20.statusCode, 200);
+  assert.equal(replaceBep20.body.bep20, REPLACEMENT_BEP20);
+  assert.equal(replaceBep20.body.trc20, INITIAL_DEPOSIT_ADDRESSES.TRC20);
+
+  const replaceTrc20 = await handleInvestmentApi({
+    method: "PUT",
+    path: "/admin/deposit-address",
+    claims: { sub: "admin-1", "cognito:groups": "[Admins]" },
+    body: { trc20: REPLACEMENT_TRC20 },
+    store,
+  });
+  assert.equal(replaceTrc20.statusCode, 200);
+  assert.equal(replaceTrc20.body.bep20, REPLACEMENT_BEP20);
+  assert.equal(replaceTrc20.body.trc20, REPLACEMENT_TRC20);
   assert.equal((await store.getDepositAddress())?.updatedBy, "admin-1");
 
   const read = await handleInvestmentApi({
@@ -908,6 +924,6 @@ test("only an admin can save the Binance deposit address and a member can read i
     claims: claims("member-1"),
     store,
   });
-  assert.equal(read.statusCode, 200);
-  assert.equal(read.body.address, ADDRESS_FIXTURE);
+  assert.equal(read.body.bep20, REPLACEMENT_BEP20);
+  assert.equal(read.body.trc20, REPLACEMENT_TRC20);
 });

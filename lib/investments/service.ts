@@ -12,7 +12,7 @@
  */
 
 import { AdminGroupError, changeAdminGroup, type AdminGroupDirectory } from "../admin/groups.ts";
-import { readBinanceDepositAddress } from "../deposits/address.ts";
+import { INITIAL_DEPOSIT_ADDRESSES, readNetworkAddress } from "../deposits/address.ts";
 
 export const INVESTMENT_CURRENCY = "USDT";
 export const INVESTMENT_SCALE = 6;
@@ -165,7 +165,8 @@ export type InvestmentActivationResult =
   | { result: "rejected" };
 
 export type DepositAddress = {
-  address: string;
+  bep20: string;
+  trc20: string;
   updatedAt: string;
   updatedBy: string;
 };
@@ -670,19 +671,20 @@ export async function handleInvestmentApi(input: {
     }
     if (method === "GET" && path === "/deposit-address") {
       const saved = await input.store.getDepositAddress();
-      return { statusCode: 200, body: { address: readBinanceDepositAddress(saved?.address) } };
+      return { statusCode: 200, body: visibleDepositAddresses(saved) };
     }
     if (method === "PUT" && path === "/admin/deposit-address") {
       if (!isAdminClaims(input.claims)) {
         return errorBody(403, "forbidden", "Admin access is required.");
       }
-      const address = depositAddressFromBody(input.body);
+      const saved = await input.store.getDepositAddress();
+      const addresses = depositAddressesFromBody(input.body, visibleDepositAddresses(saved));
       await input.store.saveDepositAddress({
-        address,
+        ...addresses,
         updatedAt: now(),
         updatedBy: identity.userId,
       });
-      return { statusCode: 200, body: { address } };
+      return { statusCode: 200, body: addresses };
     }
     if (path === "/admin/deposits" || path.startsWith("/admin/deposits/")) {
       if (!isAdminClaims(input.claims)) {
@@ -935,20 +937,41 @@ function decisionFromBody(body: unknown): ReviewDecision {
   return source.decision;
 }
 
-function depositAddressFromBody(body: unknown): string {
+function visibleDepositAddresses(saved: DepositAddress | null): { bep20: string; trc20: string } {
+  return {
+    bep20: readNetworkAddress("BEP20", saved?.bep20) || INITIAL_DEPOSIT_ADDRESSES.BEP20,
+    trc20: readNetworkAddress("TRC20", saved?.trc20) || INITIAL_DEPOSIT_ADDRESSES.TRC20,
+  };
+}
+
+function depositAddressesFromBody(body: unknown, current: { bep20: string; trc20: string }): { bep20: string; trc20: string } {
   if (!body || typeof body !== "object" || Array.isArray(body)) {
-    throw new InvestmentRequestError(400, "invalid_body", "Enter the Binance deposit address.");
+    throw new InvestmentRequestError(400, "invalid_body", "Enter a BEP20 or TRC20 deposit address.");
   }
   const source = body as Record<string, unknown>;
-  const extra = Object.keys(source).filter((key) => key !== "address");
+  const extra = Object.keys(source).filter((key) => key !== "bep20" && key !== "trc20");
   if (extra.length > 0) {
-    throw new InvestmentRequestError(400, "invalid_body", "Only the Binance deposit address can be saved.");
+    throw new InvestmentRequestError(400, "invalid_body", "Only the BEP20 and TRC20 deposit addresses can be saved.");
   }
-  const address = readBinanceDepositAddress(typeof source.address === "string" ? source.address : undefined);
-  if (!address) {
-    throw new InvestmentRequestError(400, "invalid_address", "Enter the Binance deposit address.");
+  if (!("bep20" in source) && !("trc20" in source)) {
+    throw new InvestmentRequestError(400, "invalid_body", "Enter a BEP20 or TRC20 deposit address.");
   }
-  return address;
+  const next = { ...current };
+  if ("bep20" in source) {
+    const bep20 = readNetworkAddress("BEP20", typeof source.bep20 === "string" ? source.bep20 : undefined);
+    if (!bep20) {
+      throw new InvestmentRequestError(400, "invalid_address", "Enter a BEP20 deposit address.");
+    }
+    next.bep20 = bep20;
+  }
+  if ("trc20" in source) {
+    const trc20 = readNetworkAddress("TRC20", typeof source.trc20 === "string" ? source.trc20 : undefined);
+    if (!trc20) {
+      throw new InvestmentRequestError(400, "invalid_address", "Enter a TRC20 deposit address.");
+    }
+    next.trc20 = trc20;
+  }
+  return next;
 }
 
 function depositFromBody(body: unknown): { reference: string; proof: DepositProof | null } {

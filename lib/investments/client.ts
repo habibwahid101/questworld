@@ -69,17 +69,22 @@ export async function requestCurrentWithdrawal(amountMinor: number): Promise<Wit
   return payload.withdrawal;
 }
 
-export async function readCurrentDepositAddress(): Promise<string> {
-  const payload = await investmentRequest<{ address?: string }>("GET", "/deposit-address");
-  return payload.address ?? "";
+export type DepositWallets = {
+  bep20: string;
+  trc20: string;
+};
+
+export async function readCurrentDepositAddresses(): Promise<DepositWallets> {
+  const payload = await investmentRequest<Partial<DepositWallets>>("GET", "/deposit-address");
+  return { bep20: payload.bep20 ?? "", trc20: payload.trc20 ?? "" };
 }
 
-export async function saveDepositAddress(address: string): Promise<string> {
-  const payload = await investmentRequest<{ address?: string }>("PUT", "/admin/deposit-address", { address });
-  if (!payload.address) {
-    throw new InvestmentClientError("investment_request_failed", "Could not save that Binance deposit address.");
+export async function saveDepositAddresses(wallets: DepositWallets): Promise<DepositWallets> {
+  const payload = await investmentRequest<Partial<DepositWallets>>("PUT", "/admin/deposit-address", wallets);
+  if (!payload.bep20 || !payload.trc20) {
+    throw new InvestmentClientError("investment_request_failed", "Could not save those deposit addresses.");
   }
-  return payload.address;
+  return { bep20: payload.bep20, trc20: payload.trc20 };
 }
 
 export async function listPendingDeposits(): Promise<InvestmentRecord[]> {

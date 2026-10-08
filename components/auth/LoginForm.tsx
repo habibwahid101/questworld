@@ -9,6 +9,7 @@ import { Field, Input } from "@/components/ui/Field";
 import { useAuth } from "@/components/auth/AuthProvider";
 import { loginAccount } from "@/lib/auth/cognito";
 import { mapAuthError } from "@/lib/auth/errors";
+import styles from "./AuthFields.module.css";
 
 function reasonMessage(reason: string | null): string | null {
   if (reason === "config") {
@@ -60,7 +61,7 @@ export function LoginForm() {
   }
 
   return (
-    <form className="stack" onSubmit={onSubmit}>
+    <form className={`stack ${styles.fields}`} onSubmit={onSubmit}>
       {error ? (
         <p className="form-error" role="alert">
           {error}

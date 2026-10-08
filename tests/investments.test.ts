@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 import { INITIAL_DEPOSIT_ADDRESSES } from "../lib/deposits/address.ts";
+import { hashTransactionPassword, verifyTransactionPassword } from "../lib/members/transaction-password.ts";
 import { PLAN_DESCRIPTIONS, PLAN_RATE_NOTE, planMonthlyRateLabel } from "../lib/investments/plan-copy.ts";
 import { createMemoryInvestmentStore } from "../lib/investments/memory-store.ts";
 import {
@@ -694,6 +695,16 @@ test("a member can request posted profit and cannot read another member's reques
   const store = createMemoryInvestmentStore([active]);
   assert.equal(await store.putProfit(profit), "created");
   assert.equal(await store.putWithdrawal(approved), "created");
+  const withdrawalPassword = "Withdraw1!";
+  const withdrawalHash = hashTransactionPassword(withdrawalPassword);
+  const transactionPasswords = {
+    async verify(userId: string, password: string) {
+      if (userId !== "member-1" && userId !== "member-2") {
+        return "missing" as const;
+      }
+      return verifyTransactionPassword(password, withdrawalHash) ? "ok" as const : "mismatch" as const;
+    },
+  };
 
   const listed = await handleInvestmentApi({ method: "GET", path: "/withdrawals", claims: claims("member-1"), store });
   assert.equal(listed.statusCode, 200);
@@ -713,8 +724,9 @@ test("a member can request posted profit and cannot read another member's reques
     method: "POST",
     path: "/withdrawals",
     claims: claims("member-1"),
-    body: { amountMinor: 7_000_001 },
+    body: { amountMinor: 7_000_001, transactionPassword: withdrawalPassword },
     store,
+    transactionPasswords,
   });
   assert.equal(above.statusCode, 409);
   assert.equal(above.body.error, "withdrawal_above_available");
@@ -731,25 +743,41 @@ test("a member can request posted profit and cannot read another member's reques
     method: "POST",
     path: "/withdrawals",
     claims: claims("member-2"),
-    body: { amountMinor: 7_000_000 },
+    body: { amountMinor: 7_000_000, transactionPassword: withdrawalPassword },
     store,
+    transactionPasswords,
   });
   assert.equal(otherAvailable.statusCode, 409);
+
+  const wrongPassword = await handleInvestmentApi({
+    method: "POST",
+    path: "/withdrawals",
+    claims: claims("member-1"),
+    body: { amountMinor: 1_000_000, transactionPassword: "WrongPass1!" },
+    store,
+    transactionPasswords,
+  });
+  assert.equal(wrongPassword.statusCode, 403);
+  assert.equal(wrongPassword.body.error, "transaction_password_rejected");
+  assert.equal((await store.listWithdrawals("member-1")).length, 1);
 
   const requested = await handleInvestmentApi({
     method: "POST",
     path: "/withdrawals",
     claims: claims("member-1"),
-    body: { amountMinor: 7_000_000 },
+    body: { amountMinor: 7_000_000, transactionPassword: withdrawalPassword },
     store,
     now: () => "2026-11-02T00:00:00.000Z",
     newWithdrawalId: () => "wd_22222222-2222-4222-8222-222222222222",
+    transactionPasswords,
   });
   assert.equal(requested.statusCode, 200);
   const withdrawal = requested.body.withdrawal as WithdrawalRequest;
   assert.equal(withdrawal.status, "pending_review");
   assert.equal(withdrawal.ownerSub, "member-1");
   assert.equal(withdrawal.amountMinor, 7_000_000);
+  assert.equal(JSON.stringify(requested.body).includes(withdrawalPassword), false);
+  assert.equal(JSON.stringify(requested.body).includes(withdrawalHash), false);
   assert.equal((await store.getById("member-1", ACTIVE_ID))?.status, "active");
   assert.equal((await store.getById("member-1", ACTIVE_ID))?.amountMinor, 100_000_000);
   assert.equal((await store.listProfits("member-1"))[0]?.profitMinor, 8_000_000);

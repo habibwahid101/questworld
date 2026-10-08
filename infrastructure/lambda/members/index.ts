@@ -183,6 +183,33 @@ export function createDynamoMemberStore(tableName: string): MemberStore {
         throw caught;
       }
     },
+    async setTransactionPassword(userId, hash, updatedAt) {
+      try {
+        const response = await document.send(
+          new UpdateCommand({
+            TableName: tableName,
+            Key: { pk: userKey(userId), sk: PROFILE_SK },
+            UpdateExpression: "SET #transactionPasswordHash = :transactionPasswordHash, #updatedAt = :updatedAt",
+            ExpressionAttributeNames: {
+              "#transactionPasswordHash": "transactionPasswordHash",
+              "#updatedAt": "updatedAt",
+            },
+            ExpressionAttributeValues: {
+              ":transactionPasswordHash": hash,
+              ":updatedAt": updatedAt,
+            },
+            ConditionExpression: "attribute_exists(pk)",
+            ReturnValues: "ALL_NEW",
+          }),
+        );
+        return response.Attributes ? itemToMember(response.Attributes) : null;
+      } catch (caught) {
+        if (isConditionalFailure(caught)) {
+          return null;
+        }
+        throw caught;
+      }
+    },
   };
 }
 
@@ -278,6 +305,7 @@ function itemToMember(item: Record<string, unknown>): MemberRecord {
     referralCode: requiredString(item.referralCode),
     sponsorUserId: optionalString(item.sponsorUserId),
     sponsorReferralCode: optionalString(item.sponsorReferralCode),
+    transactionPasswordHash: optionalString(item.transactionPasswordHash),
     createdAt: requiredString(item.createdAt),
     updatedAt: requiredString(item.updatedAt),
     status: "active",

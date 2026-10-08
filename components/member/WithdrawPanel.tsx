@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
+import { Field } from "@/components/ui/Field";
+import { PasswordField } from "@/components/auth/PasswordField";
 import { InvestmentClientError, listCurrentWithdrawals, requestCurrentWithdrawal } from "@/lib/investments/client";
 import { formatUsdtAmount, type WithdrawalRequest, type WithdrawalStatus } from "@/lib/investments/service";
 import { isMemberApiConfigured } from "@/lib/members/config";
@@ -18,6 +20,7 @@ export function WithdrawPanel() {
   const [message, setMessage] = useState<string | null>(null);
   const [loading, setLoading] = useState(isMemberApiConfigured());
   const [saving, setSaving] = useState(false);
+  const [transactionPassword, setTransactionPassword] = useState("");
 
   const load = useCallback(async () => {
     const result = await listCurrentWithdrawals();
@@ -49,13 +52,14 @@ export function WithdrawPanel() {
   }, [load]);
 
   async function requestWithdrawal() {
-    if (saving || availableMinor <= 0) {
+    if (saving || availableMinor <= 0 || transactionPassword.length === 0) {
       return;
     }
     setSaving(true);
     setMessage(null);
     try {
-      await requestCurrentWithdrawal(availableMinor);
+      await requestCurrentWithdrawal(availableMinor, transactionPassword);
+      setTransactionPassword("");
       await load();
     } catch (caught) {
       const error = caught instanceof InvestmentClientError ? caught : new InvestmentClientError("investment_request_failed", "Could not save that withdrawal request.");
@@ -82,8 +86,21 @@ export function WithdrawPanel() {
           Request the available posted profit. This does not pay out.
         </p>
         <p style={{ marginTop: 10 }}>Available {loading ? "…" : formatUsdtAmount(availableMinor)}</p>
+        <Field label="Transaction password" htmlFor="withdrawal-transaction-password">
+          <PasswordField
+            id="withdrawal-transaction-password"
+            autoComplete="off"
+            value={transactionPassword}
+            onChange={(event) => setTransactionPassword(event.target.value)}
+            disabled={saving || loading}
+          />
+        </Field>
         {message ? <p style={{ marginTop: 16 }}>{message}</p> : null}
-        <Button disabled={saving || loading || availableMinor <= 0} onClick={() => void requestWithdrawal()} style={{ marginTop: 16 }}>
+        <Button
+          disabled={saving || loading || availableMinor <= 0 || transactionPassword.length === 0}
+          onClick={() => void requestWithdrawal()}
+          style={{ marginTop: 16 }}
+        >
           {saving ? "Saving…" : "Request withdrawal"}
         </Button>
       </Card>

@@ -41,5 +41,18 @@ export function createMemoryMemberStore(): MemberStore {
       members.set(userId, next);
       return structuredClone(next);
     },
+    async setTransactionPassword(userId, hash, updatedAt) {
+      const current = members.get(userId);
+      if (!current) {
+        return null;
+      }
+      const next: MemberRecord = {
+        ...current,
+        transactionPasswordHash: hash,
+        updatedAt,
+      };
+      members.set(userId, next);
+      return structuredClone(next);
+    },
   };
 }

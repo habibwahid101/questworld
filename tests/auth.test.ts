@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { isAuthConfigured, readAuthConfig } from "../lib/auth/config.ts";
 import {
+  changeLoginPasswordWithDeps,
   confirmPasswordResetWithDeps,
   getIdTokenWithDeps,
   loadCurrentUserWithDeps,
@@ -122,6 +123,9 @@ function recordingDeps(remembered: boolean) {
       events.push("fetchAuthSession");
       return { tokens: { idToken: { toString: () => "token", payload: { sub: "member-1" } } } };
     },
+    async updatePassword() {
+      events.push("updatePassword");
+    },
   };
   return {
     deps,
@@ -177,6 +181,23 @@ test("password, logout, and signup calls configure Amplify before the auth reque
   await logoutAccountWithDeps(logout.deps);
   assert.deepEqual(logout.events, ["configure", "signOut"]);
   assert.equal(logout.events.includes("storage-local"), false);
+});
+
+test("changing the login password configures Amplify first and does not store the password", async () => {
+  const recorded = recordingDeps(true);
+  let captured: { oldPassword: string; newPassword: string } | null = null;
+  recorded.deps.updatePassword = async (input) => {
+    captured = input;
+    recorded.events.push("updatePassword");
+  };
+  await changeLoginPasswordWithDeps(recorded.deps, { currentPassword: "OldPass1!", nextPassword: "NewPass1!" });
+  assert.deepEqual(recorded.events, ["configure", "updatePassword"]);
+  assert.deepEqual(captured, { oldPassword: "OldPass1!", newPassword: "NewPass1!" });
+  assert.equal(recorded.events.includes("OldPass1!"), false);
+
+  const weak = recordingDeps(true);
+  await assert.rejects(() => changeLoginPasswordWithDeps(weak.deps, { currentPassword: "OldPass1!", nextPassword: "short" }));
+  assert.deepEqual(weak.events, []);
 });
 
 test("empty cognito identifiers are not treated as configured", () => {

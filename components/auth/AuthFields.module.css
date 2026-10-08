@@ -1,17 +1,4 @@
-.fields input {
+.accountLink {
   color: #1347b8;
-  caret-color: #1347b8;
-  font-size: 1.05rem;
   font-weight: 600;
-  -webkit-text-fill-color: #1347b8;
-}
-
-.fields input::placeholder {
-  color: #3b6fd8;
-  font-weight: 500;
-  -webkit-text-fill-color: #3b6fd8;
-}
-
-.fields input:-webkit-autofill {
-  -webkit-text-fill-color: #1347b8;
 }

@@ -83,7 +83,7 @@ export function RegisterForm() {
   }
 
   return (
-    <form className={`stack ${fieldStyles.fields}`} onSubmit={onSubmit}>
+    <form className="stack" onSubmit={onSubmit}>
       {error ? (
         <p className="form-error" role="alert">
           {error}
@@ -146,7 +146,7 @@ export function RegisterForm() {
         {submitting ? "Please wait…" : "Create Account"}
       </Button>
       <p>
-        Already have an account? <Link href="/login">Login</Link>
+        Already have an account? <Link className={fieldStyles.accountLink} href="/login">Login</Link>
       </p>
     </form>
   );

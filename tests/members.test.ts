@@ -363,9 +363,12 @@ test("a transaction password is stored only as a hash and does not change the lo
   const fields = readFileSync(new URL("../components/auth/AuthFields.module.css", import.meta.url), "utf8");
   const profile = readFileSync(new URL("../components/member/ProfilePanel.tsx", import.meta.url), "utf8");
   const withdraw = readFileSync(new URL("../components/member/WithdrawPanel.tsx", import.meta.url), "utf8");
-  assert.match(login, /fields/);
-  assert.match(register, /fields/);
+  assert.match(login, /accountLink/);
+  assert.match(register, /accountLink/);
   assert.match(fields, /#1347b8/);
+  assert.doesNotMatch(fields, /input/);
+  assert.match(profile, /Copy referral code/);
+  assert.match(profile, /Copy referral link/);
   assert.match(profile, /Change login password/);
   assert.match(profile, /Transaction password/);
   assert.match(withdraw, /transactionPassword/);

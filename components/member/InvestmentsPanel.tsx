@@ -6,6 +6,7 @@ import { Card } from "@/components/ui/Card";
 import { createCurrentInvestment, InvestmentClientError, listCurrentInvestments, readCurrentDepositAddresses, submitCurrentDeposit, type DepositWallets } from "@/lib/investments/client";
 import { formatUsdtAmount, type InvestmentRecord, type InvestmentStatus, type PlanId } from "@/lib/investments/service";
 import { isMemberApiConfigured } from "@/lib/members/config";
+import styles from "./InvestmentsPanel.module.css";
 
 const statusLabel: Record<InvestmentStatus, string> = {
   awaiting_deposit: "Awaiting deposit",
@@ -207,8 +208,10 @@ function DepositReferenceForm({
         onSubmit();
       }}
     >
-      <DepositAddressRow network="BEP20" address={wallets.bep20} copied={copiedNetwork === "BEP20"} onCopy={onCopy} />
-      <DepositAddressRow network="TRC20" address={wallets.trc20} copied={copiedNetwork === "TRC20"} onCopy={onCopy} />
+      <div className={styles.wallets}>
+        <DepositAddressRow network="BEP20" address={wallets.bep20} copied={copiedNetwork === "BEP20"} onCopy={onCopy} />
+        <DepositAddressRow network="TRC20" address={wallets.trc20} copied={copiedNetwork === "TRC20"} onCopy={onCopy} />
+      </div>
       <label htmlFor={`deposit-${investmentId}`}>Transaction reference</label>
       <input
         id={`deposit-${investmentId}`}
@@ -246,15 +249,21 @@ function DepositAddressRow({
   onCopy: (network: "BEP20" | "TRC20", address: string) => Promise<void>;
 }) {
   if (!address) {
-    return <p>The {network} deposit address is not configured.</p>;
+    return (
+      <Card>
+        <p className={styles.network}>{network}</p>
+        <p style={{ marginTop: 8 }}>The {network} deposit address is not configured.</p>
+      </Card>
+    );
   }
   return (
-    <p>
-      {network} {address}{" "}
+    <Card>
+      <p className={styles.network}>{network}</p>
+      <p className={styles.address}>{address}</p>
       <Button type="button" variant="secondary" onClick={() => void onCopy(network, address)}>
         {copied ? "Copied" : "Copy"}
       </Button>
-    </p>
+    </Card>
   );
 }
 

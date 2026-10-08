@@ -12,6 +12,17 @@ export class InvestmentClientError extends Error {
   }
 }
 
+export async function readCurrentInvestment(investmentId: string): Promise<InvestmentRecord> {
+  const payload = await investmentRequest<{ investment?: InvestmentRecord }>(
+    "GET",
+    `/investments/${encodeURIComponent(investmentId)}`,
+  );
+  if (!payload.investment) {
+    throw new InvestmentClientError("investment_not_found", "That investment was not found.");
+  }
+  return payload.investment;
+}
+
 export async function listCurrentInvestments(): Promise<InvestmentRecord[]> {
   const payload = await investmentRequest<{ investments?: InvestmentRecord[] }>("GET", "/investments");
   return payload.investments ?? [];

@@ -19,6 +19,8 @@ import { normalizeReferralCode, rememberPendingReferral, PENDING_REFERRAL_KEY } 
 
 test("member routes are protected and public referral page is not", () => {
   assert.equal(isMemberPath("/dashboard"), true);
+  assert.equal(isMemberPath("/investments"), true);
+  assert.equal(isMemberPath("/investments/inv_1"), true);
   assert.equal(isMemberPath("/referrals/dashboard"), true);
   assert.equal(isMemberPath("/referrals"), false);
   assert.equal(isProtectedPath("/wallet"), true);

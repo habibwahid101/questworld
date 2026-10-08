@@ -956,7 +956,17 @@ test("plan cards use the catalog amounts, the given descriptions, and mark 8 per
   assert.equal(planMonthlyRateLabel(), "8% monthly");
   assert.equal(PLAN_RATE_NOTE, "Not a payout.");
   const panel = readFileSync(new URL("../components/member/InvestmentsPanel.tsx", import.meta.url), "utf8");
+  const payment = readFileSync(new URL("../components/member/InvestmentPaymentPanel.tsx", import.meta.url), "utf8");
   assert.match(panel, /"Choose"/);
   assert.match(panel, /formatUsdtAmount\(plan\.amountMinor\)/);
+  assert.match(panel, /Continue to payment/);
   assert.doesNotMatch(panel, /createCurrentInvestment\([^)]*amount/);
+  assert.doesNotMatch(panel, /Transaction reference/);
+  assert.doesNotMatch(panel, /submitCurrentDeposit/);
+  assert.match(payment, /Transaction reference/);
+  assert.match(payment, /Screenshot, optional/);
+  assert.match(payment, /submitCurrentDeposit/);
+  assert.match(payment, /does not move money/);
+  assert.doesNotMatch(payment, /0x61440ed26b7527b186b34a661be1e07b9a67f3fe/);
+  assert.doesNotMatch(payment, /TMuGe7QWieZR1sMKQRLhS9FxE7GTLi87Hg/);
 });

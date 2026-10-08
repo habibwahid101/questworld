@@ -1,9 +1,10 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
-import { createCurrentInvestment, InvestmentClientError, listCurrentInvestments, readCurrentDepositAddresses, submitCurrentDeposit, type DepositWallets } from "@/lib/investments/client";
+import { createCurrentInvestment, InvestmentClientError, listCurrentInvestments } from "@/lib/investments/client";
 import { formatUsdtAmount, investmentCatalog, type InvestmentRecord, type InvestmentStatus, type PlanId } from "@/lib/investments/service";
 import { PLAN_DESCRIPTIONS, PLAN_RATE_NOTE, planMonthlyRateLabel } from "@/lib/investments/plan-copy";
 import { isMemberApiConfigured } from "@/lib/members/config";
@@ -18,22 +19,15 @@ const statusLabel: Record<InvestmentStatus, string> = {
 };
 
 export function InvestmentsPanel() {
+  const router = useRouter();
   const [investments, setInvestments] = useState<InvestmentRecord[]>([]);
   const [message, setMessage] = useState<string | null>(null);
   const [loading, setLoading] = useState(isMemberApiConfigured());
   const [savingPlan, setSavingPlan] = useState<PlanId | null>(null);
-  const [savingDepositId, setSavingDepositId] = useState<string | null>(null);
-  const [references, setReferences] = useState<Record<string, string>>({});
-  const [screenshots, setScreenshots] = useState<Record<string, File | null>>({});
-  const [copiedNetwork, setCopiedNetwork] = useState<"BEP20" | "TRC20" | null>(null);
-  const [depositWallets, setDepositWallets] = useState<DepositWallets>({ bep20: "", trc20: "" });
   const pendingKeys = useRef<Partial<Record<PlanId, string>>>({});
-  const depositKeys = useRef<Record<string, string>>({});
 
   const load = useCallback(async () => {
-    const [records, wallets] = await Promise.all([listCurrentInvestments(), readCurrentDepositAddresses()]);
-    setInvestments(records);
-    setDepositWallets(wallets);
+    setInvestments(await listCurrentInvestments());
     setMessage(null);
   }, []);
 
@@ -58,7 +52,7 @@ export function InvestmentsPanel() {
   }, [load]);
 
   async function choosePlan(planId: PlanId) {
-    if (savingPlan || savingDepositId) {
+    if (savingPlan) {
       return;
     }
     setSavingPlan(planId);
@@ -66,36 +60,13 @@ export function InvestmentsPanel() {
     const idempotencyKey = pendingKeys.current[planId] ?? crypto.randomUUID();
     pendingKeys.current[planId] = idempotencyKey;
     try {
-      await createCurrentInvestment(planId, idempotencyKey);
+      const record = await createCurrentInvestment(planId, idempotencyKey);
       delete pendingKeys.current[planId];
-      await load();
+      router.push(`/investments/${encodeURIComponent(record.investmentId)}`);
     } catch (caught) {
       const error = caught instanceof InvestmentClientError ? caught : new InvestmentClientError("investment_request_failed", "Could not record that investment.");
       setMessage(error.message);
-    } finally {
       setSavingPlan(null);
-    }
-  }
-
-  async function submitReference(investmentId: string) {
-    if (savingPlan || savingDepositId) {
-      return;
-    }
-    const reference = references[investmentId]?.trim() ?? "";
-    setSavingDepositId(investmentId);
-    setMessage(null);
-    const idempotencyKey = depositKeys.current[investmentId] ?? crypto.randomUUID();
-    depositKeys.current[investmentId] = idempotencyKey;
-    try {
-      const screenshot = await screenshotFromFile(screenshots[investmentId]);
-      await submitCurrentDeposit(investmentId, reference, idempotencyKey, screenshot);
-      delete depositKeys.current[investmentId];
-      await load();
-    } catch (caught) {
-      const error = caught instanceof InvestmentClientError ? caught : new InvestmentClientError("investment_request_failed", "Could not save that deposit reference.");
-      setMessage(error.message);
-    } finally {
-      setSavingDepositId(null);
     }
   }
 
@@ -113,7 +84,7 @@ export function InvestmentsPanel() {
       <Card>
         <h1>Investments</h1>
         <p className="lead" style={{ marginTop: 12 }}>
-          Choose a listed plan to record an investment. A deposit reference is stored for review. This does not move money.
+          Choose a listed plan to record an investment. This does not move money.
         </p>
         <div className={styles.plans}>
           {(Object.keys(investmentCatalog) as PlanId[]).map((planId) => {
@@ -127,7 +98,7 @@ export function InvestmentsPanel() {
                 <p className={styles.note}>{PLAN_RATE_NOTE}</p>
                 <Button
                   type="button"
-                  disabled={savingPlan !== null || savingDepositId !== null}
+                  disabled={savingPlan !== null}
                   onClick={() => void choosePlan(planId)}
                 >
                   {savingPlan === planId ? "Recording…" : "Choose"}
@@ -155,21 +126,9 @@ export function InvestmentsPanel() {
             <p style={{ marginTop: 10 }}>Status: {statusLabel[investment.status]}</p>
             <p>Recorded {new Date(investment.createdAt).toLocaleString()}</p>
             {investment.status === "awaiting_deposit" ? (
-              <DepositReferenceForm
-                investmentId={investment.investmentId}
-                reference={references[investment.investmentId] ?? ""}
-                saving={savingPlan !== null || savingDepositId !== null}
-                submitting={savingDepositId === investment.investmentId}
-                copiedNetwork={copiedNetwork}
-                wallets={depositWallets}
-                onReference={(value) => setReferences((current) => ({ ...current, [investment.investmentId]: value }))}
-                onScreenshot={(file) => setScreenshots((current) => ({ ...current, [investment.investmentId]: file }))}
-                onCopy={async (network, address) => {
-                  await navigator.clipboard.writeText(address);
-                  setCopiedNetwork(network);
-                }}
-                onSubmit={() => void submitReference(investment.investmentId)}
-              />
+              <Button href={`/investments/${encodeURIComponent(investment.investmentId)}`} variant="secondary" className={styles.paymentLink}>
+                Continue to payment
+              </Button>
             ) : null}
             {investment.depositReference ? <p style={{ marginTop: 10 }}>Reference {investment.depositReference}</p> : null}
             {investment.depositProofKey ? <p>Screenshot received</p> : null}
@@ -178,112 +137,4 @@ export function InvestmentsPanel() {
       )}
     </div>
   );
-}
-
-function DepositReferenceForm({
-  investmentId,
-  reference,
-  saving,
-  submitting,
-  copiedNetwork,
-  wallets,
-  onReference,
-  onScreenshot,
-  onCopy,
-  onSubmit,
-}: {
-  investmentId: string;
-  reference: string;
-  saving: boolean;
-  submitting: boolean;
-  copiedNetwork: "BEP20" | "TRC20" | null;
-  wallets: DepositWallets;
-  onReference: (value: string) => void;
-  onScreenshot: (file: File | null) => void;
-  onCopy: (network: "BEP20" | "TRC20", address: string) => Promise<void>;
-  onSubmit: () => void;
-}) {
-  return (
-    <form
-      style={{ marginTop: 16 }}
-      onSubmit={(event) => {
-        event.preventDefault();
-        onSubmit();
-      }}
-    >
-      <div className={styles.wallets}>
-        <DepositAddressRow network="BEP20" address={wallets.bep20} copied={copiedNetwork === "BEP20"} onCopy={onCopy} />
-        <DepositAddressRow network="TRC20" address={wallets.trc20} copied={copiedNetwork === "TRC20"} onCopy={onCopy} />
-      </div>
-      <label htmlFor={`deposit-${investmentId}`}>Transaction reference</label>
-      <input
-        id={`deposit-${investmentId}`}
-        value={reference}
-        onChange={(event) => onReference(event.target.value)}
-        autoComplete="off"
-        style={{ display: "block", width: "100%", marginTop: 8 }}
-      />
-      <label htmlFor={`proof-${investmentId}`} style={{ display: "block", marginTop: 12 }}>
-        Screenshot, optional
-      </label>
-      <input
-        id={`proof-${investmentId}`}
-        type="file"
-        accept="image/jpeg,image/png,image/webp"
-        onChange={(event) => onScreenshot(event.target.files?.[0] ?? null)}
-        style={{ display: "block", marginTop: 8 }}
-      />
-      <Button type="submit" disabled={saving} style={{ marginTop: 12 }}>
-        {submitting ? "Submitting…" : "Submit reference"}
-      </Button>
-    </form>
-  );
-}
-
-function DepositAddressRow({
-  network,
-  address,
-  copied,
-  onCopy,
-}: {
-  network: "BEP20" | "TRC20";
-  address: string;
-  copied: boolean;
-  onCopy: (network: "BEP20" | "TRC20", address: string) => Promise<void>;
-}) {
-  if (!address) {
-    return (
-      <Card>
-        <p className={styles.network}>{network}</p>
-        <p style={{ marginTop: 8 }}>The {network} deposit address is not configured.</p>
-      </Card>
-    );
-  }
-  return (
-    <Card>
-      <p className={styles.network}>{network}</p>
-      <p className={styles.address}>{address}</p>
-      <Button type="button" variant="secondary" onClick={() => void onCopy(network, address)}>
-        {copied ? "Copied" : "Copy"}
-      </Button>
-    </Card>
-  );
-}
-
-async function screenshotFromFile(file: File | null | undefined): Promise<{ contentType: string; dataBase64: string } | undefined> {
-  if (!file) {
-    return undefined;
-  }
-  if (file.type !== "image/jpeg" && file.type !== "image/png" && file.type !== "image/webp") {
-    throw new InvestmentClientError("invalid_screenshot", "The screenshot must be a JPEG, PNG, or WebP image.");
-  }
-  if (file.size > 1_500_000) {
-    throw new InvestmentClientError("invalid_screenshot", "The screenshot must be a JPEG, PNG, or WebP image under 1.5 MB.");
-  }
-  const bytes = new Uint8Array(await file.arrayBuffer());
-  let binary = "";
-  for (const byte of bytes) {
-    binary += String.fromCharCode(byte);
-  }
-  return { contentType: file.type, dataBase64: btoa(binary) };
 }

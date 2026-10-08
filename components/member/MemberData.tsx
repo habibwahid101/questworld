@@ -2,6 +2,7 @@
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { clearPendingReferral, readPendingReferral } from "@/lib/auth/referral";
+import { clearPendingSignupProfile, readPendingSignupProfile } from "@/lib/auth/signup-profile";
 import { MemberClientError, initializeCurrentMember, updateCurrentMember } from "@/lib/members/client";
 import { isMemberApiConfigured } from "@/lib/members/config";
 import type { MemberProfile } from "@/lib/members/service";
@@ -27,6 +28,7 @@ export function MemberDataProvider({ children }: { children: React.ReactNode }) 
 
   const applySuccess = useCallback((next: MemberProfile) => {
     clearPendingReferral(window.localStorage);
+    clearPendingSignupProfile(window.sessionStorage);
     setMember(next);
     setMessage(null);
     setReferralBlocked(false);
@@ -35,7 +37,7 @@ export function MemberDataProvider({ children }: { children: React.ReactNode }) 
 
   const initialize = useCallback(
     async (referralCode: string) => {
-      const next = await initializeCurrentMember(referralCode);
+      const next = await initializeCurrentMember(referralCode, readPendingSignupProfile(window.sessionStorage));
       applySuccess(next);
     },
     [applySuccess],

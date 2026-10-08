@@ -14,6 +14,8 @@ export type MemberRecord = {
   userId: string;
   email: string;
   name: string;
+  firstName: string | null;
+  lastName: string | null;
   phone: string | null;
   country: string | null;
   referralCode: string;
@@ -92,6 +94,8 @@ export function toMemberProfile(record: MemberRecord): MemberProfile {
     userId: record.userId,
     email: record.email,
     name: record.name,
+    firstName: record.firstName,
+    lastName: record.lastName,
     phone: record.phone,
     country: record.country,
     referralCode: record.referralCode,
@@ -145,6 +149,7 @@ export function identityFromClaims(
 export async function initializeMember(input: {
   identity: MemberIdentity;
   referralCode?: string;
+  profile?: { firstName: string; lastName: string; phone: string } | null;
   store: MemberStore;
   now: () => string;
   newReferralCode?: () => string;
@@ -167,8 +172,10 @@ export async function initializeMember(input: {
     const member: MemberRecord = {
       userId: input.identity.userId,
       email: input.identity.email,
-      name: clampName(input.identity.name),
-      phone: null,
+      name: input.profile ? clampName(`${input.profile.firstName} ${input.profile.lastName}`) : clampName(input.identity.name),
+      firstName: input.profile?.firstName ?? null,
+      lastName: input.profile?.lastName ?? null,
+      phone: input.profile?.phone ?? null,
       country: null,
       referralCode,
       sponsorUserId: sponsor?.userId ?? null,
@@ -240,9 +247,11 @@ export async function handleMemberApi(input: {
   try {
     if (method === "POST" && path === "/me/initialize") {
       const referralCode = referralFromBody(input.body);
+      const profile = profileFromBody(input.body);
       const record = await initializeMember({
         identity,
         referralCode,
+        profile,
         store: input.store,
         now,
         newReferralCode: input.newReferralCode,
@@ -354,6 +363,41 @@ function optionalText(value: unknown, max: number, message: string): string | nu
     throw new MemberRequestError(400, "invalid_body", message);
   }
   return trimmed;
+}
+
+function profileFromBody(body: unknown): { firstName: string; lastName: string; phone: string } | null {
+  if (!body || typeof body !== "object" || Array.isArray(body)) {
+    return null;
+  }
+  const source = body as Record<string, unknown>;
+  if (!("firstName" in source) && !("lastName" in source) && !("phone" in source)) {
+    return null;
+  }
+  const firstName = personName(source.firstName, "Enter a first name.");
+  const lastName = personName(source.lastName, "Enter a last name.");
+  if (`${firstName} ${lastName}`.length > NAME_MAX) {
+    throw new MemberRequestError(400, "invalid_body", "Enter a shorter name.");
+  }
+  const phone = mobileNumber(source.phone);
+  return { firstName, lastName, phone };
+}
+
+function personName(value: unknown, message: string): string {
+  if (typeof value !== "string") {
+    throw new MemberRequestError(400, "invalid_body", message);
+  }
+  const trimmed = value.trim();
+  if (!trimmed || trimmed.length > 40) {
+    throw new MemberRequestError(400, "invalid_body", message);
+  }
+  return trimmed;
+}
+
+function mobileNumber(value: unknown): string {
+  if (typeof value !== "string" || !/^[0-9+().\-\s]{6,32}$/.test(value.trim()) || value.replace(/\D/g, "").length < 6) {
+    throw new MemberRequestError(400, "invalid_body", "Enter a mobile number.");
+  }
+  return value.trim();
 }
 
 function referralFromBody(body: unknown): string {

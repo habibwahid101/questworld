@@ -12,10 +12,20 @@ export class MemberClientError extends Error {
   }
 }
 
-export async function initializeCurrentMember(referralCode: string): Promise<MemberProfile> {
-  const body = referralCode ? { referralCode } : {};
-  const payload = await memberRequest("POST", "/me/initialize", body);
-  return payload;
+export async function initializeCurrentMember(
+  referralCode: string,
+  profile?: { firstName: string; lastName: string; phone: string } | null,
+): Promise<MemberProfile> {
+  const body: Record<string, string> = {};
+  if (referralCode) {
+    body.referralCode = referralCode;
+  }
+  if (profile) {
+    body.firstName = profile.firstName;
+    body.lastName = profile.lastName;
+    body.phone = profile.phone;
+  }
+  return memberRequest("POST", "/me/initialize", body);
 }
 
 export async function readCurrentMember(): Promise<MemberProfile> {

@@ -271,6 +271,8 @@ function itemToMember(item: Record<string, unknown>): MemberRecord {
     userId: requiredString(item.userId),
     email: requiredString(item.email),
     name: requiredString(item.name),
+    firstName: optionalString(item.firstName),
+    lastName: optionalString(item.lastName),
     phone: optionalString(item.phone),
     country: optionalString(item.country),
     referralCode: requiredString(item.referralCode),

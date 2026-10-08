@@ -247,3 +247,66 @@ test("the member list read scans only the members table and does not delete", ()
   assert.doesNotMatch(membersPolicy, /dynamodb:DeleteItem/);
   assert.doesNotMatch(membersPolicy, /new dynamodb\.Table/);
 });
+
+test("signup stores both names and the mobile number without changing an existing profile", async () => {
+  const store = createMemoryMemberStore();
+  const created = await initialize(
+    store,
+    "user-new",
+    { firstName: "Ada", lastName: "Lovelace", phone: "+1 555 0100", referralCode: "QWNOBODY01" },
+    () => "QWNEW00001",
+  );
+  assert.equal(created.statusCode, 400);
+
+  const saved = await initialize(
+    store,
+    "user-new",
+    { firstName: "Ada", lastName: "Lovelace", phone: "+1 555 0100" },
+    () => "QWNEW00001",
+  );
+  assert.equal(saved.statusCode, 200);
+  const member = saved.body.member as {
+    name: string;
+    firstName: string;
+    lastName: string;
+    phone: string;
+    referralCode: string;
+  };
+  assert.equal(member.name, "Ada Lovelace");
+  assert.equal(member.firstName, "Ada");
+  assert.equal(member.lastName, "Lovelace");
+  assert.equal(member.phone, "+1 555 0100");
+  assert.equal(member.referralCode, "QWNEW00001");
+
+  const again = await initialize(
+    store,
+    "user-new",
+    { firstName: "Other", lastName: "Person", phone: "+44 7700 900123" },
+    () => "QWCHANGED1",
+  );
+  assert.equal(again.statusCode, 200);
+  const kept = again.body.member as { firstName: string; phone: string; referralCode: string };
+  assert.equal(kept.firstName, "Ada");
+  assert.equal(kept.phone, "+1 555 0100");
+  assert.equal(kept.referralCode, "QWNEW00001");
+});
+
+test("account forms show password eyes and do not store the password", () => {
+  const register = readFileSync(new URL("../components/auth/RegisterForm.tsx", import.meta.url), "utf8");
+  const login = readFileSync(new URL("../components/auth/LoginForm.tsx", import.meta.url), "utf8");
+  const reset = readFileSync(new URL("../components/auth/ResetPasswordForm.tsx", import.meta.url), "utf8");
+  const pending = readFileSync(new URL("../lib/auth/signup-profile.ts", import.meta.url), "utf8");
+  const registerOrder = ["firstName", "lastName", "email", "phone", "password", "confirmPassword", "referralCode"];
+  let cursor = 0;
+  for (const field of registerOrder) {
+    const next = register.indexOf(`name="${field}"`, cursor);
+    assert.ok(next > cursor, field);
+    cursor = next;
+  }
+  assert.match(register, /password !== confirmPassword/);
+  assert.match(login, /PasswordField/);
+  assert.match(register, /PasswordField/);
+  assert.match(reset, /PasswordField/);
+  assert.match(readFileSync(new URL("../components/auth/PasswordField.tsx", import.meta.url), "utf8"), /Show password/);
+  assert.doesNotMatch(pending, /password/);
+});

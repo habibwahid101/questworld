@@ -576,6 +576,16 @@ test("the investment Lambda reads member profiles only to resolve sponsors", () 
   assert.doesNotMatch(membersRead, /dynamodb:DeleteItem/);
 });
 
+test("deposit address saves are allowed by CORS", () => {
+  const source = readFileSync(new URL("../infrastructure/lib/api-stack.ts", import.meta.url), "utf8");
+  const cors = source.slice(source.indexOf("corsPreflight:"), source.indexOf("allowHeaders:"));
+  assert.match(cors, /CorsHttpMethod\.GET/);
+  assert.match(cors, /CorsHttpMethod\.POST/);
+  assert.match(cors, /CorsHttpMethod\.PUT/);
+  assert.match(cors, /CorsHttpMethod\.PATCH/);
+  assert.match(cors, /CorsHttpMethod\.OPTIONS/);
+});
+
 test("monthly profit posts once for an active investment and only the owner can read it", async () => {
   const active: InvestmentRecord = {
     investmentId: ACTIVE_ID,

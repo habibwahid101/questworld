@@ -323,6 +323,16 @@ export function createDynamoInvestmentStore(tableName: string): InvestmentStore 
             left.investmentId.localeCompare(right.investmentId),
         );
     },
+    async listAllInvestments() {
+      const items = await scanMatches(tableName, {
+        FilterExpression: "begins_with(sk, :prefix)",
+        ExpressionAttributeNames: {},
+        ExpressionAttributeValues: { ":prefix": INVESTMENT_PREFIX },
+      });
+      return items
+        .map((item) => itemToInvestment(item))
+        .sort((left, right) => right.createdAt.localeCompare(left.createdAt) || left.investmentId.localeCompare(right.investmentId));
+    },
     async reviewDeposit(review) {
       return reviewStoredDeposit(tableName, review);
     },
@@ -377,6 +387,16 @@ export function createDynamoInvestmentStore(tableName: string): InvestmentStore 
         (left, right) => right.period.localeCompare(left.period) || left.investmentId.localeCompare(right.investmentId),
       );
     },
+    async listAllProfits() {
+      const items = await scanMatches(tableName, {
+        FilterExpression: "begins_with(sk, :prefix)",
+        ExpressionAttributeNames: {},
+        ExpressionAttributeValues: { ":prefix": PROFIT_PREFIX },
+      });
+      return items
+        .map((item) => profitFromStoredItem(item))
+        .sort((left, right) => right.period.localeCompare(left.period) || left.investmentId.localeCompare(right.investmentId));
+    },
     async putCommission(entry) {
       try {
         await document.send(
@@ -425,6 +445,21 @@ export function createDynamoInvestmentStore(tableName: string): InvestmentStore 
           left.investmentId.localeCompare(right.investmentId),
       );
     },
+    async listAllCommissions() {
+      const items = await scanMatches(tableName, {
+        FilterExpression: "begins_with(sk, :prefix)",
+        ExpressionAttributeNames: {},
+        ExpressionAttributeValues: { ":prefix": COMMISSION_PREFIX },
+      });
+      return items
+        .map((item) => commissionFromStoredItem(item))
+        .sort(
+          (left, right) =>
+            right.period.localeCompare(left.period) ||
+            left.generation - right.generation ||
+            left.investmentId.localeCompare(right.investmentId),
+        );
+    },
     async putWithdrawal(request) {
       try {
         await document.send(
@@ -469,6 +504,16 @@ export function createDynamoInvestmentStore(tableName: string): InvestmentStore 
       return records.sort(
         (left, right) => right.createdAt.localeCompare(left.createdAt) || left.withdrawalId.localeCompare(right.withdrawalId),
       );
+    },
+    async listAllWithdrawals() {
+      const items = await scanMatches(tableName, {
+        FilterExpression: "begins_with(sk, :prefix)",
+        ExpressionAttributeNames: {},
+        ExpressionAttributeValues: { ":prefix": WITHDRAWAL_PREFIX },
+      });
+      return items
+        .map((item) => withdrawalFromStoredItem(item))
+        .sort((left, right) => right.createdAt.localeCompare(left.createdAt) || left.withdrawalId.localeCompare(right.withdrawalId));
     },
     async getById(ownerSub, investmentId) {
       const response = await document.send(

@@ -3,7 +3,8 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Card } from "@/components/ui/Card";
-import { InvestmentClientError, listPendingDeposits, listVerifiedDeposits } from "@/lib/investments/client";
+import { InvestmentClientError, listAdminInvestments, listAdminWithdrawals, listPendingDeposits, listVerifiedDeposits } from "@/lib/investments/client";
+import { INVESTMENT_CURRENCY, INVESTMENT_SCALE, formatUsdtAmount } from "@/lib/investments/service";
 import { listStoredMembers } from "@/lib/members/client";
 import { isMemberApiConfigured } from "@/lib/members/config";
 
@@ -11,6 +12,9 @@ export function AdminOverviewPanel() {
   const [pending, setPending] = useState<number | null>();
   const [verified, setVerified] = useState<number | null>();
   const [memberCount, setMemberCount] = useState<number | null>();
+  const [activeCount, setActiveCount] = useState<number | null>();
+  const [activeTotal, setActiveTotal] = useState<number | null>();
+  const [pendingWithdrawals, setPendingWithdrawals] = useState<number | null>();
   const [message, setMessage] = useState<string | null>(null);
 
   useEffect(() => {
@@ -18,14 +22,37 @@ export function AdminOverviewPanel() {
       return;
     }
     let active = true;
-    void Promise.allSettled([listPendingDeposits(), listVerifiedDeposits(), listStoredMembers()]).then(([pendingResult, verifiedResult, membersResult]) => {
+    void Promise.allSettled([
+      listPendingDeposits(),
+      listVerifiedDeposits(),
+      listStoredMembers(),
+      listAdminInvestments(),
+      listAdminWithdrawals(),
+    ]).then(([pendingResult, verifiedResult, membersResult, investmentsResult, withdrawalsResult]) => {
       if (!active) {
         return;
       }
       setPending(pendingResult.status === "fulfilled" ? pendingResult.value.length : null);
       setVerified(verifiedResult.status === "fulfilled" ? verifiedResult.value.length : null);
       setMemberCount(membersResult.status === "fulfilled" ? membersResult.value.length : null);
-      const failed = [pendingResult, verifiedResult, membersResult].find((result) => result.status === "rejected");
+      if (investmentsResult.status === "fulfilled") {
+        const activeInvestments = investmentsResult.value.filter((record) => record.status === "active");
+        setActiveCount(activeInvestments.length);
+        setActiveTotal(
+          activeInvestments.every((record) => record.currency === INVESTMENT_CURRENCY && record.scale === INVESTMENT_SCALE)
+            ? activeInvestments.reduce((sum, record) => sum + record.amountMinor, 0)
+            : null,
+        );
+      } else {
+        setActiveCount(null);
+        setActiveTotal(null);
+      }
+      setPendingWithdrawals(
+        withdrawalsResult.status === "fulfilled"
+          ? withdrawalsResult.value.filter((request) => request.status === "pending_review").length
+          : null,
+      );
+      const failed = [pendingResult, verifiedResult, membersResult, investmentsResult, withdrawalsResult].find((result) => result.status === "rejected");
       if (failed?.status === "rejected") {
         const caught = failed.reason;
         setMessage(caught instanceof InvestmentClientError || caught instanceof Error ? caught.message : "Could not load those counts.");
@@ -50,7 +77,7 @@ export function AdminOverviewPanel() {
       <Card>
         <h1>Admin</h1>
         <p className="lead" style={{ marginTop: 12 }}>
-          Deposit counts come from the pending and verified lists. The member count comes from the stored member list. Withdrawal lists are not available.
+          Deposit counts come from the pending and verified lists. Active investment figures come from the stored investment list. Pending withdrawals come from stored requests.
         </p>
         {message ? <p style={{ marginTop: 16 }}>{message}</p> : null}
       </Card>
@@ -58,7 +85,15 @@ export function AdminOverviewPanel() {
         <CountCard label="Members" count={memberCount} href="/admin/users" link="Users" />
         <CountCard label="Pending deposits" count={pending} href="/admin/deposits" link="Deposits" />
         <CountCard label="Verified deposits" count={verified} href="/admin/deposits" link="Deposits" />
-        <UnavailableCard label="Pending withdrawals" detail="There is no pending-withdrawal list to read." href="/admin/withdrawals" link="Withdrawals" />
+        <CountCard label="Active investments" count={activeCount} href="/admin/investments" link="Investments" />
+        <Card>
+          <p className="eyebrow">Active total</p>
+          <h2>{activeTotal === undefined ? "…" : activeTotal === null ? "Could not total" : formatUsdtAmount(activeTotal, INVESTMENT_SCALE)}</h2>
+          <p style={{ marginTop: 10 }}>
+            <Link href="/admin/investments">Investments</Link>
+          </p>
+        </Card>
+        <CountCard label="Pending withdrawals" count={pendingWithdrawals} href="/admin/withdrawals" link="Withdrawals" />
       </div>
     </div>
   );
@@ -77,15 +112,3 @@ function CountCard({ label, count, href, link }: { label: string; count: number 
   );
 }
 
-function UnavailableCard({ label, detail, href, link }: { label: string; detail: string; href: string; link: string }) {
-  return (
-    <Card>
-      <p className="eyebrow">{label}</p>
-      <h2>No list</h2>
-      <p style={{ marginTop: 10 }}>{detail}</p>
-      <p style={{ marginTop: 10 }}>
-        <Link href={href}>{link}</Link>
-      </p>
-    </Card>
-  );
-}

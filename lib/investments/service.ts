@@ -176,15 +176,19 @@ export type InvestmentStore = {
   submitDeposit(submission: DepositSubmission): Promise<DepositSubmissionResult>;
   listPendingDeposits(): Promise<InvestmentRecord[]>;
   listVerifiedDeposits(): Promise<InvestmentRecord[]>;
+  listAllInvestments(): Promise<InvestmentRecord[]>;
   reviewDeposit(review: DepositReview): Promise<DepositReviewResult>;
   activateInvestment(activation: InvestmentActivation): Promise<InvestmentActivationResult>;
   listActiveInvestments(): Promise<InvestmentRecord[]>;
   putProfit(entry: ProfitEntry): Promise<"created" | "duplicate">;
   listProfits(ownerSub: string): Promise<ProfitEntry[]>;
+  listAllProfits(): Promise<ProfitEntry[]>;
   putCommission(entry: CommissionEntry): Promise<"created" | "duplicate">;
   listCommissions(recipientSub: string): Promise<CommissionEntry[]>;
+  listAllCommissions(): Promise<CommissionEntry[]>;
   putWithdrawal(request: WithdrawalRequest): Promise<"created" | "duplicate">;
   listWithdrawals(ownerSub: string): Promise<WithdrawalRequest[]>;
+  listAllWithdrawals(): Promise<WithdrawalRequest[]>;
   getById(ownerSub: string, investmentId: string): Promise<InvestmentRecord | null>;
   listByOwner(ownerSub: string): Promise<InvestmentRecord[]>;
   getDepositAddress(): Promise<DepositAddress | null>;
@@ -685,6 +689,30 @@ export async function handleInvestmentApi(input: {
         updatedBy: identity.userId,
       });
       return { statusCode: 200, body: addresses };
+    }
+    if (method === "GET" && path === "/admin/investments") {
+      if (!isAdminClaims(input.claims)) {
+        return errorBody(403, "forbidden", "Admin access is required.");
+      }
+      return { statusCode: 200, body: { investments: await input.store.listAllInvestments() } };
+    }
+    if (method === "GET" && path === "/admin/profits") {
+      if (!isAdminClaims(input.claims)) {
+        return errorBody(403, "forbidden", "Admin access is required.");
+      }
+      return { statusCode: 200, body: { profits: await input.store.listAllProfits() } };
+    }
+    if (method === "GET" && path === "/admin/commissions") {
+      if (!isAdminClaims(input.claims)) {
+        return errorBody(403, "forbidden", "Admin access is required.");
+      }
+      return { statusCode: 200, body: { commissions: await input.store.listAllCommissions() } };
+    }
+    if (method === "GET" && path === "/admin/withdrawals") {
+      if (!isAdminClaims(input.claims)) {
+        return errorBody(403, "forbidden", "Admin access is required.");
+      }
+      return { statusCode: 200, body: { withdrawals: await input.store.listAllWithdrawals() } };
     }
     if (path === "/admin/deposits" || path.startsWith("/admin/deposits/")) {
       if (!isAdminClaims(input.claims)) {

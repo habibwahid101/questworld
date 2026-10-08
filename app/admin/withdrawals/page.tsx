@@ -1,13 +1,8 @@
 import type { Metadata } from "next";
-import { PagePlaceholder } from "@/components/shared/PagePlaceholder";
+import { AdminWithdrawalsPanel } from "@/components/admin/AdminWithdrawalsPanel";
 
 export const metadata: Metadata = { title: "Withdrawals" };
 
 export default function AdminWithdrawalsPage() {
-  return (
-    <PagePlaceholder
-      title="Withdrawals"
-      description="Withdrawal approval and payout actions are reserved for a later approved step."
-    />
-  );
+  return <AdminWithdrawalsPanel />;
 }

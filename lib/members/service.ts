@@ -1,3 +1,5 @@
+import { isAdminClaims } from "../investments/service.ts";
+
 /**
  * Member profile rules for Step 04.
  * Cognito `sub` is the permanent member id. The client cannot choose it,
@@ -24,6 +26,14 @@ export type MemberRecord = {
 
 export type MemberProfile = Omit<MemberRecord, "sponsorUserId">;
 
+export type ListedMember = {
+  name: string;
+  email: string;
+  role: "Admin" | "Member";
+  referralCode: string;
+  sponsorReferralCode: string | null;
+};
+
 export type MemberIdentity = {
   userId: string;
   email: string;
@@ -42,6 +52,7 @@ export type ProfilePatch = {
 export type MemberStore = {
   getByUserId(userId: string): Promise<MemberRecord | null>;
   getUserIdByReferralCode(code: string): Promise<string | null>;
+  listMembers(): Promise<MemberRecord[]>;
   createMember(member: MemberRecord): Promise<CreateResult>;
   updateProfile(userId: string, patch: ProfilePatch): Promise<MemberRecord | null>;
 };
@@ -62,6 +73,19 @@ const CODE_PATTERN = /^[A-Z0-9]{4,32}$/;
 const NAME_MAX = 80;
 const PHONE_MAX = 32;
 const COUNTRY_MAX = 56;
+
+function toListedMembers(records: readonly MemberRecord[], adminIds: readonly string[]): ListedMember[] {
+  const admins = new Set(adminIds.map((id) => id.trim().toLowerCase()).filter((id) => id.length > 0));
+  return records
+    .map((record) => ({
+      name: record.name,
+      email: record.email,
+      role: admins.has(record.userId.toLowerCase()) || admins.has(record.email.toLowerCase()) ? "Admin" as const : "Member" as const,
+      referralCode: record.referralCode,
+      sponsorReferralCode: record.sponsorReferralCode,
+    }))
+    .sort((left, right) => left.name.localeCompare(right.name) || left.email.localeCompare(right.email));
+}
 
 export function toMemberProfile(record: MemberRecord): MemberProfile {
   return {
@@ -202,6 +226,7 @@ export async function handleMemberApi(input: {
   store: MemberStore;
   now?: () => string;
   newReferralCode?: () => string;
+  adminUserIds?: () => Promise<readonly string[]>;
 }): Promise<{ statusCode: number; body: Record<string, unknown> }> {
   const identity = identityFromClaims(input.claims);
   if (!identity) {
@@ -223,6 +248,17 @@ export async function handleMemberApi(input: {
         newReferralCode: input.newReferralCode,
       });
       return { statusCode: 200, body: { member: toMemberProfile(record) } };
+    }
+
+    if (method === "GET" && path === "/admin/members") {
+      if (!isAdminClaims(input.claims)) {
+        return errorBody(403, "forbidden", "Admin access is required.");
+      }
+      if (!input.adminUserIds) {
+        return errorBody(500, "configuration", "Member listing is not configured.");
+      }
+      const [records, adminIds] = await Promise.all([input.store.listMembers(), input.adminUserIds()]);
+      return { statusCode: 200, body: { members: toListedMembers(records, adminIds) } };
     }
 
     if (method === "GET" && path === "/me") {

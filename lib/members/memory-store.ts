@@ -12,6 +12,9 @@ export function createMemoryMemberStore(): MemberStore {
     async getUserIdByReferralCode(code) {
       return codes.get(code) ?? null;
     },
+    async listMembers() {
+      return [...members.values()].map((member) => structuredClone(member));
+    },
     async createMember(member): Promise<CreateResult> {
       if (members.has(member.userId)) {
         return "exists";

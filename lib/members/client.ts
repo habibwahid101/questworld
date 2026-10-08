@@ -32,6 +32,15 @@ export async function readCurrentMember(): Promise<MemberProfile> {
   return memberRequest("GET", "/me");
 }
 
+export async function setCurrentTransactionPassword(input: {
+  transactionPassword: string;
+  currentTransactionPassword?: string;
+}): Promise<MemberProfile> {
+  return memberRequest("PATCH", "/me", {
+    transactionPassword: input.transactionPassword,
+    ...(input.currentTransactionPassword ? { currentTransactionPassword: input.currentTransactionPassword } : {}),
+  });
+}
 export async function updateCurrentMember(patch: {
   name?: string;
   phone?: string | null;

@@ -1,4 +1,5 @@
 import { isAuthConfigured, readAuthConfig } from "./config.ts";
+import { passwordIssue } from "./password.ts";
 
 export class AuthConfigError extends Error {
   name = "ConfigError";
@@ -82,6 +83,7 @@ export type AuthFlowDeps = {
   confirmResetPassword: (input: { username: string; confirmationCode: string; newPassword: string }) => Promise<unknown>;
   getCurrentUser: () => Promise<{ username: string; signInDetails?: { loginId?: string } }>;
   fetchAuthSession: () => Promise<{ tokens?: { idToken?: { toString: () => string; payload?: Record<string, unknown> } } }>;
+  updatePassword: (input: { oldPassword: string; newPassword: string }) => Promise<void>;
 };
 
 async function productionDeps(): Promise<AuthFlowDeps> {
@@ -99,6 +101,7 @@ async function productionDeps(): Promise<AuthFlowDeps> {
     confirmResetPassword: auth.confirmResetPassword,
     getCurrentUser: auth.getCurrentUser,
     fetchAuthSession: auth.fetchAuthSession,
+    updatePassword: auth.updatePassword,
   };
 }
 
@@ -192,6 +195,22 @@ export async function confirmPasswordResetWithDeps(
 
 export async function confirmPasswordReset(input: { email: string; code: string; password: string }): Promise<void> {
   await confirmPasswordResetWithDeps(await productionDeps(), input);
+}
+
+export async function changeLoginPasswordWithDeps(
+  deps: AuthFlowDeps,
+  input: { currentPassword: string; nextPassword: string },
+): Promise<void> {
+  const issue = passwordIssue(input.nextPassword);
+  if (issue) {
+    throw new Error(issue);
+  }
+  await deps.ensureConfigured();
+  await deps.updatePassword({ oldPassword: input.currentPassword, newPassword: input.nextPassword });
+}
+
+export async function changeLoginPassword(input: { currentPassword: string; nextPassword: string }): Promise<void> {
+  await changeLoginPasswordWithDeps(await productionDeps(), input);
 }
 
 export async function getIdTokenWithDeps(deps: AuthFlowDeps): Promise<string> {

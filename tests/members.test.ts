@@ -4,6 +4,7 @@ import test from "node:test";
 import { clearPendingReferral, PENDING_REFERRAL_KEY } from "../lib/auth/referral.ts";
 import { isMemberApiConfigured, readMemberApiUrl } from "../lib/members/config.ts";
 import { createMemoryMemberStore } from "../lib/members/memory-store.ts";
+import { verifyTransactionPassword } from "../lib/members/transaction-password.ts";
 import {
   createReferralCode,
   handleMemberApi,
@@ -309,4 +310,64 @@ test("account forms show password eyes and do not store the password", () => {
   assert.match(reset, /PasswordField/);
   assert.match(readFileSync(new URL("../components/auth/PasswordField.tsx", import.meta.url), "utf8"), /Show password/);
   assert.doesNotMatch(pending, /password/);
+});
+
+test("a transaction password is stored only as a hash and does not change the login profile", async () => {
+  const store = createMemoryMemberStore();
+  await initialize(store, "user-pass", {}, () => "QWMEMBER08");
+  const password = "Withdraw1!";
+  const saved = await handleMemberApi({
+    method: "PATCH",
+    path: "/me",
+    claims: claims("user-pass"),
+    body: { transactionPassword: password },
+    store,
+    now: () => "2026-10-03T00:00:00.000Z",
+  });
+  assert.equal(saved.statusCode, 200);
+  const body = JSON.stringify(saved.body);
+  assert.equal(body.includes(password), false);
+  assert.equal(body.includes("transactionPasswordHash"), false);
+  assert.equal((saved.body.member as { transactionPasswordSet: boolean }).transactionPasswordSet, true);
+  const record = await store.getByUserId("user-pass");
+  assert.notEqual(record?.transactionPasswordHash, password);
+  assert.equal(record?.transactionPasswordHash?.includes(password), false);
+  assert.equal(verifyTransactionPassword(password, record?.transactionPasswordHash ?? ""), true);
+  assert.equal(record?.name, "Member Name");
+
+  const rejected = await handleMemberApi({
+    method: "PATCH",
+    path: "/me",
+    claims: claims("user-pass"),
+    body: { transactionPassword: "OtherPass1!" },
+    store,
+    now: () => "2026-10-04T00:00:00.000Z",
+  });
+  assert.equal(rejected.statusCode, 403);
+  assert.equal((await store.getByUserId("user-pass"))?.transactionPasswordHash, record?.transactionPasswordHash);
+
+  const renamed = await handleMemberApi({
+    method: "PATCH",
+    path: "/me",
+    claims: claims("user-pass"),
+    body: { name: "New Name" },
+    store,
+    now: () => "2026-10-05T00:00:00.000Z",
+  });
+  assert.equal(renamed.statusCode, 200);
+  assert.equal((await store.getByUserId("user-pass"))?.name, "New Name");
+  assert.equal((await store.getByUserId("user-pass"))?.transactionPasswordHash, record?.transactionPasswordHash);
+
+  const login = readFileSync(new URL("../components/auth/LoginForm.tsx", import.meta.url), "utf8");
+  const register = readFileSync(new URL("../components/auth/RegisterForm.tsx", import.meta.url), "utf8");
+  const fields = readFileSync(new URL("../components/auth/AuthFields.module.css", import.meta.url), "utf8");
+  const profile = readFileSync(new URL("../components/member/ProfilePanel.tsx", import.meta.url), "utf8");
+  const withdraw = readFileSync(new URL("../components/member/WithdrawPanel.tsx", import.meta.url), "utf8");
+  assert.match(login, /fields/);
+  assert.match(register, /fields/);
+  assert.match(fields, /#1347b8/);
+  assert.match(profile, /Change login password/);
+  assert.match(profile, /Transaction password/);
+  assert.match(withdraw, /transactionPassword/);
+  assert.doesNotMatch(withdraw, /Pay out/);
 });

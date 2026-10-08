@@ -11,6 +11,7 @@ import {
 import { PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import { DynamoDBDocumentClient, GetCommand, PutCommand, QueryCommand, ScanCommand, TransactWriteCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
 import type { AdminGroupDirectory } from "../../../lib/admin/groups";
+import { verifyTransactionPassword } from "../../../lib/members/transaction-password";
 import {
   handleInvestmentApi,
   investmentFromStoredItem,
@@ -104,6 +105,9 @@ export async function handler(event: ApiGatewayEvent): Promise<{
     store: createDynamoInvestmentStore(tableName),
     proofStore: process.env.DEPOSIT_PROOF_BUCKET ? createProofStore(process.env.DEPOSIT_PROOF_BUCKET) : undefined,
     adminGroups: process.env.USER_POOL_ID ? createAdminDirectory(process.env.USER_POOL_ID) : undefined,
+    transactionPasswords: {
+      verify: (userId, password) => readTransactionPassword(membersTableName, userId, password),
+    },
   });
 
   return json(result.statusCode, result.body);
@@ -790,6 +794,25 @@ async function scanMatches(
     startKey = response.LastEvaluatedKey;
   } while (startKey && read < MAX_SCAN_ITEMS && matches.length < 50);
   return matches;
+}
+
+async function readTransactionPassword(
+  membersTableName: string,
+  userId: string,
+  password: string,
+): Promise<"ok" | "missing" | "mismatch"> {
+  const response = await document.send(
+    new GetCommand({
+      TableName: membersTableName,
+      Key: { pk: userKey(userId), sk: MEMBER_PROFILE_SK },
+      ProjectionExpression: "transactionPasswordHash",
+    }),
+  );
+  const stored = response.Item?.transactionPasswordHash;
+  if (typeof stored !== "string" || stored.length === 0) {
+    return "missing";
+  }
+  return verifyTransactionPassword(password, stored) ? "ok" : "mismatch";
 }
 
 async function sponsorOf(membersTableName: string, userId: string): Promise<string | null> {

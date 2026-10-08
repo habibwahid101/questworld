@@ -1,4 +1,6 @@
+import { passwordIssue } from "../auth/password.ts";
 import { isAdminClaims } from "../investments/service.ts";
+import { hashTransactionPassword, verifyTransactionPassword } from "./transaction-password.ts";
 
 /**
  * Member profile rules for Step 04.
@@ -21,12 +23,15 @@ export type MemberRecord = {
   referralCode: string;
   sponsorUserId: string | null;
   sponsorReferralCode: string | null;
+  transactionPasswordHash: string | null;
   createdAt: string;
   updatedAt: string;
   status: MemberStatus;
 };
 
-export type MemberProfile = Omit<MemberRecord, "sponsorUserId">;
+export type MemberProfile = Omit<MemberRecord, "sponsorUserId" | "transactionPasswordHash"> & {
+  transactionPasswordSet: boolean;
+};
 
 export type ListedMember = {
   name: string;
@@ -57,6 +62,7 @@ export type MemberStore = {
   listMembers(): Promise<MemberRecord[]>;
   createMember(member: MemberRecord): Promise<CreateResult>;
   updateProfile(userId: string, patch: ProfilePatch): Promise<MemberRecord | null>;
+  setTransactionPassword(userId: string, hash: string, updatedAt: string): Promise<MemberRecord | null>;
 };
 
 export class MemberRequestError extends Error {
@@ -100,6 +106,7 @@ export function toMemberProfile(record: MemberRecord): MemberProfile {
     country: record.country,
     referralCode: record.referralCode,
     sponsorReferralCode: record.sponsorReferralCode,
+    transactionPasswordSet: Boolean(record.transactionPasswordHash),
     createdAt: record.createdAt,
     updatedAt: record.updatedAt,
     status: record.status,
@@ -180,6 +187,7 @@ export async function initializeMember(input: {
       referralCode,
       sponsorUserId: sponsor?.userId ?? null,
       sponsorReferralCode: sponsor?.code ?? null,
+      transactionPasswordHash: null,
       createdAt: timestamp,
       updatedAt: timestamp,
       status: "active",
@@ -223,6 +231,65 @@ export async function patchMember(input: {
     throw new MemberRequestError(404, "member_not_found", "Create your member profile first.");
   }
   return updated;
+}
+
+async function setTransactionPassword(input: {
+  userId: string;
+  body: unknown;
+  store: MemberStore;
+  now: () => string;
+}): Promise<MemberRecord> {
+  const current = await input.store.getByUserId(input.userId);
+  if (!current) {
+    throw new MemberRequestError(404, "member_not_found", "Create your member profile first.");
+  }
+  const nextPassword = transactionPasswordFromBody(input.body);
+  const issue = passwordIssue(nextPassword);
+  if (issue) {
+    throw new MemberRequestError(400, "invalid_body", issue);
+  }
+  if (current.transactionPasswordHash) {
+    const currentPassword = currentTransactionPasswordFromBody(input.body);
+    if (!currentPassword || !verifyTransactionPassword(currentPassword, current.transactionPasswordHash)) {
+      throw new MemberRequestError(403, "transaction_password_rejected", "The transaction password is not correct.");
+    }
+  }
+  const hash = hashTransactionPassword(nextPassword);
+  const updated = await input.store.setTransactionPassword(input.userId, hash, input.now());
+  if (!updated) {
+    throw new MemberRequestError(404, "member_not_found", "Create your member profile first.");
+  }
+  return updated;
+}
+
+function requestsTransactionPassword(body: unknown): boolean {
+  return Boolean(body && typeof body === "object" && !Array.isArray(body) && "transactionPassword" in body);
+}
+
+function transactionPasswordFromBody(body: unknown): string {
+  if (!body || typeof body !== "object" || Array.isArray(body)) {
+    throw new MemberRequestError(400, "invalid_body", "Enter a transaction password.");
+  }
+  const source = body as Record<string, unknown>;
+  const allowed = new Set(["transactionPassword", "currentTransactionPassword"]);
+  if (Object.keys(source).some((key) => !allowed.has(key))) {
+    throw new MemberRequestError(400, "invalid_body", "Change the transaction password separately.");
+  }
+  if (typeof source.transactionPassword !== "string" || source.transactionPassword.length === 0) {
+    throw new MemberRequestError(400, "invalid_body", "Enter a transaction password.");
+  }
+  return source.transactionPassword;
+}
+
+function currentTransactionPasswordFromBody(body: unknown): string {
+  const source = body as Record<string, unknown>;
+  if (!("currentTransactionPassword" in source) || source.currentTransactionPassword === "") {
+    return "";
+  }
+  if (typeof source.currentTransactionPassword !== "string") {
+    throw new MemberRequestError(400, "invalid_body", "Enter the current transaction password.");
+  }
+  return source.currentTransactionPassword;
 }
 
 export async function handleMemberApi(input: {
@@ -279,6 +346,15 @@ export async function handleMemberApi(input: {
     }
 
     if (method === "PATCH" && path === "/me") {
+      if (requestsTransactionPassword(input.body)) {
+        const record = await setTransactionPassword({
+          userId: identity.userId,
+          body: input.body,
+          store: input.store,
+          now,
+        });
+        return { statusCode: 200, body: { member: toMemberProfile(record) } };
+      }
       const record = await patchMember({
         userId: identity.userId,
         body: input.body,
@@ -438,7 +514,4 @@ function errorBody(statusCode: number, code: string, message: string): {
   return { statusCode, body: { error: code, message } };
 }
 
-export function memberReferralUrl(origin: string, code: string): string {
-  const base = origin.replace(/\/+$/, "");
-  return `${base}/register?ref=${encodeURIComponent(code)}`;
-}
+export { memberReferralUrl } from "./referral-url.ts";

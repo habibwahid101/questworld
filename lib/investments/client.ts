@@ -72,8 +72,11 @@ export async function listCurrentWithdrawals(): Promise<{ withdrawals: Withdrawa
   return { withdrawals: payload.withdrawals ?? [], availableMinor: payload.availableMinor ?? 0 };
 }
 
-export async function requestCurrentWithdrawal(amountMinor: number): Promise<WithdrawalRequest> {
-  const payload = await investmentRequest<{ withdrawal?: WithdrawalRequest }>("POST", "/withdrawals", { amountMinor });
+export async function requestCurrentWithdrawal(amountMinor: number, transactionPassword: string): Promise<WithdrawalRequest> {
+  const payload = await investmentRequest<{ withdrawal?: WithdrawalRequest }>("POST", "/withdrawals", {
+    amountMinor,
+    transactionPassword,
+  });
   if (!payload.withdrawal) {
     throw new InvestmentClientError("investment_request_failed", "Could not save that withdrawal request.");
   }

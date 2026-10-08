@@ -609,6 +609,9 @@ export async function handleInvestmentApi(input: {
   newWithdrawalId?: () => string;
   proofStore?: DepositProofStore;
   adminGroups?: AdminGroupDirectory;
+  transactionPasswords?: {
+    verify(userId: string, password: string): Promise<"ok" | "missing" | "mismatch">;
+  };
 }): Promise<{ statusCode: number; body: Record<string, unknown> }> {
   const identity = identityFromClaims(input.claims);
   if (!identity) {
@@ -646,6 +649,7 @@ export async function handleInvestmentApi(input: {
           store: input.store,
           now,
           newWithdrawalId,
+          transactionPasswords: input.transactionPasswords,
         });
         return { statusCode: 200, body: { withdrawal } };
       }
@@ -1102,8 +1106,18 @@ async function requestWithdrawal(input: {
   store: InvestmentStore;
   now: () => string;
   newWithdrawalId: () => string;
+  transactionPasswords?: {
+    verify(userId: string, password: string): Promise<"ok" | "missing" | "mismatch">;
+  };
 }): Promise<WithdrawalRequest> {
-  const amountMinor = withdrawalAmountFromBody(input.body);
+  const { amountMinor, transactionPassword } = withdrawalRequestFromBody(input.body);
+  if (!input.transactionPasswords) {
+    throw new InvestmentRequestError(500, "configuration", "Withdrawal confirmation is not configured.");
+  }
+  const verdict = await input.transactionPasswords.verify(input.ownerSub, transactionPassword);
+  if (verdict !== "ok") {
+    throw new InvestmentRequestError(403, "transaction_password_rejected", "The transaction password is not correct.");
+  }
   const [profits, withdrawals] = await Promise.all([
     input.store.listProfits(input.ownerSub),
     input.store.listWithdrawals(input.ownerSub),
@@ -1129,20 +1143,23 @@ async function requestWithdrawal(input: {
   return request;
 }
 
-function withdrawalAmountFromBody(body: unknown): number {
+function withdrawalRequestFromBody(body: unknown): { amountMinor: number; transactionPassword: string } {
   if (!body || typeof body !== "object" || Array.isArray(body)) {
     throw new InvestmentRequestError(400, "invalid_body", "Enter a withdrawal amount above zero.");
   }
   const record = body as Record<string, unknown>;
   const keys = Object.keys(record);
-  if (keys.length !== 1 || keys[0] !== "amountMinor") {
+  if (keys.some((key) => key !== "amountMinor" && key !== "transactionPassword")) {
     throw new InvestmentRequestError(400, "invalid_body", "The server calculates the withdrawal.");
+  }
+  if (typeof record.transactionPassword !== "string" || record.transactionPassword.length === 0) {
+    throw new InvestmentRequestError(400, "invalid_body", "Enter the transaction password.");
   }
   const amountMinor = record.amountMinor;
   if (typeof amountMinor !== "number" || !Number.isSafeInteger(amountMinor) || amountMinor <= 0) {
     throw new InvestmentRequestError(400, "invalid_amount", "Enter a withdrawal amount above zero.");
   }
-  return amountMinor;
+  return { amountMinor, transactionPassword: record.transactionPassword };
 }
 
 function storedActivationFields(item: Record<string, unknown>): Pick<InvestmentRecord, "activatedAt" | "activatedBy"> {

@@ -12,6 +12,7 @@ import { mapAuthError } from "@/lib/auth/errors";
 import { PASSWORD_HINT, passwordIssue } from "@/lib/auth/password";
 import { normalizeReferralCode, rememberPendingReferral } from "@/lib/auth/referral";
 import { rememberPendingSignupProfile } from "@/lib/auth/signup-profile";
+import fieldStyles from "./AuthFields.module.css";
 import styles from "./RegisterForm.module.css";
 
 export function RegisterForm() {
@@ -82,7 +83,7 @@ export function RegisterForm() {
   }
 
   return (
-    <form className="stack" onSubmit={onSubmit}>
+    <form className={`stack ${fieldStyles.fields}`} onSubmit={onSubmit}>
       {error ? (
         <p className="form-error" role="alert">
           {error}

@@ -114,7 +114,7 @@ function expectExactActions(tableName, expected) {
   }
 }
 
-expectExactActions("questworld-members", ["dynamodb:GetItem", "dynamodb:PutItem", "dynamodb:UpdateItem"]);
+expectExactActions("questworld-members", ["dynamodb:GetItem", "dynamodb:PutItem", "dynamodb:Scan", "dynamodb:UpdateItem"]);
 expectExactActions("questworld-investments", [
   "dynamodb:GetItem",
   "dynamodb:PutItem",

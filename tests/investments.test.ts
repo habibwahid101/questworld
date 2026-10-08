@@ -985,7 +985,8 @@ test("dashboard cards read existing totals and do not write records", () => {
   assert.doesNotMatch(dashboard, /requestCurrentWithdrawal|createCurrentInvestment|submitCurrentDeposit|Darmelk/);
   assert.match(admin, /listPendingDeposits/);
   assert.match(admin, /listVerifiedDeposits/);
-  assert.match(admin, /There is no member list to read/);
+  assert.match(admin, /listStoredMembers/);
+  assert.doesNotMatch(admin, /There is no member list to read/);
   assert.match(admin, /There is no pending-withdrawal list to read/);
   assert.doesNotMatch(admin, /members:\s*0|pendingWithdrawals\s*=\s*0|Darmelk/);
 });

@@ -50,6 +50,7 @@ export class ApiStack extends cdk.Stack {
       logGroup,
       environment: {
         MEMBERS_TABLE_NAME: table.tableName,
+        USER_POOL_ID: PUBLIC_USER_POOL_ID,
       },
       bundling: {
         minify: false,
@@ -61,8 +62,21 @@ export class ApiStack extends cdk.Stack {
     // There is no ConditionCheck action in the transaction.
     membersFn.addToRolePolicy(
       new iam.PolicyStatement({
-        actions: ["dynamodb:GetItem", "dynamodb:PutItem", "dynamodb:UpdateItem"],
+        actions: ["dynamodb:GetItem", "dynamodb:PutItem", "dynamodb:UpdateItem", "dynamodb:Scan"],
         resources: [table.tableArn],
+      }),
+    );
+    membersFn.addToRolePolicy(
+      new iam.PolicyStatement({
+        actions: ["cognito-idp:ListUsersInGroup"],
+        resources: [
+          cdk.Stack.of(this).formatArn({
+            service: "cognito-idp",
+            resource: "userpool",
+            resourceName: PUBLIC_USER_POOL_ID,
+            arnFormat: cdk.ArnFormat.SLASH_RESOURCE_NAME,
+          }),
+        ],
       }),
     );
 
@@ -97,6 +111,12 @@ export class ApiStack extends cdk.Stack {
     httpApi.addRoutes({
       path: "/me/initialize",
       methods: [apigwv2.HttpMethod.POST],
+      integration,
+      authorizer,
+    });
+    httpApi.addRoutes({
+      path: "/admin/members",
+      methods: [apigwv2.HttpMethod.GET],
       integration,
       authorizer,
     });

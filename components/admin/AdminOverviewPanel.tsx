@@ -4,11 +4,13 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Card } from "@/components/ui/Card";
 import { InvestmentClientError, listPendingDeposits, listVerifiedDeposits } from "@/lib/investments/client";
+import { listStoredMembers } from "@/lib/members/client";
 import { isMemberApiConfigured } from "@/lib/members/config";
 
 export function AdminOverviewPanel() {
   const [pending, setPending] = useState<number | null>();
   const [verified, setVerified] = useState<number | null>();
+  const [memberCount, setMemberCount] = useState<number | null>();
   const [message, setMessage] = useState<string | null>(null);
 
   useEffect(() => {
@@ -16,16 +18,17 @@ export function AdminOverviewPanel() {
       return;
     }
     let active = true;
-    void Promise.allSettled([listPendingDeposits(), listVerifiedDeposits()]).then(([pendingResult, verifiedResult]) => {
+    void Promise.allSettled([listPendingDeposits(), listVerifiedDeposits(), listStoredMembers()]).then(([pendingResult, verifiedResult, membersResult]) => {
       if (!active) {
         return;
       }
       setPending(pendingResult.status === "fulfilled" ? pendingResult.value.length : null);
       setVerified(verifiedResult.status === "fulfilled" ? verifiedResult.value.length : null);
-      const failed = [pendingResult, verifiedResult].find((result) => result.status === "rejected");
+      setMemberCount(membersResult.status === "fulfilled" ? membersResult.value.length : null);
+      const failed = [pendingResult, verifiedResult, membersResult].find((result) => result.status === "rejected");
       if (failed?.status === "rejected") {
         const caught = failed.reason;
-        setMessage(caught instanceof InvestmentClientError || caught instanceof Error ? caught.message : "Could not load those deposits.");
+        setMessage(caught instanceof InvestmentClientError || caught instanceof Error ? caught.message : "Could not load those counts.");
       }
     });
     return () => {
@@ -47,12 +50,12 @@ export function AdminOverviewPanel() {
       <Card>
         <h1>Admin</h1>
         <p className="lead" style={{ marginTop: 12 }}>
-          Deposit counts come from the pending and verified lists. Member and withdrawal lists are not available.
+          Deposit counts come from the pending and verified lists. The member count comes from the stored member list. Withdrawal lists are not available.
         </p>
         {message ? <p style={{ marginTop: 16 }}>{message}</p> : null}
       </Card>
       <div className="grid-2">
-        <UnavailableCard label="Members" detail="There is no member list to read." href="/admin/users" link="Users" />
+        <CountCard label="Members" count={memberCount} href="/admin/users" link="Users" />
         <CountCard label="Pending deposits" count={pending} href="/admin/deposits" link="Deposits" />
         <CountCard label="Verified deposits" count={verified} href="/admin/deposits" link="Deposits" />
         <UnavailableCard label="Pending withdrawals" detail="There is no pending-withdrawal list to read." href="/admin/withdrawals" link="Withdrawals" />

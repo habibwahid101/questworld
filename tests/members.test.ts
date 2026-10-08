@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 import { clearPendingReferral, PENDING_REFERRAL_KEY } from "../lib/auth/referral.ts";
 import { isMemberApiConfigured, readMemberApiUrl } from "../lib/members/config.ts";
@@ -184,4 +185,65 @@ test("a taken generated code is retried without giving two members the same code
   assert.equal((created.body.member as { referralCode: string }).referralCode, "QWFREE0001");
   assert.equal(await store.getUserIdByReferralCode("QWTAKEN001"), "owner");
   assert.equal(await store.getUserIdByReferralCode("QWFREE0001"), "next-user");
+});
+
+test("an admin can list stored members and a member cannot", async () => {
+  const store = createMemoryMemberStore();
+  await initialize(store, "sponsor", {}, () => "QWSPONSOR1");
+  await initialize(store, "member-b", { referralCode: "QWSPONSOR1" }, () => "QWMEMBER02");
+  const adminIds = async () => ["sponsor"];
+
+  const listed = await handleMemberApi({
+    method: "GET",
+    path: "/admin/members",
+    claims: { sub: "sponsor", email: "sponsor@example.com", "cognito:groups": "[Admins]" },
+    store,
+    adminUserIds: adminIds,
+  });
+  assert.equal(listed.statusCode, 200);
+  assert.deepEqual(listed.body.members, [
+    {
+      name: "Member Name",
+      email: "member-b@example.com",
+      role: "Member",
+      referralCode: "QWMEMBER02",
+      sponsorReferralCode: "QWSPONSOR1",
+    },
+    {
+      name: "Member Name",
+      email: "sponsor@example.com",
+      role: "Admin",
+      referralCode: "QWSPONSOR1",
+      sponsorReferralCode: null,
+    },
+  ]);
+
+  const denied = await handleMemberApi({
+    method: "GET",
+    path: "/admin/members",
+    claims: { sub: "member-b", email: "member-b@example.com", "cognito:groups": "[Members]" },
+    store,
+    adminUserIds: adminIds,
+  });
+  assert.equal(denied.statusCode, 403);
+
+  const empty = await handleMemberApi({
+    method: "GET",
+    path: "/admin/members",
+    claims: { sub: "sponsor", email: "sponsor@example.com", "cognito:groups": "[Admins]" },
+    store: createMemoryMemberStore(),
+    adminUserIds: async () => [],
+  });
+  assert.deepEqual(empty.body.members, []);
+});
+
+test("the member list read scans only the members table and does not delete", () => {
+  const source = readFileSync(new URL("../infrastructure/lib/api-stack.ts", import.meta.url), "utf8");
+  const membersPolicy = source.slice(source.indexOf("const membersFn"), source.indexOf("const authorizer"));
+  assert.match(source, /path: "\/admin\/members"/);
+  assert.match(membersPolicy, /dynamodb:Scan/);
+  assert.match(membersPolicy, /cognito-idp:ListUsersInGroup/);
+  assert.match(membersPolicy, /resources: \[table\.tableArn\]/);
+  assert.doesNotMatch(membersPolicy, /dynamodb:DeleteItem/);
+  assert.doesNotMatch(membersPolicy, /new dynamodb\.Table/);
 });

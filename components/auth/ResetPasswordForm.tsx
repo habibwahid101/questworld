@@ -2,6 +2,7 @@
 
 import { FormEvent, useEffect, useState } from "react";
 import { Button } from "@/components/ui/Button";
+import { PasswordField } from "@/components/auth/PasswordField";
 import { Field, Input } from "@/components/ui/Field";
 import { confirmPasswordReset } from "@/lib/auth/cognito";
 import { mapAuthError } from "@/lib/auth/errors";
@@ -106,20 +107,18 @@ export function ResetPasswordForm() {
         />
       </Field>
       <Field label="New Password" htmlFor="password">
-        <Input
+        <PasswordField
           id="password"
           name="password"
-          type="password"
           autoComplete="new-password"
           required
           disabled={submitting}
         />
       </Field>
       <Field label="Confirm New Password" htmlFor="confirmPassword">
-        <Input
+        <PasswordField
           id="confirmPassword"
           name="confirmPassword"
-          type="password"
           autoComplete="new-password"
           required
           disabled={submitting}

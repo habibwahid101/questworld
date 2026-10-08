@@ -4,6 +4,7 @@ import Link from "next/link";
 import { FormEvent, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/Button";
+import { PasswordField } from "@/components/auth/PasswordField";
 import { Field, Input } from "@/components/ui/Field";
 import { useAuth } from "@/components/auth/AuthProvider";
 import { loginAccount } from "@/lib/auth/cognito";
@@ -69,10 +70,9 @@ export function LoginForm() {
         <Input id="email" name="email" type="email" autoComplete="email" required disabled={submitting} />
       </Field>
       <Field label="Password" htmlFor="password">
-        <Input
+        <PasswordField
           id="password"
           name="password"
-          type="password"
           autoComplete="current-password"
           required
           disabled={submitting}

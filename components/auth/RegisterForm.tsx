@@ -4,12 +4,15 @@ import Link from "next/link";
 import { FormEvent, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/Button";
+import { PasswordField } from "@/components/auth/PasswordField";
 import { Field, Input } from "@/components/ui/Field";
 import { useAuth } from "@/components/auth/AuthProvider";
 import { loginAccount, registerAccount } from "@/lib/auth/cognito";
 import { mapAuthError } from "@/lib/auth/errors";
 import { PASSWORD_HINT, passwordIssue } from "@/lib/auth/password";
 import { normalizeReferralCode, rememberPendingReferral } from "@/lib/auth/referral";
+import { rememberPendingSignupProfile } from "@/lib/auth/signup-profile";
+import styles from "./RegisterForm.module.css";
 
 export function RegisterForm() {
   const router = useRouter();
@@ -33,15 +36,21 @@ export function RegisterForm() {
     }
 
     const form = new FormData(event.currentTarget);
-    const name = String(form.get("fullName") ?? "").trim();
+    const firstName = String(form.get("firstName") ?? "").trim();
+    const lastName = String(form.get("lastName") ?? "").trim();
     const email = String(form.get("email") ?? "").trim();
+    const phone = String(form.get("phone") ?? "").trim();
     const password = String(form.get("password") ?? "");
     const confirmPassword = String(form.get("confirmPassword") ?? "");
     const accepted = form.get("terms") === "on";
     const issue = passwordIssue(password);
 
-    if (!name || !email) {
-      setError("Enter your name and email.");
+    if (!firstName || !lastName || !email) {
+      setError("Enter your first name, last name, and email.");
+      return;
+    }
+    if (!/^[0-9+().\-\s]{6,32}$/.test(phone) || phone.replace(/\D/g, "").length < 6) {
+      setError("Enter a mobile number.");
       return;
     }
     if (issue) {
@@ -60,8 +69,9 @@ export function RegisterForm() {
     setSubmitting(true);
     setError(null);
     try {
-      await registerAccount({ name, email, password });
+      await registerAccount({ name: `${firstName} ${lastName}`, email, password });
       rememberPendingReferral(window.localStorage, referralCode);
+      rememberPendingSignupProfile(window.sessionStorage, { firstName, lastName, phone });
       await loginAccount({ email, password, remember: true });
       await refresh();
       router.replace("/dashboard");
@@ -78,27 +88,33 @@ export function RegisterForm() {
           {error}
         </p>
       ) : null}
-      <Field label="Full Name" htmlFor="fullName">
-        <Input id="fullName" name="fullName" autoComplete="name" required disabled={submitting} />
-      </Field>
+      <div className={styles.names}>
+        <Field label="First name" htmlFor="firstName">
+          <Input id="firstName" name="firstName" autoComplete="given-name" required disabled={submitting} />
+        </Field>
+        <Field label="Last name" htmlFor="lastName">
+          <Input id="lastName" name="lastName" autoComplete="family-name" required disabled={submitting} />
+        </Field>
+      </div>
       <Field label="Email Address" htmlFor="email">
         <Input id="email" name="email" type="email" autoComplete="email" required disabled={submitting} />
       </Field>
+      <Field label="Mobile number" htmlFor="phone">
+        <Input id="phone" name="phone" type="tel" autoComplete="tel" inputMode="tel" required disabled={submitting} />
+      </Field>
       <Field label="Password" htmlFor="password" hint={PASSWORD_HINT}>
-        <Input
+        <PasswordField
           id="password"
           name="password"
-          type="password"
           autoComplete="new-password"
           required
           disabled={submitting}
         />
       </Field>
       <Field label="Confirm Password" htmlFor="confirmPassword">
-        <Input
+        <PasswordField
           id="confirmPassword"
           name="confirmPassword"
-          type="password"
           autoComplete="new-password"
           required
           disabled={submitting}

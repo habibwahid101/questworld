@@ -132,6 +132,14 @@ export function ProfilePanel() {
     setNotice("Referral code copied.");
   }
 
+  async function copyLink() {
+    if (!member || !origin) {
+      return;
+    }
+    await navigator.clipboard.writeText(memberReferralUrl(origin, member.referralCode));
+    setNotice("Referral link copied.");
+  }
+
   if (status === "unconfigured") {
     return (
       <Card>
@@ -269,6 +277,9 @@ export function ProfilePanel() {
               Referral link <span className={styles.link}>{referralLink}</span>
             </p>
           ) : null}
+          <Button variant="secondary" onClick={() => void copyLink()} disabled={!referralLink}>
+            Copy referral link
+          </Button>
         </div>
       </div>
     </Card>

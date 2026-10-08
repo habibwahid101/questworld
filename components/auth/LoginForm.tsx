@@ -61,7 +61,7 @@ export function LoginForm() {
   }
 
   return (
-    <form className={`stack ${styles.fields}`} onSubmit={onSubmit}>
+    <form className="stack" onSubmit={onSubmit}>
       {error ? (
         <p className="form-error" role="alert">
           {error}
@@ -90,7 +90,7 @@ export function LoginForm() {
         {submitting ? "Please wait…" : "Login"}
       </Button>
       <p>
-        {"Don't have an account?"} <Link href="/register">Create Account</Link>
+        {"Don't have an account?"} <Link className={styles.accountLink} href="/register">Create Account</Link>
       </p>
     </form>
   );

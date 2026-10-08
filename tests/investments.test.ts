@@ -959,7 +959,10 @@ test("plan cards use the catalog amounts, the given descriptions, and mark 8 per
   const payment = readFileSync(new URL("../components/member/InvestmentPaymentPanel.tsx", import.meta.url), "utf8");
   assert.match(panel, /"Choose"/);
   assert.match(panel, /formatUsdtAmount\(plan\.amountMinor\)/);
-  assert.match(panel, /Continue to payment/);
+  assert.match(panel, /router\.push\(`\/investments\/\$\{encodeURIComponent\(record\.investmentId\)\}`\)/);
+  assert.doesNotMatch(panel, /Continue to payment/);
+  assert.doesNotMatch(panel, /No investments yet/);
+  assert.doesNotMatch(panel, /listCurrentInvestments/);
   assert.doesNotMatch(panel, /createCurrentInvestment\([^)]*amount/);
   assert.doesNotMatch(panel, /Transaction reference/);
   assert.doesNotMatch(panel, /submitCurrentDeposit/);

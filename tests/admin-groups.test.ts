@@ -115,9 +115,17 @@ test("the admin switch is only a shell target", () => {
   assert.deepEqual(adminSwitchTarget("/admin/deposits"), { href: "/dashboard", label: "Member view" });
   const shell = readFileSync(new URL("../components/layouts/AppShell.tsx", import.meta.url), "utf8");
   const css = readFileSync(new URL("../components/layouts/AppShell.module.css", import.meta.url), "utf8");
-  assert.match(shell, /className=\{styles\.topCenter\}/);
+  const site = readFileSync(new URL("../constants/site.ts", import.meta.url), "utf8");
+  const memberShell = readFileSync(new URL("../components/member/MemberShell.tsx", import.meta.url), "utf8");
+  const actions = shell.slice(shell.indexOf("styles.topActions"), shell.indexOf("styles.mobileNav"));
+  assert.match(actions, /shellSwitch/);
+  assert.match(actions, /Menu/);
+  assert.doesNotMatch(shell, /topCenter/);
   assert.match(shell, /className=\{classNames\(styles\.logoutButton, styles\.topLogout\)\}/);
   assert.match(shell, /className=\{styles\.mobileLogout\}/);
+  assert.match(shell, /More/);
+  assert.match(memberShell, /showPhoneBar/);
+  assert.match(site, /memberPhoneNav[\s\S]*Dashboard[\s\S]*Investments[\s\S]*Referrals[\s\S]*Withdraw/);
   const menu = shell.slice(shell.indexOf("styles.mobileNav"));
   const profileOrder = shell.indexOf("items.map");
   const mobileLogout = shell.indexOf("styles.mobileLogout");
@@ -125,7 +133,7 @@ test("the admin switch is only a shell target", () => {
   assert.match(menu, /styles\.mobileLogout/);
   assert.match(css, /\.topLogout\s*\{\s*display:\s*none;/);
   assert.match(css, /@media \(min-width: 960px\)[\s\S]*\.topLogout\s*\{\s*display:\s*inline-flex;/);
-  assert.match(css, /@media \(min-width: 960px\)[\s\S]*\.mobileNav\s*\{\s*display:\s*none;/);
+  assert.match(css, /@media \(min-width: 960px\)[\s\S]*\.mobileNav,\s*\.phoneBar\s*\{\s*display:\s*none;/);
 });
 
 test("deposit wallets stay on BEP20 and TRC20", () => {

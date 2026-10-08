@@ -973,3 +973,19 @@ test("plan cards use the catalog amounts, the given descriptions, and mark 8 per
   assert.doesNotMatch(payment, /0x61440ed26b7527b186b34a661be1e07b9a67f3fe/);
   assert.doesNotMatch(payment, /TMuGe7QWieZR1sMKQRLhS9FxE7GTLi87Hg/);
 });
+
+test("dashboard cards read existing totals and do not write records", () => {
+  const dashboard = readFileSync(new URL("../components/member/DashboardPanel.tsx", import.meta.url), "utf8");
+  const admin = readFileSync(new URL("../components/admin/AdminOverviewPanel.tsx", import.meta.url), "utf8");
+  assert.match(dashboard, /listCurrentInvestments/);
+  assert.match(dashboard, /listCurrentProfits/);
+  assert.match(dashboard, /listCurrentCommissions/);
+  assert.match(dashboard, /listCurrentWithdrawals/);
+  assert.match(dashboard, /record\.status === "active"/);
+  assert.doesNotMatch(dashboard, /requestCurrentWithdrawal|createCurrentInvestment|submitCurrentDeposit|Darmelk/);
+  assert.match(admin, /listPendingDeposits/);
+  assert.match(admin, /listVerifiedDeposits/);
+  assert.match(admin, /There is no member list to read/);
+  assert.match(admin, /There is no pending-withdrawal list to read/);
+  assert.doesNotMatch(admin, /members:\s*0|pendingWithdrawals\s*=\s*0|Darmelk/);
+});

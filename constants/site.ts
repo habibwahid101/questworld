@@ -77,6 +77,13 @@ export const footerAccountNav: readonly NavItem[] = [
   { href: "/contact", label: "Contact / Support" },
 ];
 
+export const memberPhoneNav: readonly NavItem[] = [
+  { href: "/dashboard", label: "Dashboard" },
+  { href: "/investments", label: "Investments" },
+  { href: "/referrals/dashboard", label: "Referrals" },
+  { href: "/withdraw", label: "Withdraw" },
+];
+
 export const memberNav: readonly NavItem[] = [
   { href: "/dashboard", label: "Dashboard" },
   { href: "/investments", label: "Investments" },

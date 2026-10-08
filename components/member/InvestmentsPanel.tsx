@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
-import { createCurrentInvestment, InvestmentClientError, listCurrentInvestments, readCurrentDepositAddress, submitCurrentDeposit } from "@/lib/investments/client";
+import { createCurrentInvestment, InvestmentClientError, listCurrentInvestments, readCurrentDepositAddresses, submitCurrentDeposit, type DepositWallets } from "@/lib/investments/client";
 import { formatUsdtAmount, type InvestmentRecord, type InvestmentStatus, type PlanId } from "@/lib/investments/service";
 import { isMemberApiConfigured } from "@/lib/members/config";
 
@@ -30,15 +30,15 @@ export function InvestmentsPanel() {
   const [savingDepositId, setSavingDepositId] = useState<string | null>(null);
   const [references, setReferences] = useState<Record<string, string>>({});
   const [screenshots, setScreenshots] = useState<Record<string, File | null>>({});
-  const [copied, setCopied] = useState(false);
-  const [depositAddress, setDepositAddress] = useState("");
+  const [copiedNetwork, setCopiedNetwork] = useState<"BEP20" | "TRC20" | null>(null);
+  const [depositWallets, setDepositWallets] = useState<DepositWallets>({ bep20: "", trc20: "" });
   const pendingKeys = useRef<Partial<Record<PlanId, string>>>({});
   const depositKeys = useRef<Record<string, string>>({});
 
   const load = useCallback(async () => {
-    const [records, address] = await Promise.all([listCurrentInvestments(), readCurrentDepositAddress()]);
+    const [records, wallets] = await Promise.all([listCurrentInvestments(), readCurrentDepositAddresses()]);
     setInvestments(records);
-    setDepositAddress(address);
+    setDepositWallets(wallets);
     setMessage(null);
   }, []);
 
@@ -156,13 +156,13 @@ export function InvestmentsPanel() {
                 reference={references[investment.investmentId] ?? ""}
                 saving={savingPlan !== null || savingDepositId !== null}
                 submitting={savingDepositId === investment.investmentId}
-                copied={copied}
-                address={depositAddress}
+                copiedNetwork={copiedNetwork}
+                wallets={depositWallets}
                 onReference={(value) => setReferences((current) => ({ ...current, [investment.investmentId]: value }))}
                 onScreenshot={(file) => setScreenshots((current) => ({ ...current, [investment.investmentId]: file }))}
-                onCopy={async (address) => {
+                onCopy={async (network, address) => {
                   await navigator.clipboard.writeText(address);
-                  setCopied(true);
+                  setCopiedNetwork(network);
                 }}
                 onSubmit={() => void submitReference(investment.investmentId)}
               />
@@ -181,8 +181,8 @@ function DepositReferenceForm({
   reference,
   saving,
   submitting,
-  copied,
-  address,
+  copiedNetwork,
+  wallets,
   onReference,
   onScreenshot,
   onCopy,
@@ -192,11 +192,11 @@ function DepositReferenceForm({
   reference: string;
   saving: boolean;
   submitting: boolean;
-  copied: boolean;
-  address: string;
+  copiedNetwork: "BEP20" | "TRC20" | null;
+  wallets: DepositWallets;
   onReference: (value: string) => void;
   onScreenshot: (file: File | null) => void;
-  onCopy: (address: string) => Promise<void>;
+  onCopy: (network: "BEP20" | "TRC20", address: string) => Promise<void>;
   onSubmit: () => void;
 }) {
   return (
@@ -207,16 +207,8 @@ function DepositReferenceForm({
         onSubmit();
       }}
     >
-      {address ? (
-        <p>
-          Binance address {address}{" "}
-          <Button type="button" variant="secondary" onClick={() => void onCopy(address)}>
-            {copied ? "Copied" : "Copy"}
-          </Button>
-        </p>
-      ) : (
-        <p>The Binance deposit address is not configured.</p>
-      )}
+      <DepositAddressRow network="BEP20" address={wallets.bep20} copied={copiedNetwork === "BEP20"} onCopy={onCopy} />
+      <DepositAddressRow network="TRC20" address={wallets.trc20} copied={copiedNetwork === "TRC20"} onCopy={onCopy} />
       <label htmlFor={`deposit-${investmentId}`}>Transaction reference</label>
       <input
         id={`deposit-${investmentId}`}
@@ -239,6 +231,30 @@ function DepositReferenceForm({
         {submitting ? "Submitting…" : "Submit reference"}
       </Button>
     </form>
+  );
+}
+
+function DepositAddressRow({
+  network,
+  address,
+  copied,
+  onCopy,
+}: {
+  network: "BEP20" | "TRC20";
+  address: string;
+  copied: boolean;
+  onCopy: (network: "BEP20" | "TRC20", address: string) => Promise<void>;
+}) {
+  if (!address) {
+    return <p>The {network} deposit address is not configured.</p>;
+  }
+  return (
+    <p>
+      {network} {address}{" "}
+      <Button type="button" variant="secondary" onClick={() => void onCopy(network, address)}>
+        {copied ? "Copied" : "Copy"}
+      </Button>
+    </p>
   );
 }
 

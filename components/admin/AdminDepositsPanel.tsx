@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
-import { InvestmentClientError, activateVerifiedInvestment, listPendingDeposits, listVerifiedDeposits, readCurrentDepositAddress, reviewPendingDeposit, saveDepositAddress } from "@/lib/investments/client";
+import { InvestmentClientError, activateVerifiedInvestment, listPendingDeposits, listVerifiedDeposits, readCurrentDepositAddresses, reviewPendingDeposit, saveDepositAddresses } from "@/lib/investments/client";
 import { formatUsdtAmount, type InvestmentRecord } from "@/lib/investments/service";
 import { isMemberApiConfigured } from "@/lib/members/config";
 
@@ -13,20 +13,20 @@ export function AdminDepositsPanel() {
   const [message, setMessage] = useState<string | null>(null);
   const [loading, setLoading] = useState(isMemberApiConfigured());
   const [savingId, setSavingId] = useState<string | null>(null);
-  const [depositAddress, setDepositAddress] = useState("");
-  const [addressDraft, setAddressDraft] = useState("");
+  const [bep20Draft, setBep20Draft] = useState("");
+  const [trc20Draft, setTrc20Draft] = useState("");
   const [savingAddress, setSavingAddress] = useState(false);
 
   const load = useCallback(async () => {
-    const [pendingDeposits, verifiedDeposits, address] = await Promise.all([
+    const [pendingDeposits, verifiedDeposits, wallets] = await Promise.all([
       listPendingDeposits(),
       listVerifiedDeposits(),
-      readCurrentDepositAddress(),
+      readCurrentDepositAddresses(),
     ]);
     setPending(pendingDeposits);
     setVerified(verifiedDeposits);
-    setDepositAddress(address);
-    setAddressDraft(address);
+    setBep20Draft(wallets.bep20);
+    setTrc20Draft(wallets.trc20);
     setMessage(null);
   }, []);
 
@@ -75,12 +75,12 @@ export function AdminDepositsPanel() {
     setSavingAddress(true);
     setMessage(null);
     try {
-      const saved = await saveDepositAddress(addressDraft.trim());
-      setDepositAddress(saved);
-      setAddressDraft(saved);
-      setMessage("Binance deposit address saved.");
+      const saved = await saveDepositAddresses({ bep20: bep20Draft.trim(), trc20: trc20Draft.trim() });
+      setBep20Draft(saved.bep20);
+      setTrc20Draft(saved.trc20);
+      setMessage("Deposit addresses saved.");
     } catch (caught) {
-      const error = caught instanceof InvestmentClientError ? caught : new InvestmentClientError("investment_request_failed", "Could not save that Binance deposit address.");
+      const error = caught instanceof InvestmentClientError ? caught : new InvestmentClientError("investment_request_failed", "Could not save those deposit addresses.");
       setMessage(error.message);
     } finally {
       setSavingAddress(false);
@@ -127,17 +127,26 @@ export function AdminDepositsPanel() {
             void saveAddress();
           }}
         >
-          <label htmlFor="binance-deposit-address">Binance deposit address</label>
-          {depositAddress ? null : <p style={{ marginTop: 8 }}>The Binance deposit address is not configured.</p>}
+          <label htmlFor="deposit-bep20">BEP20</label>
           <input
-            id="binance-deposit-address"
-            value={addressDraft}
+            id="deposit-bep20"
+            value={bep20Draft}
             autoComplete="off"
-            onChange={(event) => setAddressDraft(event.target.value)}
+            onChange={(event) => setBep20Draft(event.target.value)}
+            style={{ display: "block", width: "100%", marginTop: 8 }}
+          />
+          <label htmlFor="deposit-trc20" style={{ display: "block", marginTop: 12 }}>
+            TRC20
+          </label>
+          <input
+            id="deposit-trc20"
+            value={trc20Draft}
+            autoComplete="off"
+            onChange={(event) => setTrc20Draft(event.target.value)}
             style={{ display: "block", width: "100%", marginTop: 8 }}
           />
           <Button type="submit" disabled={savingAddress || savingId !== null} style={{ marginTop: 12 }}>
-            {savingAddress ? "Saving…" : "Save address"}
+            {savingAddress ? "Saving…" : "Save addresses"}
           </Button>
         </form>
         {message ? <p style={{ marginTop: 16 }}>{message}</p> : null}

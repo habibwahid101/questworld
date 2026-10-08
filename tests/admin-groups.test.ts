@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { changeAdminGroup, type AdminGroupDirectory } from "../lib/admin/groups.ts";
-import { readBinanceDepositAddress } from "../lib/deposits/address.ts";
+import { INITIAL_DEPOSIT_ADDRESSES, readNetworkAddress } from "../lib/deposits/address.ts";
 import { adminSwitchTarget } from "../lib/auth/shell.ts";
 import { handleInvestmentApi } from "../lib/investments/service.ts";
 import { createMemoryInvestmentStore } from "../lib/investments/memory-store.ts";
@@ -114,9 +114,11 @@ test("the admin switch is only a shell target", () => {
   assert.deepEqual(adminSwitchTarget("/admin/deposits"), { href: "/dashboard", label: "Member view" });
 });
 
-test("an unconfigured Binance address is not invented", () => {
-  assert.equal(readBinanceDepositAddress(undefined), "");
-  assert.equal(readBinanceDepositAddress("  "), "");
-  assert.equal(readBinanceDepositAddress("PASTE THE ADDRESS HERE"), "");
-  assert.equal(readBinanceDepositAddress("TExampleAddress"), "");
+test("deposit wallets stay on BEP20 and TRC20", () => {
+  assert.equal(readNetworkAddress("BEP20", undefined), "");
+  assert.equal(readNetworkAddress("BEP20", "PASTE THE ADDRESS HERE"), "");
+  assert.equal(readNetworkAddress("TRC20", INITIAL_DEPOSIT_ADDRESSES.BEP20), "");
+  assert.equal(readNetworkAddress("BEP20", INITIAL_DEPOSIT_ADDRESSES.TRC20), "");
+  assert.equal(readNetworkAddress("BEP20", INITIAL_DEPOSIT_ADDRESSES.BEP20), INITIAL_DEPOSIT_ADDRESSES.BEP20);
+  assert.equal(readNetworkAddress("TRC20", INITIAL_DEPOSIT_ADDRESSES.TRC20), INITIAL_DEPOSIT_ADDRESSES.TRC20);
 });

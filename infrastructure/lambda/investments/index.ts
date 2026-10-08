@@ -511,11 +511,12 @@ export function createDynamoInvestmentStore(tableName: string): InvestmentStore 
         }),
       );
       const item = response.Item;
-      if (!item || typeof item.address !== "string") {
+      if (!item || (typeof item.bep20 !== "string" && typeof item.trc20 !== "string")) {
         return null;
       }
       return {
-        address: item.address,
+        bep20: typeof item.bep20 === "string" ? item.bep20 : "",
+        trc20: typeof item.trc20 === "string" ? item.trc20 : "",
         updatedAt: typeof item.updatedAt === "string" ? item.updatedAt : "",
         updatedBy: typeof item.updatedBy === "string" ? item.updatedBy : "",
       };
@@ -527,7 +528,8 @@ export function createDynamoInvestmentStore(tableName: string): InvestmentStore 
           Item: {
             pk: "SETTINGS",
             sk: "DEPOSIT_ADDRESS",
-            address: record.address,
+            bep20: record.bep20,
+            trc20: record.trc20,
             updatedAt: record.updatedAt,
             updatedBy: record.updatedBy,
           },

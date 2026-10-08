@@ -87,6 +87,24 @@
   text-decoration: none;
 }
 
+.topLogout {
+  display: none;
+}
+
+.mobileLogout {
+  justify-self: start;
+  min-height: 44px;
+  margin: 0;
+  padding: 10px 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  line-height: 1.2;
+  text-align: left;
+  cursor: pointer;
+}
+
 .menuButton {
   min-width: 44px;
 }
@@ -115,6 +133,10 @@
   .menuButton,
   .mobileNav {
     display: none;
+  }
+
+  .topLogout {
+    display: inline-flex;
   }
 
   .content {

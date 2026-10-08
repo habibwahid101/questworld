@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 import { changeAdminGroup, type AdminGroupDirectory } from "../lib/admin/groups.ts";
 import { INITIAL_DEPOSIT_ADDRESSES, readNetworkAddress } from "../lib/deposits/address.ts";
@@ -112,6 +113,19 @@ test("removing the last administrator is rejected and a member cannot call the r
 test("the admin switch is only a shell target", () => {
   assert.deepEqual(adminSwitchTarget("/dashboard"), { href: "/admin", label: "Admin view" });
   assert.deepEqual(adminSwitchTarget("/admin/deposits"), { href: "/dashboard", label: "Member view" });
+  const shell = readFileSync(new URL("../components/layouts/AppShell.tsx", import.meta.url), "utf8");
+  const css = readFileSync(new URL("../components/layouts/AppShell.module.css", import.meta.url), "utf8");
+  assert.match(shell, /className=\{styles\.topCenter\}/);
+  assert.match(shell, /className=\{classNames\(styles\.logoutButton, styles\.topLogout\)\}/);
+  assert.match(shell, /className=\{styles\.mobileLogout\}/);
+  const menu = shell.slice(shell.indexOf("styles.mobileNav"));
+  const profileOrder = shell.indexOf("items.map");
+  const mobileLogout = shell.indexOf("styles.mobileLogout");
+  assert.ok(profileOrder !== -1 && profileOrder < mobileLogout);
+  assert.match(menu, /styles\.mobileLogout/);
+  assert.match(css, /\.topLogout\s*\{\s*display:\s*none;/);
+  assert.match(css, /@media \(min-width: 960px\)[\s\S]*\.topLogout\s*\{\s*display:\s*inline-flex;/);
+  assert.match(css, /@media \(min-width: 960px\)[\s\S]*\.mobileNav\s*\{\s*display:\s*none;/);
 });
 
 test("deposit wallets stay on BEP20 and TRC20", () => {

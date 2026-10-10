@@ -1,17 +1,19 @@
 "use client";
 
 import Link from "next/link";
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/Button";
 import { PasswordField } from "@/components/auth/PasswordField";
-import { Field, Input } from "@/components/ui/Field";
+import { Field, Input, Select } from "@/components/ui/Field";
 import { useAuth } from "@/components/auth/AuthProvider";
 import { loginAccount, registerAccount } from "@/lib/auth/cognito";
 import { mapAuthError } from "@/lib/auth/errors";
 import { PASSWORD_HINT, passwordIssue } from "@/lib/auth/password";
 import { normalizeReferralCode, rememberPendingReferral } from "@/lib/auth/referral";
 import { rememberPendingSignupProfile } from "@/lib/auth/signup-profile";
+import { countryNames } from "@/constants/countries";
+import { initializeCurrentMember, MemberClientError } from "@/lib/members/client";
 import fieldStyles from "./AuthFields.module.css";
 import styles from "./RegisterForm.module.css";
 
@@ -22,13 +24,21 @@ export function RegisterForm() {
   const [referralCode, setReferralCode] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const alertRef = useRef<HTMLParagraphElement>(null);
   const linkedReferral = normalizeReferralCode(searchParams.get("ref") ?? "");
+  const countries = countryNames();
 
   useEffect(() => {
     if (linkedReferral) {
       setReferralCode(linkedReferral);
     }
   }, [linkedReferral]);
+
+  useEffect(() => {
+    if (error) {
+      alertRef.current?.scrollIntoView({ block: "center" });
+    }
+  }, [error]);
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -41,10 +51,14 @@ export function RegisterForm() {
     const lastName = String(form.get("lastName") ?? "").trim();
     const email = String(form.get("email") ?? "").trim();
     const phone = String(form.get("phone") ?? "").trim();
+    const country = String(form.get("country") ?? "").trim();
     const password = String(form.get("password") ?? "");
     const confirmPassword = String(form.get("confirmPassword") ?? "");
+    const transactionPassword = String(form.get("transactionPassword") ?? "");
+    const confirmTransactionPassword = String(form.get("confirmTransactionPassword") ?? "");
     const accepted = form.get("terms") === "on";
     const issue = passwordIssue(password);
+    const transactionIssue = passwordIssue(transactionPassword);
 
     if (!firstName || !lastName || !email) {
       setError("Enter your first name, last name, and email.");
@@ -54,12 +68,28 @@ export function RegisterForm() {
       setError("Enter a mobile number.");
       return;
     }
+    if (!country) {
+      setError("Select a country.");
+      return;
+    }
     if (issue) {
       setError(issue);
       return;
     }
     if (password !== confirmPassword) {
       setError("Passwords do not match.");
+      return;
+    }
+    if (transactionIssue) {
+      setError(`Transaction password: ${transactionIssue}`);
+      return;
+    }
+    if (transactionPassword !== confirmTransactionPassword) {
+      setError("Transaction passwords do not match.");
+      return;
+    }
+    if (transactionPassword === password) {
+      setError("Use a transaction password that is not your login password.");
       return;
     }
     if (!accepted) {
@@ -72,12 +102,13 @@ export function RegisterForm() {
     try {
       await registerAccount({ name: `${firstName} ${lastName}`, email, password });
       rememberPendingReferral(window.localStorage, referralCode);
-      rememberPendingSignupProfile(window.sessionStorage, { firstName, lastName, phone });
+      rememberPendingSignupProfile(window.sessionStorage, { firstName, lastName, phone, country });
       await loginAccount({ email, password, remember: true });
+      await initializeCurrentMember(referralCode, { firstName, lastName, phone, country, transactionPassword });
       await refresh();
       router.replace("/dashboard");
     } catch (caught) {
-      setError(mapAuthError(caught));
+      setError(caught instanceof MemberClientError ? caught.message : mapAuthError(caught));
       setSubmitting(false);
     }
   }
@@ -85,7 +116,7 @@ export function RegisterForm() {
   return (
     <form className="stack" onSubmit={onSubmit}>
       {error ? (
-        <p className="form-error" role="alert">
+        <p ref={alertRef} className="form-error" role="alert">
           {error}
         </p>
       ) : null}
@@ -103,6 +134,16 @@ export function RegisterForm() {
       <Field label="Mobile number" htmlFor="phone">
         <Input id="phone" name="phone" type="tel" autoComplete="tel" inputMode="tel" required disabled={submitting} />
       </Field>
+      <Field label="Country" htmlFor="country">
+        <Select id="country" name="country" autoComplete="country-name" required disabled={submitting} defaultValue="">
+          <option value="">Select a country</option>
+          {countries.map((country) => (
+            <option key={country} value={country}>
+              {country}
+            </option>
+          ))}
+        </Select>
+      </Field>
       <Field label="Password" htmlFor="password" hint={PASSWORD_HINT}>
         <PasswordField
           id="password"
@@ -116,6 +157,24 @@ export function RegisterForm() {
         <PasswordField
           id="confirmPassword"
           name="confirmPassword"
+          autoComplete="new-password"
+          required
+          disabled={submitting}
+        />
+      </Field>
+      <Field label="Transaction password" htmlFor="transactionPassword" hint="Used only to confirm a withdrawal. Not your login password.">
+        <PasswordField
+          id="transactionPassword"
+          name="transactionPassword"
+          autoComplete="new-password"
+          required
+          disabled={submitting}
+        />
+      </Field>
+      <Field label="Confirm transaction password" htmlFor="confirmTransactionPassword">
+        <PasswordField
+          id="confirmTransactionPassword"
+          name="confirmTransactionPassword"
           autoComplete="new-password"
           required
           disabled={submitting}

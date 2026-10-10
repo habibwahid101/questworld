@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 import { isAuthConfigured, readAuthConfig } from "../lib/auth/config.ts";
 import {
@@ -41,10 +42,17 @@ test("admin group check is exact", () => {
   assert.equal(isAdminGroups(normalizeGroups(["Admins"])), true);
 });
 
-test("password policy matches the V1 rules", () => {
-  assert.equal(passwordIssue("short1!"), "Use at least 8 characters.");
-  assert.equal(passwordIssue("lowercase1!"), "Include an uppercase letter.");
-  assert.equal(passwordIssue("ValidPass1!"), null);
+test("password policy is at least 8 characters", () => {
+  assert.equal(passwordIssue("short"), "Use at least 8 characters.");
+  assert.equal(passwordIssue("lowercase"), null);
+  assert.equal(passwordIssue("simplepass"), null);
+  const auth = readFileSync(new URL("../infrastructure/lib/auth-stack.ts", import.meta.url), "utf8");
+  assert.match(auth, /minLength: 8/);
+  assert.match(auth, /requireLowercase: false/);
+  assert.match(auth, /requireUppercase: false/);
+  assert.match(auth, /requireDigits: false/);
+  assert.match(auth, /requireSymbols: false/);
+  assert.doesNotMatch(auth, /requireUppercase: true/);
 });
 
 test("auth errors stay user-safe", () => {

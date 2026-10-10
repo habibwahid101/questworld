@@ -14,7 +14,7 @@ export class MemberClientError extends Error {
 
 export async function initializeCurrentMember(
   referralCode: string,
-  profile?: { firstName: string; lastName: string; phone: string } | null,
+  profile?: { firstName: string; lastName: string; phone: string; country?: string | null; transactionPassword?: string } | null,
 ): Promise<MemberProfile> {
   const body: Record<string, string> = {};
   if (referralCode) {
@@ -24,6 +24,12 @@ export async function initializeCurrentMember(
     body.firstName = profile.firstName;
     body.lastName = profile.lastName;
     body.phone = profile.phone;
+    if (profile.country) {
+      body.country = profile.country;
+    }
+    if (profile.transactionPassword) {
+      body.transactionPassword = profile.transactionPassword;
+    }
   }
   return memberRequest("POST", "/me/initialize", body);
 }
@@ -100,6 +106,8 @@ function isListedMember(value: unknown): value is ListedMember {
     typeof record.email === "string" &&
     (record.role === "Admin" || record.role === "Member") &&
     typeof record.referralCode === "string" &&
-    (record.sponsorReferralCode === null || typeof record.sponsorReferralCode === "string")
+    (record.sponsorReferralCode === null || typeof record.sponsorReferralCode === "string") &&
+    typeof record.createdAt === "string" &&
+    record.createdAt.length > 0
   );
 }

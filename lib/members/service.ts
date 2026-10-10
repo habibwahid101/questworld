@@ -39,6 +39,7 @@ export type ListedMember = {
   role: "Admin" | "Member";
   referralCode: string;
   sponsorReferralCode: string | null;
+  createdAt: string;
 };
 
 export type MemberIdentity = {
@@ -91,6 +92,7 @@ function toListedMembers(records: readonly MemberRecord[], adminIds: readonly st
       role: admins.has(record.userId.toLowerCase()) || admins.has(record.email.toLowerCase()) ? "Admin" as const : "Member" as const,
       referralCode: record.referralCode,
       sponsorReferralCode: record.sponsorReferralCode,
+      createdAt: record.createdAt,
     }))
     .sort((left, right) => left.name.localeCompare(right.name) || left.email.localeCompare(right.email));
 }
@@ -156,7 +158,8 @@ export function identityFromClaims(
 export async function initializeMember(input: {
   identity: MemberIdentity;
   referralCode?: string;
-  profile?: { firstName: string; lastName: string; phone: string } | null;
+  profile?: { firstName: string; lastName: string; phone: string; country?: string | null } | null;
+  transactionPassword?: string | null;
   store: MemberStore;
   now: () => string;
   newReferralCode?: () => string;
@@ -183,11 +186,11 @@ export async function initializeMember(input: {
       firstName: input.profile?.firstName ?? null,
       lastName: input.profile?.lastName ?? null,
       phone: input.profile?.phone ?? null,
-      country: null,
+      country: input.profile?.country ?? null,
       referralCode,
       sponsorUserId: sponsor?.userId ?? null,
       sponsorReferralCode: sponsor?.code ?? null,
-      transactionPasswordHash: null,
+      transactionPasswordHash: input.transactionPassword ? hashTransactionPassword(input.transactionPassword) : null,
       createdAt: timestamp,
       updatedAt: timestamp,
       status: "active",
@@ -315,10 +318,12 @@ export async function handleMemberApi(input: {
     if (method === "POST" && path === "/me/initialize") {
       const referralCode = referralFromBody(input.body);
       const profile = profileFromBody(input.body);
+      const transactionPassword = transactionPasswordFromInitialize(input.body);
       const record = await initializeMember({
         identity,
         referralCode,
         profile,
+        transactionPassword,
         store: input.store,
         now,
         newReferralCode: input.newReferralCode,
@@ -441,7 +446,7 @@ function optionalText(value: unknown, max: number, message: string): string | nu
   return trimmed;
 }
 
-function profileFromBody(body: unknown): { firstName: string; lastName: string; phone: string } | null {
+function profileFromBody(body: unknown): { firstName: string; lastName: string; phone: string; country: string | null } | null {
   if (!body || typeof body !== "object" || Array.isArray(body)) {
     return null;
   }
@@ -455,7 +460,29 @@ function profileFromBody(body: unknown): { firstName: string; lastName: string; 
     throw new MemberRequestError(400, "invalid_body", "Enter a shorter name.");
   }
   const phone = mobileNumber(source.phone);
-  return { firstName, lastName, phone };
+  let country: string | null = null;
+  if ("country" in source) {
+    country = optionalText(source.country, COUNTRY_MAX, "Select a country.");
+    if (!country) {
+      throw new MemberRequestError(400, "invalid_body", "Select a country.");
+    }
+  }
+  return { firstName, lastName, phone, country };
+}
+
+function transactionPasswordFromInitialize(body: unknown): string | null {
+  if (!body || typeof body !== "object" || Array.isArray(body) || !("transactionPassword" in body)) {
+    return null;
+  }
+  const value = (body as Record<string, unknown>).transactionPassword;
+  if (typeof value !== "string" || value.length === 0) {
+    throw new MemberRequestError(400, "invalid_body", "Enter a transaction password.");
+  }
+  const issue = passwordIssue(value);
+  if (issue) {
+    throw new MemberRequestError(400, "invalid_body", issue);
+  }
+  return value;
 }
 
 function personName(value: unknown, message: string): string {

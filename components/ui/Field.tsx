@@ -24,3 +24,11 @@ type InputProps = React.InputHTMLAttributes<HTMLInputElement>;
 export function Input({ className, ...props }: InputProps) {
   return <input className={[styles.control, className].filter(Boolean).join(" ")} {...props} />;
 }
+
+export function Select({ className, children, ...props }: React.SelectHTMLAttributes<HTMLSelectElement>) {
+  return (
+    <select className={[styles.control, className].filter(Boolean).join(" ")} {...props}>
+      {children}
+    </select>
+  );
+}

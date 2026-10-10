@@ -26,7 +26,7 @@ export function mapAuthError(error: unknown): string {
     case "UsernameExistsException":
       return "An account with this email already exists. Try logging in.";
     case "InvalidPasswordException":
-      return "Password must be at least 8 characters and include uppercase, lowercase, a number, and a special character.";
+      return "Password must be at least 8 characters.";
     case "InvalidParameterException":
       return "Check the information you entered and try again.";
     case "CodeMismatchException":

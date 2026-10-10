@@ -4,6 +4,7 @@ export type PendingSignupProfile = {
   firstName: string;
   lastName: string;
   phone: string;
+  country?: string;
 };
 
 export function rememberPendingSignupProfile(
@@ -27,6 +28,7 @@ export function readPendingSignupProfile(storage: Pick<Storage, "getItem">): Pen
       firstName: parsed.firstName,
       lastName: parsed.lastName,
       phone: parsed.phone,
+      ...(typeof parsed.country === "string" && parsed.country.trim() ? { country: parsed.country.trim() } : {}),
     };
   } catch {
     return null;

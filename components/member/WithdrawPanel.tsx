@@ -7,6 +7,7 @@ import { Field } from "@/components/ui/Field";
 import { PasswordField } from "@/components/auth/PasswordField";
 import { InvestmentClientError, listCurrentWithdrawals, requestCurrentWithdrawal } from "@/lib/investments/client";
 import { formatUsdtAmount, type WithdrawalRequest, type WithdrawalStatus } from "@/lib/investments/service";
+import { formatRecordedAt } from "@/lib/investments/history";
 import { isMemberApiConfigured } from "@/lib/members/config";
 
 const statusLabel: Record<WithdrawalStatus, string> = {
@@ -117,7 +118,9 @@ export function WithdrawPanel() {
           <Card key={request.withdrawalId}>
             <p className="eyebrow">{statusLabel[request.status]}</p>
             <h2>{formatUsdtAmount(request.amountMinor, request.scale)}</h2>
-            <p style={{ marginTop: 10 }}>Requested {new Date(request.createdAt).toLocaleString()}</p>
+            <p style={{ marginTop: 10 }}>
+              {statusLabel[request.status]}. Date and time {formatRecordedAt(request.createdAt)}
+            </p>
           </Card>
         ))
       )}

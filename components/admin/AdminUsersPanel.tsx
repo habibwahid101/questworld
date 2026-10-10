@@ -78,6 +78,7 @@ export function AdminUsersPanel() {
                 <h2>{member.name}</h2>
                 <p style={{ marginTop: 10 }}>{member.email}</p>
                 <p>Referral code {member.referralCode}</p>
+                <p>Joined {new Date(member.createdAt).toLocaleString()}</p>
                 {member.sponsorReferralCode ? <p>Sponsor {member.sponsorReferralCode}</p> : null}
               </Card>
             ))}

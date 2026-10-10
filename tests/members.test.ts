@@ -209,6 +209,7 @@ test("an admin can list stored members and a member cannot", async () => {
       role: "Member",
       referralCode: "QWMEMBER02",
       sponsorReferralCode: "QWSPONSOR1",
+      createdAt: NOW,
     },
     {
       name: "Member Name",
@@ -216,6 +217,7 @@ test("an admin can list stored members and a member cannot", async () => {
       role: "Admin",
       referralCode: "QWSPONSOR1",
       sponsorReferralCode: null,
+      createdAt: NOW,
     },
   ]);
 
@@ -292,12 +294,55 @@ test("signup stores both names and the mobile number without changing an existin
   assert.equal(kept.referralCode, "QWNEW00001");
 });
 
+test("signup stores the selected country and only a transaction-password hash", async () => {
+  const store = createMemoryMemberStore();
+  const password = "withdrawpass";
+  const saved = await initialize(
+    store,
+    "user-country",
+    {
+      firstName: "Ada",
+      lastName: "Lovelace",
+      phone: "+1 555 0100",
+      country: "Bangladesh",
+      transactionPassword: password,
+    },
+    () => "QWNEW00002",
+  );
+  assert.equal(saved.statusCode, 200);
+  const body = JSON.stringify(saved.body);
+  assert.equal(body.includes(password), false);
+  assert.equal(body.includes("transactionPasswordHash"), false);
+  const record = await store.getByUserId("user-country");
+  assert.equal(record?.country, "Bangladesh");
+  assert.equal(verifyTransactionPassword(password, record?.transactionPasswordHash ?? ""), true);
+  assert.equal((saved.body.member as { transactionPasswordSet: boolean }).transactionPasswordSet, true);
+
+  const again = await initialize(
+    store,
+    "user-country",
+    {
+      firstName: "Other",
+      lastName: "Person",
+      phone: "+44 7700 900123",
+      country: "Japan",
+      transactionPassword: "anotherpass",
+    },
+    () => "QWCHANGED1",
+  );
+  assert.equal(again.statusCode, 200);
+  const kept = await store.getByUserId("user-country");
+  assert.equal(kept?.country, "Bangladesh");
+  assert.equal(kept?.phone, "+1 555 0100");
+  assert.equal(kept?.transactionPasswordHash, record?.transactionPasswordHash);
+});
+
 test("account forms show password eyes and do not store the password", () => {
   const register = readFileSync(new URL("../components/auth/RegisterForm.tsx", import.meta.url), "utf8");
   const login = readFileSync(new URL("../components/auth/LoginForm.tsx", import.meta.url), "utf8");
   const reset = readFileSync(new URL("../components/auth/ResetPasswordForm.tsx", import.meta.url), "utf8");
   const pending = readFileSync(new URL("../lib/auth/signup-profile.ts", import.meta.url), "utf8");
-  const registerOrder = ["firstName", "lastName", "email", "phone", "password", "confirmPassword", "referralCode"];
+  const registerOrder = ["firstName", "lastName", "email", "phone", "country", "password", "confirmPassword", "transactionPassword", "confirmTransactionPassword", "referralCode"];
   let cursor = 0;
   for (const field of registerOrder) {
     const next = register.indexOf(`name="${field}"`, cursor);
@@ -305,6 +350,8 @@ test("account forms show password eyes and do not store the password", () => {
     cursor = next;
   }
   assert.match(register, /password !== confirmPassword/);
+  assert.match(register, /scrollIntoView/);
+  assert.match(register, /transactionPassword !== confirmTransactionPassword/);
   assert.match(login, /PasswordField/);
   assert.match(register, /PasswordField/);
   assert.match(reset, /PasswordField/);

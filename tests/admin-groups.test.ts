@@ -119,7 +119,9 @@ test("the admin switch is only a shell target", () => {
   const memberShell = readFileSync(new URL("../components/member/MemberShell.tsx", import.meta.url), "utf8");
   const actions = shell.slice(shell.indexOf("styles.topActions"), shell.indexOf("styles.mobileNav"));
   assert.match(actions, /shellSwitch/);
-  assert.match(actions, /Menu/);
+  assert.match(actions, /aria-label="Menu"/);
+  assert.match(actions, /menuIcon/);
+  assert.doesNotMatch(actions, />\s*Menu\s*</);
   assert.doesNotMatch(shell, /topCenter/);
   assert.match(shell, /className=\{classNames\(styles\.logoutButton, styles\.topLogout\)\}/);
   assert.match(shell, /className=\{styles\.mobileLogout\}/);

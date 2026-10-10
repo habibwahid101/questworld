@@ -102,11 +102,17 @@
 }
 
 .menuButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   min-width: 44px;
+  padding: 0 12px;
 }
 
-.menuButton {
-  min-width: 44px;
+.menuIcon {
+  display: block;
+  width: 18px;
+  height: 14px;
 }
 
 .mobileNav {

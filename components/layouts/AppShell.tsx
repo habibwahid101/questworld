@@ -73,9 +73,12 @@ export function AppShell({ title, homeHref, items, showPhoneBar = false, childre
               className={styles.menuButton}
               type="button"
               aria-expanded={open}
+              aria-label="Menu"
               onClick={() => setOpen((value) => !value)}
             >
-              Menu
+              <svg className={styles.menuIcon} viewBox="0 0 18 14" aria-hidden="true">
+                <path d="M1 1h16M1 7h16M1 13h16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+              </svg>
             </button>
           </div>
         </div>

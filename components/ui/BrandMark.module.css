@@ -1,22 +1,17 @@
 .mark {
   display: inline-flex;
   align-items: center;
-  gap: 10px;
-  color: var(--color-text);
-  font-weight: 700;
-  letter-spacing: -0.03em;
+  background: transparent;
 }
 
 .logo {
   display: block;
-  height: 28px;
+  height: 44px;
   width: auto;
+  background: transparent;
+  mix-blend-mode: multiply;
 }
 
-.wordmark {
-  font-size: 1.05rem;
-}
-
-.inverse {
-  color: #fff;
+.inverse .logo {
+  mix-blend-mode: normal;
 }

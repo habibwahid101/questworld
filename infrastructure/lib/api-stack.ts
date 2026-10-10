@@ -12,7 +12,7 @@ import * as nodejs from "aws-cdk-lib/aws-lambda-nodejs";
 import * as logs from "aws-cdk-lib/aws-logs";
 import * as s3 from "aws-cdk-lib/aws-s3";
 import { Construct } from "constructs";
-import { CANONICAL_WEB_ORIGIN, PUBLIC_USER_POOL_CLIENT_ID, PUBLIC_USER_POOL_ID } from "./public-ids";
+import { CANONICAL_WEB_ORIGIN, CUSTOM_WEB_ORIGIN, PUBLIC_USER_POOL_CLIENT_ID, PUBLIC_USER_POOL_ID } from "./public-ids";
 
 /**
  * Member profiles and awaiting-deposit investments.
@@ -89,7 +89,7 @@ export class ApiStack extends cdk.Stack {
     const httpApi = new apigwv2.HttpApi(this, "HttpApi", {
       apiName: "questworld-members",
       corsPreflight: {
-        allowOrigins: [CANONICAL_WEB_ORIGIN, "http://localhost:3000"],
+        allowOrigins: [CANONICAL_WEB_ORIGIN, CUSTOM_WEB_ORIGIN, "http://localhost:3000"],
         allowMethods: [
           apigwv2.CorsHttpMethod.GET,
           apigwv2.CorsHttpMethod.POST,

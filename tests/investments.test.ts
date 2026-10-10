@@ -586,6 +586,13 @@ test("deposit address saves are allowed by CORS", () => {
   assert.match(cors, /CorsHttpMethod\.PUT/);
   assert.match(cors, /CorsHttpMethod\.PATCH/);
   assert.match(cors, /CorsHttpMethod\.OPTIONS/);
+  assert.match(cors, /CANONICAL_WEB_ORIGIN/);
+  assert.match(cors, /CUSTOM_WEB_ORIGIN/);
+  assert.match(cors, /http:\/\/localhost:3000/);
+  assert.doesNotMatch(cors, /allowOrigins: \["\*"\]/);
+  const origins = readFileSync(new URL("../infrastructure/lib/public-ids.ts", import.meta.url), "utf8");
+  assert.match(origins, /https:\/\/main\.d1xja8a1py5jgx\.amplifyapp\.com/);
+  assert.match(origins, /https:\/\/www\.questraworld\.online/);
 });
 
 test("monthly profit posts once for an active investment and only the owner can read it", async () => {

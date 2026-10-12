@@ -8,7 +8,8 @@ import {
   ListUsersCommand,
   ListUsersInGroupCommand,
 } from "@aws-sdk/client-cognito-identity-provider";
-import { PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
+import { GetObjectCommand, PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
+import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { DynamoDBDocumentClient, GetCommand, PutCommand, QueryCommand, ScanCommand, TransactWriteCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
 import type { AdminGroupDirectory } from "../../../lib/admin/groups";
 import { verifyTransactionPassword } from "../../../lib/members/transaction-password";
@@ -104,6 +105,7 @@ export async function handler(event: ApiGatewayEvent): Promise<{
     idempotencyKey: headerValue(event.headers, "idempotency-key"),
     store: createDynamoInvestmentStore(tableName),
     proofStore: process.env.DEPOSIT_PROOF_BUCKET ? createProofStore(process.env.DEPOSIT_PROOF_BUCKET) : undefined,
+    proofUrls: process.env.DEPOSIT_PROOF_BUCKET ? createProofUrls(process.env.DEPOSIT_PROOF_BUCKET) : undefined,
     adminGroups: process.env.USER_POOL_ID ? createAdminDirectory(process.env.USER_POOL_ID) : undefined,
     transactionPasswords: {
       verify: (userId, password) => readTransactionPassword(membersTableName, userId, password),
@@ -127,6 +129,16 @@ function createProofStore(bucket: string) {
         }),
       );
       return key;
+    },
+  };
+}
+
+const PROOF_URL_SECONDS = 120;
+
+function createProofUrls(bucket: string) {
+  return {
+    async signGet(key: string) {
+      return getSignedUrl(proofStorage, new GetObjectCommand({ Bucket: bucket, Key: key }), { expiresIn: PROOF_URL_SECONDS });
     },
   };
 }
@@ -339,6 +351,14 @@ export function createDynamoInvestmentStore(tableName: string): InvestmentStore 
     },
     async reviewDeposit(review) {
       return reviewStoredDeposit(tableName, review);
+    },
+    async findByInvestmentId(investmentId) {
+      const items = await scanMatches(tableName, {
+        FilterExpression: "sk = :sk",
+        ExpressionAttributeNames: {},
+        ExpressionAttributeValues: { ":sk": `${INVESTMENT_PREFIX}${investmentId}` },
+      });
+      return items.length === 1 ? itemToInvestment(items[0]) : null;
     },
     async activateInvestment(activation) {
       return activateStoredInvestment(tableName, activation);
@@ -670,7 +690,9 @@ async function reviewStoredDeposit(tableName: string, review: DepositReview): Pr
         TableName: tableName,
         Key: { pk: item.pk, sk: item.sk },
         UpdateExpression:
-          "SET #status = :decision, reviewedAt = :reviewedAt, reviewedBy = :reviewedBy, updatedAt = :reviewedAt, statusChangedAt = :reviewedAt",
+          "SET #status = :decision, reviewedAt = :reviewedAt, reviewedBy = :reviewedBy, updatedAt = :reviewedAt, statusChangedAt = :reviewedAt" +
+          (review.decision === "rejected" && review.rejectionReason ? ", rejectionReason = :reason" : "") +
+          (review.decision === "rejected" && review.rejectionReason ? "" : " REMOVE rejectionReason"),
         ConditionExpression: "#status = :pending",
         ExpressionAttributeNames: { "#status": "status" },
         ExpressionAttributeValues: {
@@ -678,6 +700,7 @@ async function reviewStoredDeposit(tableName: string, review: DepositReview): Pr
           ":pending": "pending_verification",
           ":reviewedAt": review.reviewedAt,
           ":reviewedBy": review.reviewedBy,
+          ...(review.decision === "rejected" && review.rejectionReason ? { ":reason": review.rejectionReason } : {}),
         },
         ReturnValues: "ALL_NEW",
       }),

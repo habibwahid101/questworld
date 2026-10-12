@@ -156,7 +156,12 @@ export class ApiStack extends cdk.Stack {
       bundling: {
         minify: false,
         sourceMap: false,
-        externalModules: ["@aws-sdk/*"],
+        externalModules: [
+          "@aws-sdk/client-cognito-identity-provider",
+          "@aws-sdk/client-dynamodb",
+          "@aws-sdk/client-s3",
+          "@aws-sdk/lib-dynamodb",
+        ],
       },
     });
     investmentsFn.addToRolePolicy(
@@ -167,7 +172,7 @@ export class ApiStack extends cdk.Stack {
     );
     investmentsFn.addToRolePolicy(
       new iam.PolicyStatement({
-        actions: ["s3:PutObject"],
+        actions: ["s3:PutObject", "s3:GetObject"],
         resources: [depositProofs.arnForObjects("deposit-proofs/*")],
       }),
     );
@@ -249,6 +254,12 @@ export class ApiStack extends cdk.Stack {
     httpApi.addRoutes({
       path: "/admin/deposits/{investmentId}/review",
       methods: [apigwv2.HttpMethod.POST],
+      integration: investmentIntegration,
+      authorizer,
+    });
+    httpApi.addRoutes({
+      path: "/admin/deposits/{investmentId}/proof",
+      methods: [apigwv2.HttpMethod.GET],
       integration: investmentIntegration,
       authorizer,
     });

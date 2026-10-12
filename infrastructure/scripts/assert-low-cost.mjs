@@ -146,11 +146,12 @@ if (buckets[0].Properties?.WebsiteConfiguration || buckets[0].DeletionPolicy !==
   throw new Error("The deposit-proof bucket must stay private and retained.");
 }
 const flatActions = otherActions.flat();
-if (flatActions.some((action) => action === "s3:*" || action.startsWith("s3:") && action !== "s3:PutObject")) {
+const allowedS3 = new Set(["s3:PutObject", "s3:GetObject"]);
+if (flatActions.some((action) => action === "s3:*" || (action.startsWith("s3:") && !allowedS3.has(action)))) {
   throw new Error(`Deposit proof storage allows unexpected S3 actions: ${flatActions.join(", ")}`);
 }
-if (!flatActions.includes("s3:PutObject")) {
-  throw new Error("Deposit proof storage is missing s3:PutObject.");
+if (!flatActions.includes("s3:PutObject") || !flatActions.includes("s3:GetObject")) {
+  throw new Error("Deposit proof storage must allow PutObject and GetObject.");
 }
 const cognitoActions = [
   "cognito-idp:AdminAddUserToGroup",

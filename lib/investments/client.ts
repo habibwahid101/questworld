@@ -143,14 +143,24 @@ export async function activateVerifiedInvestment(investmentId: string): Promise<
   return payload.investment;
 }
 
+export async function readDepositProofUrl(investmentId: string): Promise<string> {
+  const payload = await investmentRequest<{ url?: string }>("GET", `/admin/deposits/${investmentId}/proof`);
+  if (!payload.url || !payload.url.startsWith("https://")) {
+    throw new InvestmentClientError("investment_request_failed", "Could not open that screenshot.");
+  }
+  return payload.url;
+}
+
 export async function reviewPendingDeposit(
   investmentId: string,
   decision: "deposit_verified" | "rejected",
+  reason?: string,
 ): Promise<InvestmentRecord> {
+  const trimmed = reason?.trim() ?? "";
   const payload = await investmentRequest<{ investment?: InvestmentRecord }>(
     "POST",
     `/admin/deposits/${investmentId}/review`,
-    { decision },
+    decision === "rejected" && trimmed ? { decision, reason: trimmed } : { decision },
   );
   if (!payload.investment) {
     throw new InvestmentClientError("investment_request_failed", "Could not save that review.");

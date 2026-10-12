@@ -108,8 +108,17 @@ export function createMemoryInvestmentStore(seed: readonly InvestmentRecord[] = 
         updatedAt: review.reviewedAt,
         statusChangedAt: review.reviewedAt,
       };
+      if (review.decision === "rejected" && review.rejectionReason) {
+        record.rejectionReason = review.rejectionReason;
+      } else {
+        delete record.rejectionReason;
+      }
       investments.set(itemKey, record);
       return { result: "reviewed", record: structuredClone(record) };
+    },
+    async findByInvestmentId(investmentId) {
+      const matches = [...investments.values()].filter((record) => record.investmentId === investmentId);
+      return matches.length === 1 ? structuredClone(matches[0]) : null;
     },
     async activateInvestment(activation: InvestmentActivation): Promise<InvestmentActivationResult> {
       const found = [...investments.entries()].find(([, record]) => record.investmentId === activation.investmentId);

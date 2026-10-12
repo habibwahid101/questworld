@@ -117,6 +117,9 @@ export function InvestmentPaymentPanel({ investmentId }: { investmentId: string 
       ) : !investment ? null : (
         <Card>
           <p>Status: {statusLabel[investment.status]}</p>
+          {investment.status === "rejected" && investment.rejectionReason ? (
+            <p style={{ marginTop: 10 }}>Rejection reason: {investment.rejectionReason}</p>
+          ) : null}
           {investment.status === "awaiting_deposit" ? (
             <DepositReferenceForm
               investmentId={investment.investmentId}

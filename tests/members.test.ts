@@ -414,7 +414,12 @@ test("a transaction password is stored only as a hash and does not change the lo
   assert.match(register, /accountLink/);
   assert.match(fields, /#1347b8/);
   assert.doesNotMatch(fields, /input/);
+  assert.match(profile, /readCurrentMember/);
+  assert.match(profile, /shown\.name/);
+  assert.match(profile, /shown\.email/);
+  assert.match(profile, /shown\.referralCode/);
   assert.match(profile, /Copy referral code/);
+  assert.doesNotMatch(profile, /listStoredMembers/);
   assert.match(profile, /Copy referral link/);
   assert.match(profile, /Change login password/);
   assert.match(profile, /Transaction password/);

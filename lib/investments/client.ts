@@ -126,6 +126,21 @@ export async function listAdminWithdrawals(): Promise<WithdrawalRequest[]> {
   return payload.withdrawals ?? [];
 }
 
+export async function reviewAdminWithdrawal(
+  withdrawalId: string,
+  decision: "approved" | "rejected",
+): Promise<WithdrawalRequest> {
+  const payload = await investmentRequest<{ withdrawal?: WithdrawalRequest }>(
+    "POST",
+    `/admin/withdrawals/${encodeURIComponent(withdrawalId)}/review`,
+    { decision },
+  );
+  if (!payload.withdrawal) {
+    throw new InvestmentClientError("investment_request_failed", "Could not save that review.");
+  }
+  return payload.withdrawal;
+}
+
 export async function listVerifiedDeposits(): Promise<InvestmentRecord[]> {
   const payload = await investmentRequest<{ verified?: InvestmentRecord[] }>("GET", "/admin/deposits");
   return payload.verified ?? [];

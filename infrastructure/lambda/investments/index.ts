@@ -34,6 +34,8 @@ import {
   type ProfitEntry,
   type CommissionEntry,
   type WithdrawalRequest,
+  type WithdrawalReview,
+  type WithdrawalReviewResult,
 } from "../../../lib/investments/service";
 
 const INVESTMENT_PREFIX = "INVESTMENT#";
@@ -539,6 +541,9 @@ export function createDynamoInvestmentStore(tableName: string): InvestmentStore 
         .map((item) => withdrawalFromStoredItem(item))
         .sort((left, right) => right.createdAt.localeCompare(left.createdAt) || left.withdrawalId.localeCompare(right.withdrawalId));
     },
+    async reviewWithdrawal(review) {
+      return reviewStoredWithdrawal(tableName, review);
+    },
     async getById(ownerSub, investmentId) {
       const response = await document.send(
         new GetCommand({
@@ -669,6 +674,48 @@ function cancellationReasons(caught: unknown): string[] {
     return [];
   }
   return (record.CancellationReasons ?? []).map((reason) => reason.Code ?? "");
+}
+
+async function reviewStoredWithdrawal(tableName: string, review: WithdrawalReview): Promise<WithdrawalReviewResult> {
+  const items = await scanMatches(tableName, {
+    FilterExpression: "sk = :sk",
+    ExpressionAttributeNames: {},
+    ExpressionAttributeValues: { ":sk": `${WITHDRAWAL_PREFIX}${review.withdrawalId}` },
+  });
+  const item = items[0];
+  if (!item || items.length !== 1) {
+    return { result: "not-found" };
+  }
+  if (item.status !== "pending_review") {
+    return { result: "rejected" };
+  }
+  try {
+    const response = await document.send(
+      new UpdateCommand({
+        TableName: tableName,
+        Key: { pk: item.pk, sk: item.sk },
+        UpdateExpression: "SET #status = :decision, reviewedAt = :reviewedAt, reviewedBy = :reviewedBy, updatedAt = :reviewedAt",
+        ConditionExpression: "#status = :pending",
+        ExpressionAttributeNames: { "#status": "status" },
+        ExpressionAttributeValues: {
+          ":decision": review.decision,
+          ":pending": "pending_review",
+          ":reviewedAt": review.reviewedAt,
+          ":reviewedBy": review.reviewedBy,
+        },
+        ReturnValues: "ALL_NEW",
+      }),
+    );
+    if (!response.Attributes) {
+      return { result: "not-found" };
+    }
+    return { result: "reviewed", request: withdrawalFromStoredItem(response.Attributes) };
+  } catch (caught) {
+    if (caught && typeof caught === "object" && (caught as { name?: string }).name === "ConditionalCheckFailedException") {
+      return { result: "rejected" };
+    }
+    throw caught;
+  }
 }
 
 async function reviewStoredDeposit(tableName: string, review: DepositReview): Promise<DepositReviewResult> {

@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
-import { InvestmentClientError, activateVerifiedInvestment, listPendingDeposits, listVerifiedDeposits, readCurrentDepositAddresses, reviewPendingDeposit, saveDepositAddresses } from "@/lib/investments/client";
+import { InvestmentClientError, activateVerifiedInvestment, listPendingDeposits, listVerifiedDeposits, readCurrentDepositAddresses, readDepositProofUrl, reviewPendingDeposit, saveDepositAddresses } from "@/lib/investments/client";
 import { formatUsdtAmount, type InvestmentRecord } from "@/lib/investments/service";
 import { isMemberApiConfigured } from "@/lib/members/config";
 
@@ -16,6 +16,7 @@ export function AdminDepositsPanel() {
   const [bep20Draft, setBep20Draft] = useState("");
   const [trc20Draft, setTrc20Draft] = useState("");
   const [savingAddress, setSavingAddress] = useState(false);
+  const [reasons, setReasons] = useState<Record<string, string>>({});
 
   const load = useCallback(async () => {
     const [pendingDeposits, verifiedDeposits, wallets] = await Promise.all([
@@ -55,13 +56,35 @@ export function AdminDepositsPanel() {
     if (savingId || savingAddress) {
       return;
     }
+    if (decision === "rejected" && !window.confirm("Reject this deposit?")) {
+      return;
+    }
     setSavingId(investmentId);
     setMessage(null);
     try {
-      await reviewPendingDeposit(investmentId, decision);
+      await reviewPendingDeposit(investmentId, decision, decision === "rejected" ? reasons[investmentId] : undefined);
       await load();
     } catch (caught) {
       const error = caught instanceof InvestmentClientError ? caught : new InvestmentClientError("investment_request_failed", "Could not save that review.");
+      setMessage(error.message);
+    } finally {
+      setSavingId(null);
+    }
+  }
+
+  async function openScreenshot(investmentId: string) {
+    if (savingId || savingAddress) {
+      return;
+    }
+    setSavingId(investmentId);
+    setMessage(null);
+    try {
+      const url = await readDepositProofUrl(investmentId);
+      if (!window.open(url, "_blank", "noopener,noreferrer")) {
+        setMessage("Could not open that screenshot.");
+      }
+    } catch (caught) {
+      const error = caught instanceof InvestmentClientError ? caught : new InvestmentClientError("investment_request_failed", "Could not open that screenshot.");
       setMessage(error.message);
     } finally {
       setSavingId(null);
@@ -165,15 +188,33 @@ export function AdminDepositsPanel() {
             <p className="eyebrow">{investment.planName}</p>
             <h2>{formatUsdtAmount(investment.amountMinor, investment.scale)}</h2>
             <p style={{ marginTop: 10 }}>Reference {investment.depositReference ?? "—"}</p>
-            {investment.depositProofKey ? <p>Screenshot on file</p> : null}
+            {investment.depositProofKey ? (
+              <p>
+                <Button type="button" variant="secondary" disabled={savingId !== null} onClick={() => void openScreenshot(investment.investmentId)}>
+                  Open screenshot
+                </Button>
+              </p>
+            ) : null}
             <p>Submitted {investment.submittedAt ? new Date(investment.submittedAt).toLocaleString() : "—"}</p>
             <div className="grid-2" style={{ marginTop: 16 }}>
               <Button disabled={savingId !== null} onClick={() => void decide(investment.investmentId, "deposit_verified")}>
                 {savingId === investment.investmentId ? "Saving…" : "Verify deposit"}
               </Button>
-              <Button variant="secondary" disabled={savingId !== null} onClick={() => void decide(investment.investmentId, "rejected")}>
-                Reject
-              </Button>
+              <div>
+                <label htmlFor={`reject-reason-${investment.investmentId}`}>Rejection reason</label>
+                <textarea
+                  id={`reject-reason-${investment.investmentId}`}
+                  value={reasons[investment.investmentId] ?? ""}
+                  maxLength={500}
+                  onChange={(event) =>
+                    setReasons((current) => ({ ...current, [investment.investmentId]: event.target.value }))
+                  }
+                  style={{ display: "block", width: "100%", marginTop: 8 }}
+                />
+                <Button variant="secondary" disabled={savingId !== null} onClick={() => void decide(investment.investmentId, "rejected")} style={{ marginTop: 12 }}>
+                  Reject
+                </Button>
+              </div>
             </div>
           </Card>
         ))

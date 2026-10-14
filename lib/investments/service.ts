@@ -55,6 +55,7 @@ export type InvestmentRecord = {
   activatedAt?: string;
   activatedBy?: string;
   depositProofKey?: string;
+  rejectionReason?: string;
 };
 
 export type InvestmentIdentity = {
@@ -146,6 +147,7 @@ export type DepositReview = {
   decision: ReviewDecision;
   reviewedAt: string;
   reviewedBy: string;
+  rejectionReason?: string;
 };
 
 export type DepositReviewResult =
@@ -178,6 +180,7 @@ export type InvestmentStore = {
   listVerifiedDeposits(): Promise<InvestmentRecord[]>;
   listAllInvestments(): Promise<InvestmentRecord[]>;
   reviewDeposit(review: DepositReview): Promise<DepositReviewResult>;
+  findByInvestmentId(investmentId: string): Promise<InvestmentRecord | null>;
   activateInvestment(activation: InvestmentActivation): Promise<InvestmentActivationResult>;
   listActiveInvestments(): Promise<InvestmentRecord[]>;
   putProfit(entry: ProfitEntry): Promise<"created" | "duplicate">;
@@ -241,6 +244,7 @@ export function investmentFromStoredItem(item: Record<string, unknown>): Investm
     ...storedDepositFields(item),
     ...storedReviewFields(item),
     ...storedActivationFields(item),
+    ...storedRejectionReason(item),
   };
 }
 
@@ -608,6 +612,9 @@ export async function handleInvestmentApi(input: {
   newInvestmentId?: () => string;
   newWithdrawalId?: () => string;
   proofStore?: DepositProofStore;
+  proofUrls?: {
+    signGet(key: string): Promise<string>;
+  };
   adminGroups?: AdminGroupDirectory;
   transactionPasswords?: {
     verify(userId: string, password: string): Promise<"ok" | "missing" | "mismatch">;
@@ -728,6 +735,15 @@ export async function handleInvestmentApi(input: {
           input.store.listVerifiedDeposits(),
         ]);
         return { statusCode: 200, body: { investments, verified } };
+      }
+      const proofInvestmentId = proofIdFromPath(path);
+      if (method === "GET" && proofInvestmentId) {
+        const url = await depositProofUrl({
+          investmentId: proofInvestmentId,
+          store: input.store,
+          proofUrls: input.proofUrls,
+        });
+        return { statusCode: 200, body: { url } };
       }
       const reviewInvestmentId = reviewIdFromPath(path);
       if (method === "POST" && reviewInvestmentId) {
@@ -902,9 +918,10 @@ async function reviewDeposit(input: {
   const decision = decisionFromBody(input.body);
   const outcome = await input.store.reviewDeposit({
     investmentId: input.investmentId,
-    decision,
+    decision: decision.decision,
     reviewedAt: input.now(),
     reviewedBy: input.reviewedBy,
+    rejectionReason: decision.rejectionReason,
   });
   if (outcome.result === "not-found") {
     throw new InvestmentRequestError(404, "investment_not_found", "That investment was not found.");
@@ -913,7 +930,13 @@ async function reviewDeposit(input: {
     throw new InvestmentRequestError(409, "review_not_allowed", "Only a pending deposit can be reviewed.");
   }
   const saved = outcome.record;
-  if (saved.status !== decision || saved.reviewedBy !== input.reviewedBy || saved.ownerSub.length === 0) {
+  if (saved.status !== decision.decision || saved.reviewedBy !== input.reviewedBy || saved.ownerSub.length === 0) {
+    throw new InvestmentRequestError(500, "review_failed", "Could not save that review.");
+  }
+  if (decision.decision === "rejected" && decision.rejectionReason && saved.rejectionReason !== decision.rejectionReason) {
+    throw new InvestmentRequestError(500, "review_failed", "Could not save that review.");
+  }
+  if (decision.decision !== "rejected" && saved.rejectionReason) {
     throw new InvestmentRequestError(500, "review_failed", "Could not save that review.");
   }
   return saved;
@@ -954,19 +977,29 @@ function assertNoActivationOverrides(body: unknown): void {
   }
 }
 
-function decisionFromBody(body: unknown): ReviewDecision {
+function decisionFromBody(body: unknown): { decision: ReviewDecision; rejectionReason?: string } {
   if (!body || typeof body !== "object" || Array.isArray(body)) {
     throw new InvestmentRequestError(400, "invalid_body", "Choose verify or reject.");
   }
   const source = body as Record<string, unknown>;
-  const extra = Object.keys(source).filter((key) => key !== "decision");
+  const extra = Object.keys(source).filter((key) => key !== "decision" && key !== "reason");
   if (extra.length > 0) {
     throw new InvestmentRequestError(400, "invalid_body", "Only the review decision can be submitted.");
   }
   if (source.decision !== "deposit_verified" && source.decision !== "rejected") {
     throw new InvestmentRequestError(400, "invalid_decision", "Choose verify or reject.");
   }
-  return source.decision;
+  if (source.reason !== undefined && typeof source.reason !== "string") {
+    throw new InvestmentRequestError(400, "invalid_reason", "The rejection reason must be 500 characters or fewer.");
+  }
+  const reason = typeof source.reason === "string" ? source.reason.trim() : "";
+  if (reason.length > 500) {
+    throw new InvestmentRequestError(400, "invalid_reason", "The rejection reason must be 500 characters or fewer.");
+  }
+  if (source.decision !== "rejected" || reason.length === 0) {
+    return { decision: source.decision };
+  }
+  return { decision: source.decision, rejectionReason: reason };
 }
 
 function visibleDepositAddresses(saved: DepositAddress | null): { bep20: string; trc20: string } {
@@ -1092,6 +1125,38 @@ function reviewIdFromPath(path: string): string | null {
   return match[1];
 }
 
+function proofIdFromPath(path: string): string | null {
+  const match = path.match(/^\/admin\/deposits\/([^/]+)\/proof$/);
+  if (!match?.[1] || !INVESTMENT_ID_PATTERN.test(match[1])) {
+    return null;
+  }
+  return match[1];
+}
+
+async function depositProofUrl(input: {
+  investmentId: string;
+  store: InvestmentStore;
+  proofUrls: { signGet(key: string): Promise<string> } | undefined;
+}): Promise<string> {
+  const record = await input.store.findByInvestmentId(input.investmentId);
+  if (!record?.depositProofKey || !isDepositProofKey(record.depositProofKey)) {
+    throw new InvestmentRequestError(404, "proof_not_found", "That deposit screenshot was not found.");
+  }
+  if (!input.proofUrls) {
+    throw new InvestmentRequestError(500, "configuration", "Deposit screenshots are not configured.");
+  }
+  const url = await input.proofUrls.signGet(record.depositProofKey);
+  const encodedKey = record.depositProofKey.split("/").map((part) => encodeURIComponent(part)).join("/");
+  if (!url.startsWith("https://") || (!url.includes(record.depositProofKey) && !url.includes(encodedKey))) {
+    throw new InvestmentRequestError(500, "proof_failed", "Could not open that screenshot.");
+  }
+  return url;
+}
+
+function isDepositProofKey(key: string): boolean {
+  return key.startsWith("deposit-proofs/") && !key.includes("..") && !key.includes("\\") && !key.includes("://") && !key.includes("//");
+}
+
 function activationIdFromPath(path: string): string | null {
   const match = path.match(/^\/admin\/deposits\/([^/]+)\/activate$/);
   if (!match?.[1] || !INVESTMENT_ID_PATTERN.test(match[1])) {
@@ -1177,6 +1242,16 @@ function storedActivationFields(item: Record<string, unknown>): Pick<InvestmentR
     fields.activatedBy = item.activatedBy;
   }
   return fields;
+}
+
+function storedRejectionReason(item: Record<string, unknown>): Pick<InvestmentRecord, "rejectionReason"> {
+  if (item.rejectionReason === undefined) {
+    return {};
+  }
+  if (typeof item.rejectionReason !== "string" || item.rejectionReason.trim() === "" || item.rejectionReason !== item.rejectionReason.trim() || item.rejectionReason.length > 500) {
+    throw new InvestmentRequestError(500, "invalid_stored_review", "That investment record is not valid.");
+  }
+  return { rejectionReason: item.rejectionReason };
 }
 
 function storedReviewFields(item: Record<string, unknown>): Pick<InvestmentRecord, "reviewedAt" | "reviewedBy"> {

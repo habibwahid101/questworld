@@ -446,6 +446,92 @@ test("a deposit that is not pending cannot be reviewed", async () => {
   assert.equal((await store.getById("member-1", ACTIVE_ID))?.reviewedBy, undefined);
 });
 
+test("an admin can open a stored screenshot and a rejection can store a reason", async () => {
+  const proofKey = `deposit-proofs/member-1/${PENDING_ID}/proof`;
+  const store = createMemoryInvestmentStore([
+    { ...pendingItem(PENDING_ID, "member-1"), depositProofKey: proofKey },
+    pendingItem(ACTIVE_ID, "member-2"),
+  ]);
+  const signed: string[] = [];
+  const proofUrls = {
+    async signGet(key: string) {
+      signed.push(key);
+      return `https://proof.example/${key}?expires=120`;
+    },
+  };
+
+  const member = await handleInvestmentApi({
+    method: "GET",
+    path: `/admin/deposits/${PENDING_ID}/proof`,
+    claims: claims("member-1"),
+    store,
+    proofUrls,
+  });
+  assert.equal(member.statusCode, 403);
+  assert.deepEqual(signed, []);
+
+  const missing = await handleInvestmentApi({
+    method: "GET",
+    path: `/admin/deposits/${ACTIVE_ID}/proof`,
+    claims: { sub: "admin-1", "cognito:groups": "[Admins]" },
+    store,
+    proofUrls,
+  });
+  assert.equal(missing.statusCode, 404);
+  assert.equal(missing.body.error, "proof_not_found");
+  assert.deepEqual(signed, []);
+
+  const opened = await handleInvestmentApi({
+    method: "GET",
+    path: `/admin/deposits/${PENDING_ID}/proof`,
+    claims: { sub: "admin-1", "cognito:groups": "[Admins]" },
+    store,
+    proofUrls,
+  });
+  assert.equal(opened.statusCode, 200);
+  assert.equal(opened.body.url, `https://proof.example/${proofKey}?expires=120`);
+  assert.deepEqual(signed, [proofKey]);
+  assert.equal((await store.getById("member-1", PENDING_ID))?.status, "pending_verification");
+
+  const tooLong = await review(store, "admin-1", PENDING_ID, { decision: "rejected", reason: "x".repeat(501) }, ["Admins"]);
+  assert.equal(tooLong.statusCode, 400);
+  assert.equal((await store.getById("member-1", PENDING_ID))?.status, "pending_verification");
+
+  const verifiedWithReason = await review(
+    store,
+    "admin-1",
+    ACTIVE_ID,
+    { decision: "deposit_verified", reason: "Do not store this." },
+    ["Admins"],
+  );
+  assert.equal(verifiedWithReason.statusCode, 200);
+  assert.equal((await store.getById("member-2", ACTIVE_ID))?.status, "deposit_verified");
+  assert.equal((await store.getById("member-2", ACTIVE_ID))?.rejectionReason, undefined);
+
+  const rejected = await review(store, "admin-1", PENDING_ID, { decision: "rejected", reason: "  Reference does not match.  " }, ["Admins"]);
+  assert.equal(rejected.statusCode, 200);
+  const saved = await store.getById("member-1", PENDING_ID);
+  assert.equal(saved?.status, "rejected");
+  assert.equal(saved?.rejectionReason, "Reference does not match.");
+  assert.equal(saved?.ownerSub, "member-1");
+  assert.equal(saved?.amountMinor, 100_000_000);
+  assert.equal(saved?.planId, "starter");
+  assert.equal(saved?.depositProofKey, proofKey);
+
+  const panel = readFileSync(new URL("../components/admin/AdminDepositsPanel.tsx", import.meta.url), "utf8");
+  const payment = readFileSync(new URL("../components/member/InvestmentPaymentPanel.tsx", import.meta.url), "utf8");
+  const stack = readFileSync(new URL("../infrastructure/lib/api-stack.ts", import.meta.url), "utf8");
+  assert.match(panel, /Open screenshot/);
+  assert.match(panel, /window\.confirm\("Reject this deposit\?"\)/);
+  assert.match(panel, /Rejection reason/);
+  assert.match(payment, /investment\.status === "rejected" && investment\.rejectionReason/);
+  assert.match(stack, /s3:GetObject/);
+  assert.match(stack, /s3:PutObject/);
+  assert.match(stack, /deposit-proofs\/\*/);
+  assert.match(stack, /\/admin\/deposits\/\{investmentId\}\/proof/);
+  assert.doesNotMatch(stack, /s3:\*/);
+});
+
 test("the API Gateway bracketed Admins claim is accepted and a member claim is not", async () => {
   assert.equal(isAdminClaims({ sub: "admin-1", "cognito:groups": "[Admins]" }), true);
   assert.equal(isAdminClaims({ sub: "admin-1", "cognito:groups": '["Admins"]' }), true);

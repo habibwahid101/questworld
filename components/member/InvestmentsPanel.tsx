@@ -1,20 +1,57 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
-import { createCurrentInvestment, InvestmentClientError } from "@/lib/investments/client";
-import { formatUsdtAmount, investmentCatalog, type PlanId } from "@/lib/investments/service";
+import { createCurrentInvestment, InvestmentClientError, listCurrentInvestments } from "@/lib/investments/client";
+import { formatUsdtAmount, investmentCatalog, type InvestmentRecord, type InvestmentStatus, type PlanId } from "@/lib/investments/service";
 import { PLAN_DESCRIPTIONS, PLAN_RATE_NOTE, planMonthlyRateLabel } from "@/lib/investments/plan-copy";
 import { isMemberApiConfigured } from "@/lib/members/config";
 import styles from "./InvestmentsPanel.module.css";
+
+const statusLabel: Record<InvestmentStatus, string> = {
+  awaiting_deposit: "Awaiting deposit",
+  pending_verification: "Pending verification",
+  deposit_verified: "Deposit verified",
+  rejected: "Rejected",
+  active: "Active",
+};
 
 export function InvestmentsPanel() {
   const router = useRouter();
   const [message, setMessage] = useState<string | null>(null);
   const [savingPlan, setSavingPlan] = useState<PlanId | null>(null);
+  const [investments, setInvestments] = useState<InvestmentRecord[]>([]);
+  const [loading, setLoading] = useState(isMemberApiConfigured());
   const pendingKeys = useRef<Partial<Record<PlanId, string>>>({});
+
+  useEffect(() => {
+    if (!isMemberApiConfigured()) {
+      return;
+    }
+    let active = true;
+    void listCurrentInvestments()
+      .then((records) => {
+        if (active) {
+          setInvestments(records);
+        }
+      })
+      .catch((caught: unknown) => {
+        if (active) {
+          setMessage(caught instanceof Error ? caught.message : "Could not load your investments.");
+        }
+      })
+      .finally(() => {
+        if (active) {
+          setLoading(false);
+        }
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
 
   async function choosePlan(planId: PlanId) {
     if (savingPlan) {
@@ -74,6 +111,32 @@ export function InvestmentsPanel() {
         </div>
         {message ? <p style={{ marginTop: 16 }}>{message}</p> : null}
       </Card>
+      {loading ? (
+        <Card>
+          <p>Loading investments…</p>
+        </Card>
+      ) : investments.length === 0 ? (
+        <Card>
+          <h2>No investments yet.</h2>
+        </Card>
+      ) : (
+        investments.map((investment) => (
+          <Card key={investment.investmentId}>
+            <p className="eyebrow">{investment.planName}</p>
+            <h2>{formatUsdtAmount(investment.amountMinor, investment.scale)}</h2>
+            <p style={{ marginTop: 10 }}>Status: {statusLabel[investment.status]}</p>
+            <p>Created {new Date(investment.createdAt).toLocaleString()}</p>
+            {investment.status === "rejected" && investment.rejectionReason ? (
+              <p>Rejection reason: {investment.rejectionReason}</p>
+            ) : null}
+            {investment.status === "awaiting_deposit" ? (
+              <p style={{ marginTop: 12 }}>
+                <Link href={`/investments/${encodeURIComponent(investment.investmentId)}`}>Continue to payment</Link>
+              </p>
+            ) : null}
+          </Card>
+        ))
+      )}
     </div>
   );
 }

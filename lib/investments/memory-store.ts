@@ -12,6 +12,8 @@ import type {
   CommissionEntry,
   DepositAddress,
   WithdrawalRequest,
+  WithdrawalReview,
+  WithdrawalReviewResult,
 } from "./service.ts";
 
 export function createMemoryInvestmentStore(seed: readonly InvestmentRecord[] = []): InvestmentStore {
@@ -216,6 +218,25 @@ export function createMemoryInvestmentStore(seed: readonly InvestmentRecord[] = 
       return [...withdrawals.values()]
         .map((request) => structuredClone(request))
         .sort((left, right) => right.createdAt.localeCompare(left.createdAt) || left.withdrawalId.localeCompare(right.withdrawalId));
+    },
+    async reviewWithdrawal(review: WithdrawalReview): Promise<WithdrawalReviewResult> {
+      const found = [...withdrawals.entries()].find(([, request]) => request.withdrawalId === review.withdrawalId);
+      if (!found) {
+        return { result: "not-found" };
+      }
+      const [key, current] = found;
+      if (current.status !== "pending_review") {
+        return { result: "rejected" };
+      }
+      const request: WithdrawalRequest = {
+        ...current,
+        status: review.decision,
+        updatedAt: review.reviewedAt,
+        reviewedAt: review.reviewedAt,
+        reviewedBy: review.reviewedBy,
+      };
+      withdrawals.set(key, request);
+      return { result: "reviewed", request: structuredClone(request) };
     },
     async getById(ownerSub, investmentId) {
       const found = investments.get(`${ownerSub}#${investmentId}`);

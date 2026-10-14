@@ -13,6 +13,7 @@ import { isMemberApiConfigured } from "@/lib/members/config";
 const statusLabel: Record<WithdrawalStatus, string> = {
   pending_review: "Pending review",
   approved: "Approved",
+  rejected: "Rejected",
 };
 
 export function WithdrawPanel() {

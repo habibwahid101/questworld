@@ -253,6 +253,12 @@ export class ApiStack extends cdk.Stack {
       authorizer,
     });
     httpApi.addRoutes({
+      path: "/admin/withdrawals/{withdrawalId}/review",
+      methods: [apigwv2.HttpMethod.POST],
+      integration: investmentIntegration,
+      authorizer,
+    });
+    httpApi.addRoutes({
       path: "/admin/deposits/{investmentId}/review",
       methods: [apigwv2.HttpMethod.POST],
       integration: investmentIntegration,

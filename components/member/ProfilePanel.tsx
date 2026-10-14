@@ -8,9 +8,10 @@ import { PasswordField } from "@/components/auth/PasswordField";
 import { changeLoginPassword } from "@/lib/auth/cognito";
 import { mapAuthError } from "@/lib/auth/errors";
 import { PASSWORD_HINT, passwordIssue } from "@/lib/auth/password";
-import { setCurrentTransactionPassword as saveTransactionPassword } from "@/lib/members/client";
+import { setCurrentTransactionPassword as saveTransactionPassword, readCurrentMember } from "@/lib/members/client";
 import { memberReferralUrl } from "@/lib/members/referral-url";
 import { useMemberData } from "@/components/member/MemberData";
+import type { MemberProfile } from "@/lib/members/service";
 import styles from "./ProfilePanel.module.css";
 
 export function ProfilePanel() {
@@ -30,9 +31,24 @@ export function ProfilePanel() {
   const [transactionPasswordSet, setTransactionPasswordSet] = useState(false);
   const [changingLogin, setChangingLogin] = useState(false);
   const [savingTransaction, setSavingTransaction] = useState(false);
+  const [readMember, setReadMember] = useState<MemberProfile | null>(null);
 
   useEffect(() => {
     setOrigin(window.location.origin);
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+    void readCurrentMember()
+      .then((profile) => {
+        if (active) {
+          setReadMember(profile);
+        }
+      })
+      .catch(() => undefined);
+    return () => {
+      active = false;
+    };
   }, []);
 
   useEffect(() => {
@@ -158,7 +174,8 @@ export function ProfilePanel() {
     );
   }
 
-  const referralLink = origin ? memberReferralUrl(origin, member.referralCode) : "";
+  const referralLink = origin ? memberReferralUrl(origin, (readMember ?? member).referralCode) : "";
+  const shown = readMember ?? member;
 
   return (
     <Card>
@@ -166,11 +183,16 @@ export function ProfilePanel() {
         <div>
           <h1>Profile</h1>
           <p className="lead">Your account details and referral code.</p>
+          <p>Name {shown.name}</p>
+          <p>Email {shown.email}</p>
+          <p>
+            Referral code <strong>{shown.referralCode}</strong>
+          </p>
         </div>
         {notice ? <p role="status">{notice}</p> : null}
         <form className="stack" onSubmit={onSubmit}>
           <Field label="Email" htmlFor="profile-email">
-            <Input id="profile-email" value={member.email} readOnly />
+            <Input id="profile-email" value={shown.email} readOnly />
           </Field>
           <Field label="Name" htmlFor="profile-name">
             <Input id="profile-name" value={name} onChange={(event) => setName(event.target.value)} required maxLength={80} />
@@ -267,7 +289,7 @@ export function ProfilePanel() {
         </form>
         <div className={styles.referral}>
           <p>
-            Referral code <strong>{member.referralCode}</strong>
+            Referral code <strong>{shown.referralCode}</strong>
           </p>
           <Button variant="secondary" onClick={() => void copyCode()}>
             Copy referral code

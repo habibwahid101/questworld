@@ -104,7 +104,8 @@ export type CommissionPostResult = {
   result: "posted" | "duplicate" | "skipped";
 };
 
-export type WithdrawalStatus = "pending_review" | "approved";
+export type WithdrawalStatus = "pending_review" | "approved" | "rejected";
+export type WithdrawalDecision = "approved" | "rejected";
 
 export type WithdrawalRequest = {
   withdrawalId: string;
@@ -115,6 +116,8 @@ export type WithdrawalRequest = {
   status: WithdrawalStatus;
   createdAt: string;
   updatedAt: string;
+  reviewedAt?: string;
+  reviewedBy?: string;
 };
 
 export type CreateInvestmentResult =
@@ -139,6 +142,18 @@ export type DepositProof = {
 export type DepositProofStore = {
   put(input: { ownerSub: string; investmentId: string; proof: DepositProof }): Promise<string>;
 };
+
+export type WithdrawalReview = {
+  withdrawalId: string;
+  decision: WithdrawalDecision;
+  reviewedAt: string;
+  reviewedBy: string;
+};
+
+export type WithdrawalReviewResult =
+  | { result: "reviewed"; request: WithdrawalRequest }
+  | { result: "not-found" }
+  | { result: "rejected" };
 
 export type DepositSubmissionResult = { result: "submitted" } | { result: "exists" } | { result: "not-found" } | { result: "rejected" };
 
@@ -192,6 +207,7 @@ export type InvestmentStore = {
   putWithdrawal(request: WithdrawalRequest): Promise<"created" | "duplicate">;
   listWithdrawals(ownerSub: string): Promise<WithdrawalRequest[]>;
   listAllWithdrawals(): Promise<WithdrawalRequest[]>;
+  reviewWithdrawal(review: WithdrawalReview): Promise<WithdrawalReviewResult>;
   getById(ownerSub: string, investmentId: string): Promise<InvestmentRecord | null>;
   listByOwner(ownerSub: string): Promise<InvestmentRecord[]>;
   getDepositAddress(): Promise<DepositAddress | null>;
@@ -212,6 +228,8 @@ export class InvestmentRequestError extends Error {
 
 const INVESTMENT_ID_PATTERN =
   /^inv_[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const WITHDRAWAL_ID_PATTERN =
+  /^wd_[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const IDEMPOTENCY_PATTERN = /^[A-Za-z0-9_-]{8,128}$/;
 const DEPOSIT_REFERENCE_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:-]{3,119}$/;
 
@@ -312,7 +330,7 @@ export function availableWithdrawalMinor(profits: readonly ProfitEntry[], withdr
 
 export function withdrawalFromStoredItem(item: Record<string, unknown>): WithdrawalRequest {
   const status = item.status;
-  if (status !== "pending_review" && status !== "approved") {
+  if (status !== "pending_review" && status !== "approved" && status !== "rejected") {
     throw new InvestmentRequestError(500, "invalid_stored_withdrawal", "That withdrawal record is not valid.");
   }
   const amountMinor = Number(item.amountMinor);
@@ -331,6 +349,8 @@ export function withdrawalFromStoredItem(item: Record<string, unknown>): Withdra
     status,
     createdAt: item.createdAt,
     updatedAt: typeof item.updatedAt === "string" ? item.updatedAt : item.createdAt,
+    ...(typeof item.reviewedAt === "string" ? { reviewedAt: item.reviewedAt } : {}),
+    ...(typeof item.reviewedBy === "string" ? { reviewedBy: item.reviewedBy } : {}),
   };
 }
 
@@ -725,6 +745,20 @@ export async function handleInvestmentApi(input: {
       }
       return { statusCode: 200, body: { withdrawals: await input.store.listAllWithdrawals() } };
     }
+    const withdrawalReviewId = withdrawalReviewIdFromPath(path);
+    if (method === "POST" && withdrawalReviewId) {
+      if (!isAdminClaims(input.claims)) {
+        return errorBody(403, "forbidden", "Admin access is required.");
+      }
+      const request = await reviewWithdrawal({
+        withdrawalId: withdrawalReviewId,
+        body: input.body,
+        reviewedBy: identity.userId,
+        store: input.store,
+        now,
+      });
+      return { statusCode: 200, body: { withdrawal: request } };
+    }
     if (path === "/admin/deposits" || path.startsWith("/admin/deposits/")) {
       if (!isAdminClaims(input.claims)) {
         return errorBody(403, "forbidden", "Admin access is required.");
@@ -1115,6 +1149,60 @@ function readIdempotencyKey(value: string | undefined): string {
     );
   }
   return key;
+}
+
+function withdrawalReviewIdFromPath(path: string): string | null {
+  const match = path.match(/^\/admin\/withdrawals\/([^/]+)\/review$/);
+  if (!match?.[1] || !WITHDRAWAL_ID_PATTERN.test(match[1])) {
+    return null;
+  }
+  return match[1];
+}
+
+async function reviewWithdrawal(input: {
+  withdrawalId: string;
+  body: unknown;
+  reviewedBy: string;
+  store: InvestmentStore;
+  now: () => string;
+}): Promise<WithdrawalRequest> {
+  const decision = withdrawalDecisionFromBody(input.body);
+  const outcome = await input.store.reviewWithdrawal({
+    withdrawalId: input.withdrawalId,
+    decision,
+    reviewedAt: input.now(),
+    reviewedBy: input.reviewedBy,
+  });
+  if (outcome.result === "not-found") {
+    throw new InvestmentRequestError(404, "withdrawal_not_found", "That withdrawal was not found.");
+  }
+  if (outcome.result === "rejected") {
+    throw new InvestmentRequestError(409, "review_not_allowed", "Only a pending withdrawal can be reviewed.");
+  }
+  const saved = outcome.request;
+  if (
+    saved.status !== decision ||
+    saved.reviewedBy !== input.reviewedBy ||
+    saved.withdrawalId !== input.withdrawalId ||
+    saved.amountMinor <= 0
+  ) {
+    throw new InvestmentRequestError(500, "review_failed", "Could not save that review.");
+  }
+  return saved;
+}
+
+function withdrawalDecisionFromBody(body: unknown): WithdrawalDecision {
+  if (!body || typeof body !== "object" || Array.isArray(body)) {
+    throw new InvestmentRequestError(400, "invalid_body", "Choose approved or rejected.");
+  }
+  const record = body as Record<string, unknown>;
+  if (Object.keys(record).some((key) => key !== "decision")) {
+    throw new InvestmentRequestError(400, "invalid_body", "The server sets the withdrawal status.");
+  }
+  if (record.decision !== "approved" && record.decision !== "rejected") {
+    throw new InvestmentRequestError(400, "invalid_decision", "Choose approved or rejected.");
+  }
+  return record.decision;
 }
 
 function reviewIdFromPath(path: string): string | null {

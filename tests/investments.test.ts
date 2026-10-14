@@ -892,6 +892,105 @@ test("a member can request posted profit and cannot read another member's reques
   assert.equal(foreignList.body.availableMinor, 0);
 });
 
+test("only an admin can review a pending withdrawal once and approval does not change profit", async () => {
+  const withdrawalId = "wd_33333333-3333-4333-8333-333333333333";
+  const profit: ProfitEntry = {
+    investmentId: ACTIVE_ID,
+    ownerSub: "member-1",
+    period: "2026-10",
+    rateBps: 800,
+    profitMinor: 8_000_000,
+    principalMinor: 100_000_000,
+    currency: "USDT",
+    scale: 6,
+    planId: "starter",
+    planName: "Starter",
+    postedAt: "2026-11-01T01:00:00.000Z",
+  };
+  const pending: WithdrawalRequest = {
+    withdrawalId,
+    ownerSub: "member-1",
+    amountMinor: 8_000_000,
+    currency: "USDT",
+    scale: 6,
+    status: "pending_review",
+    createdAt: NOW,
+    updatedAt: NOW,
+  };
+  const store = createMemoryInvestmentStore();
+  assert.equal(await store.putProfit(profit), "created");
+  assert.equal(await store.putWithdrawal(pending), "created");
+  const adminClaims = { sub: "admin-1", "cognito:groups": "[Admins]" };
+  const path = `/admin/withdrawals/${withdrawalId}/review`;
+
+  const member = await handleInvestmentApi({
+    method: "POST",
+    path,
+    claims: claims("member-1"),
+    body: { decision: "approved" },
+    store,
+  });
+  assert.equal(member.statusCode, 403);
+  assert.equal((await store.listWithdrawals("member-1"))[0]?.status, "pending_review");
+
+  const override = await handleInvestmentApi({
+    method: "POST",
+    path,
+    claims: adminClaims,
+    body: { decision: "approved", amountMinor: 1, ownerSub: "member-2", status: "active" },
+    store,
+  });
+  assert.equal(override.statusCode, 400);
+
+  const approved = await handleInvestmentApi({
+    method: "POST",
+    path,
+    claims: adminClaims,
+    body: { decision: "approved" },
+    store,
+    now: () => "2026-11-03T00:00:00.000Z",
+  });
+  assert.equal(approved.statusCode, 200);
+  const saved = approved.body.withdrawal as WithdrawalRequest;
+  assert.equal(saved.status, "approved");
+  assert.equal(saved.amountMinor, 8_000_000);
+  assert.equal(saved.ownerSub, "member-1");
+  assert.equal(saved.reviewedBy, "admin-1");
+  assert.equal((await store.listProfits("member-1"))[0]?.profitMinor, 8_000_000);
+
+  const second = await handleInvestmentApi({
+    method: "POST",
+    path,
+    claims: adminClaims,
+    body: { decision: "rejected" },
+    store,
+  });
+  assert.equal(second.statusCode, 409);
+  assert.equal((await store.listWithdrawals("member-1"))[0]?.status, "approved");
+
+  const rejectedStore = createMemoryInvestmentStore();
+  await rejectedStore.putProfit(profit);
+  await rejectedStore.putWithdrawal(pending);
+  const rejected = await handleInvestmentApi({
+    method: "POST",
+    path,
+    claims: adminClaims,
+    body: { decision: "rejected" },
+    store: rejectedStore,
+    now: () => "2026-11-03T00:00:00.000Z",
+  });
+  assert.equal(rejected.statusCode, 200);
+  assert.equal((rejected.body.withdrawal as WithdrawalRequest).status, "rejected");
+  assert.equal((await rejectedStore.listProfits("member-1"))[0]?.profitMinor, 8_000_000);
+  const available = await handleInvestmentApi({
+    method: "GET",
+    path: "/withdrawals",
+    claims: claims("member-1"),
+    store: rejectedStore,
+  });
+  assert.equal(available.body.availableMinor, 8_000_000);
+});
+
 test("monthly commissions post generation 1 and 2 once and skip a missing sponsor", async () => {
   const investor: InvestmentRecord = {
     investmentId: ACTIVE_ID,
@@ -1200,10 +1299,12 @@ test("admin trace lists are read-only and a member cannot read them", async () =
   assert.match(source, /path: "\/admin\/profits"/);
   assert.match(source, /path: "\/admin\/commissions"/);
   assert.match(source, /path: "\/admin\/withdrawals"/);
-  assert.doesNotMatch(source, /path: "\/admin\/withdrawals"[\s\S]{0,120}HttpMethod\.POST/);
+  assert.match(source, /path: "\/admin\/withdrawals\/\{withdrawalId\}\/review"/);
+  assert.doesNotMatch(source, /path: "\/admin\/withdrawals",\s*\n\s*methods: \[apigwv2\.HttpMethod\.POST\]/);
   const profitsPanel = readFileSync(new URL("../components/admin/AdminProfitsPanel.tsx", import.meta.url), "utf8");
   const withdrawalsPanel = readFileSync(new URL("../components/admin/AdminWithdrawalsPanel.tsx", import.meta.url), "utf8");
   assert.match(profitsPanel, /The November schedule has not run/);
-  assert.match(withdrawalsPanel, /does not approve or pay a withdrawal/);
-  assert.doesNotMatch(withdrawalsPanel, /<Button|Pay out/);
+  assert.match(withdrawalsPanel, /Nothing is paid out/);
+  assert.match(withdrawalsPanel, /reviewAdminWithdrawal/);
+  assert.doesNotMatch(withdrawalsPanel, /Pay out/);
 });

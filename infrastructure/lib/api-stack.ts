@@ -312,9 +312,9 @@ export class ApiStack extends cdk.Stack {
       integration: investmentIntegration,
       authorizer,
     });
-    new events.Rule(this, "MonthlyProfitSchedule", {
-      description: "Posts one 8 percent profit ledger entry per active investment for the previous UTC month.",
-      schedule: events.Schedule.cron({ minute: "0", hour: "1", day: "1" }),
+    new events.Rule(this, "DailyReturnSchedule", {
+      description: "Posts due 30-day return payments for active investments.",
+      schedule: events.Schedule.cron({ minute: "0", hour: "1" }),
       targets: [new targets.LambdaFunction(investmentsFn)],
     });
 

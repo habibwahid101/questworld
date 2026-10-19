@@ -127,8 +127,9 @@ if (actionsByTable.size !== 2) {
 }
 
 const schedules = Object.values(apiTemplate.Resources ?? {}).filter((resource) => resource.Type === "AWS::Events::Rule");
-if (schedules.length !== 1 || !String(schedules[0].Properties?.ScheduleExpression ?? "").startsWith("cron(")) {
-  throw new Error("QuestworldApi must contain one monthly profit cron rule.");
+const scheduleExpression = String(schedules[0]?.Properties?.ScheduleExpression ?? "");
+if (schedules.length !== 1 || scheduleExpression !== "cron(0 1 * * ? *)") {
+  throw new Error("QuestworldApi must contain one daily return cron rule.");
 }
 if ([...tables.values()].some((name) => name !== "questworld-members" && name !== "questworld-investments")) {
   throw new Error("QuestworldApi has an unexpected table.");

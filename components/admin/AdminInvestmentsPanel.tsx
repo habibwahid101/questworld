@@ -12,6 +12,7 @@ const statusLabel: Record<InvestmentStatus, string> = {
   deposit_verified: "Deposit verified",
   rejected: "Rejected",
   active: "Active",
+  completed: "Completed",
 };
 
 export function AdminInvestmentsPanel() {
@@ -76,6 +77,8 @@ export function AdminInvestmentsPanel() {
             <p>Owner {investment.ownerSub}</p>
             <p>{investment.depositReference ? `Reference ${investment.depositReference}` : "No reference"}</p>
             <p>Recorded {new Date(investment.createdAt).toLocaleString()}</p>
+            {investment.nextDueAt ? <p>Next due {new Date(investment.nextDueAt).toLocaleString()}</p> : null}
+            {typeof investment.paymentsPosted === "number" ? <p>Payments posted {investment.paymentsPosted}</p> : null}
           </Card>
         ))
       )}

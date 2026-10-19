@@ -10,11 +10,14 @@ import type {
   InvestmentStore,
   ProfitEntry,
   CommissionEntry,
+  CycleAdvance,
+  CycleAdvanceResult,
   DepositAddress,
   WithdrawalRequest,
   WithdrawalReview,
   WithdrawalReviewResult,
 } from "./service.ts";
+import { addReturnCycle } from "./service.ts";
 
 export function createMemoryInvestmentStore(seed: readonly InvestmentRecord[] = []): InvestmentStore {
   const investments = new Map<string, InvestmentRecord>();
@@ -136,6 +139,8 @@ export function createMemoryInvestmentStore(seed: readonly InvestmentRecord[] = 
         status: "active",
         activatedAt: activation.activatedAt,
         activatedBy: activation.activatedBy,
+        nextDueAt: addReturnCycle(activation.activatedAt),
+        paymentsPosted: 0,
         updatedAt: activation.activatedAt,
         statusChangedAt: activation.activatedAt,
       };
@@ -147,8 +152,37 @@ export function createMemoryInvestmentStore(seed: readonly InvestmentRecord[] = 
         .filter((record) => record.status === "active")
         .map((record) => structuredClone(record));
     },
+    async advanceCycle(advance: CycleAdvance): Promise<CycleAdvanceResult> {
+      const found = [...investments.entries()].find(([, record]) => record.ownerSub === advance.ownerSub && record.investmentId === advance.investmentId);
+      if (!found) {
+        return "conflict";
+      }
+      const [itemKey, current] = found;
+      if (current.status !== "active" || current.nextDueAt !== advance.dueAt || (current.paymentsPosted ?? 0) + 1 !== advance.paymentNumber) {
+        return "conflict";
+      }
+      if (advance.paymentNumber === 12) {
+        const completed: InvestmentRecord = {
+          ...current,
+          status: "completed",
+          paymentsPosted: 12,
+          updatedAt: advance.postedAt,
+          statusChangedAt: advance.postedAt,
+        };
+        delete completed.nextDueAt;
+        investments.set(itemKey, completed);
+        return "completed";
+      }
+      investments.set(itemKey, {
+        ...current,
+        paymentsPosted: advance.paymentNumber,
+        nextDueAt: addReturnCycle(advance.dueAt),
+        updatedAt: advance.postedAt,
+      });
+      return "advanced";
+    },
     async putProfit(entry: ProfitEntry) {
-      const key = `${entry.ownerSub}#${entry.investmentId}#${entry.period}`;
+      const key = `${entry.ownerSub}#${entry.investmentId}#${entry.paymentNumber}`;
       if (profits.has(key)) {
         return "duplicate";
       }
@@ -169,7 +203,7 @@ export function createMemoryInvestmentStore(seed: readonly InvestmentRecord[] = 
         .sort((left, right) => right.period.localeCompare(left.period) || left.investmentId.localeCompare(right.investmentId));
     },
     async putCommission(entry: CommissionEntry) {
-      const key = `${entry.recipientSub}#${entry.investmentId}#${entry.period}#${entry.generation}`;
+      const key = `${entry.recipientSub}#${entry.investmentId}#${entry.paymentNumber}#${entry.generation}`;
       if (commissions.has(key)) {
         return "duplicate";
       }

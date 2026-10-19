@@ -16,9 +16,8 @@ import { verifyTransactionPassword } from "../../../lib/members/transaction-pass
 import {
   handleInvestmentApi,
   investmentFromStoredItem,
-  postMonthlyCommissions,
-  postMonthlyProfits,
-  previousUtcMonth,
+  postDueReturns,
+  addReturnCycle,
   profitFromStoredItem,
   withdrawalFromStoredItem,
   commissionFromStoredItem,
@@ -33,6 +32,8 @@ import {
   type InvestmentStore,
   type ProfitEntry,
   type CommissionEntry,
+  type CycleAdvance,
+  type CycleAdvanceResult,
   type WithdrawalRequest,
   type WithdrawalReview,
   type WithdrawalReviewResult,
@@ -81,12 +82,10 @@ export async function handler(event: ApiGatewayEvent): Promise<{
 
   if (event.source === "aws.events") {
     const postedAt = typeof event.time === "string" ? event.time : new Date().toISOString();
-    const period = previousUtcMonth(postedAt);
     const store = createDynamoInvestmentStore(tableName);
     const sponsors = { sponsorOf: (userId: string) => sponsorOf(membersTableName, userId) };
-    const profits = await postMonthlyProfits({ store, period, postedAt });
-    const commissions = await postMonthlyCommissions({ store, sponsors, period, postedAt });
-    return json(200, { profits, commissions });
+    const returns = await postDueReturns({ store, sponsors, now: postedAt });
+    return json(200, returns);
   }
 
   let body: unknown;
@@ -368,6 +367,9 @@ export function createDynamoInvestmentStore(tableName: string): InvestmentStore 
     async listActiveInvestments() {
       return scanActiveInvestments(tableName);
     },
+    async advanceCycle(advance) {
+      return advanceStoredCycle(tableName, advance);
+    },
     async putProfit(entry) {
       try {
         await document.send(
@@ -375,7 +377,7 @@ export function createDynamoInvestmentStore(tableName: string): InvestmentStore 
             TableName: tableName,
             Item: {
               pk: userKey(entry.ownerSub),
-              sk: `${PROFIT_PREFIX}${entry.investmentId}#${entry.period}`,
+              sk: `${PROFIT_PREFIX}${entry.investmentId}#${String(entry.paymentNumber).padStart(2, "0")}`,
               ...entry,
             },
             ConditionExpression: "attribute_not_exists(pk) AND attribute_not_exists(sk)",
@@ -430,7 +432,7 @@ export function createDynamoInvestmentStore(tableName: string): InvestmentStore 
             TableName: tableName,
             Item: {
               pk: userKey(entry.recipientSub),
-              sk: `${COMMISSION_PREFIX}${entry.investmentId}#${entry.period}#${entry.generation}`,
+              sk: `${COMMISSION_PREFIX}${entry.investmentId}#${String(entry.paymentNumber).padStart(2, "0")}#${entry.generation}`,
               ...entry,
             },
             ConditionExpression: "attribute_not_exists(pk) AND attribute_not_exists(sk)",
@@ -764,6 +766,46 @@ async function reviewStoredDeposit(tableName: string, review: DepositReview): Pr
   }
 }
 
+async function advanceStoredCycle(tableName: string, advance: CycleAdvance): Promise<CycleAdvanceResult> {
+  const items = await scanMatches(tableName, {
+    FilterExpression: "sk = :sk",
+    ExpressionAttributeNames: {},
+    ExpressionAttributeValues: { ":sk": `${INVESTMENT_PREFIX}${advance.investmentId}` },
+  });
+  const item = items[0];
+  if (!item || items.length !== 1 || item.pk !== userKey(advance.ownerSub)) {
+    return "conflict";
+  }
+  const completing = advance.paymentNumber === 12;
+  try {
+    await document.send(
+      new UpdateCommand({
+        TableName: tableName,
+        Key: { pk: item.pk, sk: item.sk },
+        UpdateExpression: completing
+          ? "SET #status = :completed, paymentsPosted = :posted, updatedAt = :postedAt, statusChangedAt = :postedAt REMOVE nextDueAt"
+          : "SET paymentsPosted = :posted, nextDueAt = :nextDue, updatedAt = :postedAt",
+        ConditionExpression: "#status = :active AND nextDueAt = :due AND paymentsPosted = :previous",
+        ExpressionAttributeNames: { "#status": "status" },
+        ExpressionAttributeValues: {
+          ":active": "active",
+          ":due": advance.dueAt,
+          ":previous": advance.paymentNumber - 1,
+          ":posted": advance.paymentNumber,
+          ":postedAt": advance.postedAt,
+          ...(completing ? { ":completed": "completed" } : { ":nextDue": addReturnCycle(advance.dueAt) }),
+        },
+      }),
+    );
+    return completing ? "completed" : "advanced";
+  } catch (caught) {
+    if (caught && typeof caught === "object" && (caught as { name?: string }).name === "ConditionalCheckFailedException") {
+      return "conflict";
+    }
+    throw caught;
+  }
+}
+
 async function activateStoredInvestment(
   tableName: string,
   activation: InvestmentActivation,
@@ -786,7 +828,7 @@ async function activateStoredInvestment(
         TableName: tableName,
         Key: { pk: item.pk, sk: item.sk },
         UpdateExpression:
-          "SET #status = :active, activatedAt = :activatedAt, activatedBy = :activatedBy, updatedAt = :activatedAt, statusChangedAt = :activatedAt",
+          "SET #status = :active, activatedAt = :activatedAt, activatedBy = :activatedBy, nextDueAt = :nextDueAt, paymentsPosted = :paymentsPosted, updatedAt = :activatedAt, statusChangedAt = :activatedAt",
         ConditionExpression: "#status = :verified",
         ExpressionAttributeNames: { "#status": "status" },
         ExpressionAttributeValues: {
@@ -794,6 +836,8 @@ async function activateStoredInvestment(
           ":verified": "deposit_verified",
           ":activatedAt": activation.activatedAt,
           ":activatedBy": activation.activatedBy,
+          ":nextDueAt": addReturnCycle(activation.activatedAt),
+          ":paymentsPosted": 0,
         },
         ReturnValues: "ALL_NEW",
       }),

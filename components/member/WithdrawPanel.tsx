@@ -23,6 +23,7 @@ export function WithdrawPanel() {
   const [requests, setRequests] = useState<WithdrawalRequest[]>([]);
   const [availableMinor, setAvailableMinor] = useState(0);
   const [message, setMessage] = useState<string | null>(null);
+  const [statusNote, setStatusNote] = useState<string | null>(null);
   const [loading, setLoading] = useState(isMemberApiConfigured());
   const [saving, setSaving] = useState(false);
   const [transactionPassword, setTransactionPassword] = useState("");
@@ -43,6 +44,8 @@ export function WithdrawPanel() {
       errors.push(errorMessage(profile.reason, "Could not load your profile."));
     }
     setMessage(errors[0] ?? null);
+    setStatusNote(errors.length === 0 && profile.status === "fulfilled" && profile.value.transactionPasswordSet ? "Transaction password is set." : null);
+    return errors[0] ?? null;
   }, []);
 
   useEffect(() => {
@@ -54,6 +57,7 @@ export function WithdrawPanel() {
       .catch((caught: unknown) => {
         if (active) {
           setMessage(errorMessage(caught, "Could not load withdrawals."));
+          setStatusNote(null);
         }
       })
       .finally(() => {
@@ -67,19 +71,28 @@ export function WithdrawPanel() {
   }, [load]);
 
   async function requestWithdrawal() {
-    if (saving || availableMinor <= 0 || !transactionPasswordSet || transactionPassword.length === 0) {
+    if (saving || loading || !transactionPasswordSet) {
+      return;
+    }
+    if (transactionPassword.length === 0) {
+      setStatusNote(null);
+      setMessage("Enter the transaction password.");
       return;
     }
     setSaving(true);
     setMessage(null);
+    setStatusNote(null);
     try {
       await requestCurrentWithdrawal(availableMinor, transactionPassword);
       setTransactionPassword("");
-      await load();
+      const error = await load();
+      setStatusNote(error ? null : "Withdrawal requested.");
     } catch (caught) {
+      setStatusNote(null);
       setMessage(errorMessage(caught, "Could not save that withdrawal request."));
     } finally {
       setSaving(false);
+      setLoading(false);
     }
   }
 
@@ -123,10 +136,14 @@ export function WithdrawPanel() {
           <p className="form-error" role="alert" style={{ marginTop: 16 }}>
             {message}
           </p>
+        ) : statusNote ? (
+          <p role="status" style={{ marginTop: 16 }}>
+            {statusNote}
+          </p>
         ) : null}
         {transactionPasswordSet ? (
           <Button
-            disabled={saving || loading || availableMinor <= 0 || transactionPassword.length === 0}
+            disabled={saving || loading}
             onClick={() => void requestWithdrawal()}
             style={{ marginTop: 16 }}
           >

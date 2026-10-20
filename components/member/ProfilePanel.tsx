@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { Field, Input } from "@/components/ui/Field";
@@ -34,9 +34,19 @@ export function ProfilePanel() {
   const [changingLogin, setChangingLogin] = useState(false);
   const [savingTransaction, setSavingTransaction] = useState(false);
   const [readMember, setReadMember] = useState<MemberProfile | null>(null);
+  const [copied, setCopied] = useState<"code" | "link" | null>(null);
+  const copyTimer = useRef<number | null>(null);
 
   useEffect(() => {
     setOrigin(window.location.origin);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (copyTimer.current !== null) {
+        window.clearTimeout(copyTimer.current);
+      }
+    };
   }, []);
 
   useEffect(() => {
@@ -147,19 +157,33 @@ export function ProfilePanel() {
   }
 
   async function copyCode() {
-    if (!member) {
+    const code = (readMember ?? member)?.referralCode ?? "";
+    if (!code) {
       return;
     }
-    await navigator.clipboard.writeText(member.referralCode);
-    setNotice("Referral code copied.");
+    await copyValue("code", code);
   }
 
   async function copyLink() {
-    if (!member || !origin) {
+    const code = (readMember ?? member)?.referralCode ?? "";
+    if (!code || !origin) {
       return;
     }
-    await navigator.clipboard.writeText(memberReferralUrl(origin, member.referralCode));
-    setNotice("Referral link copied.");
+    await copyValue("link", memberReferralUrl(origin, code));
+  }
+
+  async function copyValue(kind: "code" | "link", value: string) {
+    const copiedOk = await writeClipboard(value);
+    if (!copiedOk) {
+      return;
+    }
+    setCopied(kind);
+    if (copyTimer.current !== null) {
+      window.clearTimeout(copyTimer.current);
+    }
+    copyTimer.current = window.setTimeout(() => {
+      setCopied((current) => (current === kind ? null : current));
+    }, 2000);
   }
 
   if (status === "unconfigured") {
@@ -308,7 +332,7 @@ export function ProfilePanel() {
             Referral code <strong>{shown.referralCode}</strong>
           </p>
           <Button variant="secondary" onClick={() => void copyCode()}>
-            Copy referral code
+            {copied === "code" ? "Copied" : "Copy referral code"}
           </Button>
           {referralLink ? (
             <p>
@@ -316,10 +340,28 @@ export function ProfilePanel() {
             </p>
           ) : null}
           <Button variant="secondary" onClick={() => void copyLink()} disabled={!referralLink}>
-            Copy referral link
+            {copied === "link" ? "Copied" : "Copy referral link"}
           </Button>
         </div>
       </div>
     </Card>
   );
+}
+
+async function writeClipboard(value: string): Promise<boolean> {
+  try {
+    await navigator.clipboard.writeText(value);
+    return true;
+  } catch {
+    const area = document.createElement("textarea");
+    area.value = value;
+    area.setAttribute("readonly", "");
+    area.style.position = "fixed";
+    area.style.left = "-9999px";
+    document.body.appendChild(area);
+    area.select();
+    const copiedOk = document.execCommand("copy");
+    area.remove();
+    return copiedOk;
+  }
 }

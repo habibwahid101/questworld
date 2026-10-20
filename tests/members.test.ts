@@ -426,3 +426,27 @@ test("a transaction password is stored only as a hash and does not change the lo
   assert.match(withdraw, /transactionPassword/);
   assert.doesNotMatch(withdraw, /Pay out/);
 });
+
+test("withdraw panel guides members without a transaction password", () => {
+  const panel = readFileSync(new URL("../components/member/WithdrawPanel.tsx", import.meta.url), "utf8");
+  assert.match(panel, /readCurrentMember\(\)/);
+  assert.match(panel, /setTransactionPasswordSet\(member\.transactionPasswordSet\)/);
+  assert.match(panel, /Set a transaction password first\. It is used only to confirm withdrawals\./);
+  assert.match(panel, /<Link href="\/profile">/);
+  const notSetGuards = panel.match(/\{transactionPasswordSet === false \? null : \(/g) ?? [];
+  assert.equal(notSetGuards.length, 2, "field and request button are hidden when not set");
+  const fieldIndex = panel.indexOf('htmlFor="withdrawal-transaction-password"');
+  const buttonIndex = panel.indexOf('"Request withdrawal"');
+  assert.ok(panel.indexOf(notSetGuards[0]) < fieldIndex);
+  assert.ok(panel.lastIndexOf(notSetGuards[1]) < buttonIndex && buttonIndex > fieldIndex);
+  assert.match(panel, /setMessage\(error\.message\)/);
+  assert.match(panel, /<p role="alert"[^>]*>\s*\{message\}/);
+});
+
+test("profile panel highlights the transaction password and confirms saves", () => {
+  const panel = readFileSync(new URL("../components/member/ProfilePanel.tsx", import.meta.url), "utf8");
+  assert.match(panel, /<h2 id="transaction-password-heading">Transaction password<\/h2>/);
+  assert.match(panel, /Used only to confirm withdrawals\./);
+  assert.match(panel, /setTransactionNotice\("Transaction password saved"\)/);
+  assert.match(panel, /\{transactionNotice \? <p role="status">\{transactionNotice\}<\/p> : null\}/);
+});

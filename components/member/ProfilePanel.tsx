@@ -31,6 +31,7 @@ export function ProfilePanel() {
   const [transactionPasswordSet, setTransactionPasswordSet] = useState(false);
   const [changingLogin, setChangingLogin] = useState(false);
   const [savingTransaction, setSavingTransaction] = useState(false);
+  const [transactionNotice, setTransactionNotice] = useState<string | null>(null);
   const [readMember, setReadMember] = useState<MemberProfile | null>(null);
 
   useEffect(() => {
@@ -123,6 +124,7 @@ export function ProfilePanel() {
     }
     setSavingTransaction(true);
     setNotice(null);
+    setTransactionNotice(null);
     try {
       const next = await saveTransactionPassword({
         transactionPassword: nextTransactionPassword,
@@ -132,7 +134,7 @@ export function ProfilePanel() {
       setCurrentTransactionPassword("");
       setNextTransactionPassword("");
       setConfirmTransactionPassword("");
-      setNotice("Transaction password saved.");
+      setTransactionNotice("Transaction password saved");
     } catch (caught) {
       setNotice(caught instanceof Error ? caught.message : "Could not save the transaction password.");
     } finally {
@@ -246,11 +248,12 @@ export function ProfilePanel() {
             {changingLogin ? "Saving…" : "Change login password"}
           </Button>
         </form>
-        <form className="stack" onSubmit={onSaveTransactionPassword}>
+        <form className={`stack ${styles.transaction}`} onSubmit={onSaveTransactionPassword} aria-labelledby="transaction-password-heading">
           <div>
-            <h2>Transaction password</h2>
-            <p>Used only to confirm a withdrawal. This is not your login password.</p>
+            <h2 id="transaction-password-heading">Transaction password</h2>
+            <p>Used only to confirm withdrawals. This is not your login password.</p>
           </div>
+          {transactionNotice ? <p role="status">{transactionNotice}</p> : null}
           {transactionPasswordSet ? (
             <Field label="Current transaction password" htmlFor="current-transaction-password">
               <PasswordField

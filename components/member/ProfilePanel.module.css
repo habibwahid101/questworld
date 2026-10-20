@@ -10,3 +10,10 @@
   overflow-wrap: anywhere;
   color: var(--color-text-soft);
 }
+
+.transaction {
+  padding: 16px;
+  border: 1px solid var(--color-border-strong);
+  border-radius: 8px;
+  background: var(--color-bg-muted);
+}

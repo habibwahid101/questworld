@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import Link from "next/link";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { Field } from "@/components/ui/Field";
@@ -8,7 +9,9 @@ import { PasswordField } from "@/components/auth/PasswordField";
 import { InvestmentClientError, listCurrentWithdrawals, requestCurrentWithdrawal } from "@/lib/investments/client";
 import { formatUsdtAmount, type WithdrawalRequest, type WithdrawalStatus } from "@/lib/investments/service";
 import { formatRecordedAt } from "@/lib/investments/history";
+import { MemberClientError, readCurrentMember } from "@/lib/members/client";
 import { isMemberApiConfigured } from "@/lib/members/config";
+import styles from "./WithdrawPanel.module.css";
 
 const statusLabel: Record<WithdrawalStatus, string> = {
   pending_review: "Pending review",
@@ -23,12 +26,23 @@ export function WithdrawPanel() {
   const [loading, setLoading] = useState(isMemberApiConfigured());
   const [saving, setSaving] = useState(false);
   const [transactionPassword, setTransactionPassword] = useState("");
+  const [transactionPasswordSet, setTransactionPasswordSet] = useState<boolean | null>(null);
 
   const load = useCallback(async () => {
-    const result = await listCurrentWithdrawals();
-    setRequests(result.withdrawals);
-    setAvailableMinor(result.availableMinor);
-    setMessage(null);
+    const [withdrawals, profile] = await Promise.allSettled([listCurrentWithdrawals(), readCurrentMember()]);
+    const errors: string[] = [];
+    if (withdrawals.status === "fulfilled") {
+      setRequests(withdrawals.value.withdrawals);
+      setAvailableMinor(withdrawals.value.availableMinor);
+    } else {
+      errors.push(errorMessage(withdrawals.reason, "Could not load withdrawals."));
+    }
+    if (profile.status === "fulfilled") {
+      setTransactionPasswordSet(profile.value.transactionPasswordSet);
+    } else {
+      errors.push(errorMessage(profile.reason, "Could not load your profile."));
+    }
+    setMessage(errors[0] ?? null);
   }, []);
 
   useEffect(() => {
@@ -39,8 +53,7 @@ export function WithdrawPanel() {
     void load()
       .catch((caught: unknown) => {
         if (active) {
-          const error = caught instanceof InvestmentClientError ? caught : new InvestmentClientError("investment_request_failed", "Could not load withdrawals.");
-          setMessage(error.message);
+          setMessage(errorMessage(caught, "Could not load withdrawals."));
         }
       })
       .finally(() => {
@@ -54,7 +67,7 @@ export function WithdrawPanel() {
   }, [load]);
 
   async function requestWithdrawal() {
-    if (saving || availableMinor <= 0 || transactionPassword.length === 0) {
+    if (saving || availableMinor <= 0 || !transactionPasswordSet || transactionPassword.length === 0) {
       return;
     }
     setSaving(true);
@@ -64,8 +77,7 @@ export function WithdrawPanel() {
       setTransactionPassword("");
       await load();
     } catch (caught) {
-      const error = caught instanceof InvestmentClientError ? caught : new InvestmentClientError("investment_request_failed", "Could not save that withdrawal request.");
-      setMessage(error.message);
+      setMessage(errorMessage(caught, "Could not save that withdrawal request."));
     } finally {
       setSaving(false);
     }
@@ -88,23 +100,39 @@ export function WithdrawPanel() {
           Request the available posted profit. This does not pay out.
         </p>
         <p style={{ marginTop: 10 }}>Available {loading ? "…" : formatUsdtAmount(availableMinor)}</p>
-        <Field label="Transaction password" htmlFor="withdrawal-transaction-password">
-          <PasswordField
-            id="withdrawal-transaction-password"
-            autoComplete="off"
-            value={transactionPassword}
-            onChange={(event) => setTransactionPassword(event.target.value)}
-            disabled={saving || loading}
-          />
-        </Field>
-        {message ? <p style={{ marginTop: 16 }}>{message}</p> : null}
-        <Button
-          disabled={saving || loading || availableMinor <= 0 || transactionPassword.length === 0}
-          onClick={() => void requestWithdrawal()}
-          style={{ marginTop: 16 }}
-        >
-          {saving ? "Saving…" : "Request withdrawal"}
-        </Button>
+        {transactionPasswordSet === false ? (
+          <p style={{ marginTop: 16 }}>
+            Set a transaction password first. It is used only to confirm withdrawals.{" "}
+            <Link className={styles.profileLink} href="/profile#transaction-password">
+              Profile
+            </Link>
+          </p>
+        ) : null}
+        {transactionPasswordSet ? (
+          <Field label="Transaction password" htmlFor="withdrawal-transaction-password">
+            <PasswordField
+              id="withdrawal-transaction-password"
+              autoComplete="off"
+              value={transactionPassword}
+              onChange={(event) => setTransactionPassword(event.target.value)}
+              disabled={saving || loading}
+            />
+          </Field>
+        ) : null}
+        {message ? (
+          <p className="form-error" role="alert" style={{ marginTop: 16 }}>
+            {message}
+          </p>
+        ) : null}
+        {transactionPasswordSet ? (
+          <Button
+            disabled={saving || loading || availableMinor <= 0 || transactionPassword.length === 0}
+            onClick={() => void requestWithdrawal()}
+            style={{ marginTop: 16 }}
+          >
+            {saving ? "Saving…" : "Request withdrawal"}
+          </Button>
+        ) : null}
       </Card>
       {loading ? (
         <Card>
@@ -127,4 +155,14 @@ export function WithdrawPanel() {
       )}
     </div>
   );
+}
+
+function errorMessage(caught: unknown, fallback: string): string {
+  if (caught instanceof InvestmentClientError || caught instanceof MemberClientError) {
+    return caught.message;
+  }
+  if (caught instanceof Error && caught.message) {
+    return caught.message;
+  }
+  return fallback;
 }

@@ -29,6 +29,8 @@ export function ProfilePanel() {
   const [nextTransactionPassword, setNextTransactionPassword] = useState("");
   const [confirmTransactionPassword, setConfirmTransactionPassword] = useState("");
   const [transactionPasswordSet, setTransactionPasswordSet] = useState(false);
+  const [transactionNotice, setTransactionNotice] = useState<string | null>(null);
+  const [transactionError, setTransactionError] = useState<string | null>(null);
   const [changingLogin, setChangingLogin] = useState(false);
   const [savingTransaction, setSavingTransaction] = useState(false);
   const [readMember, setReadMember] = useState<MemberProfile | null>(null);
@@ -114,15 +116,19 @@ export function ProfilePanel() {
     }
     const issue = passwordIssue(nextTransactionPassword);
     if (issue) {
-      setNotice(issue);
+      setTransactionError(issue);
+      setTransactionNotice(null);
       return;
     }
     if (nextTransactionPassword !== confirmTransactionPassword) {
-      setNotice("Passwords do not match.");
+      setTransactionError("Passwords do not match.");
+      setTransactionNotice(null);
       return;
     }
     setSavingTransaction(true);
     setNotice(null);
+    setTransactionError(null);
+    setTransactionNotice(null);
     try {
       const next = await saveTransactionPassword({
         transactionPassword: nextTransactionPassword,
@@ -132,9 +138,9 @@ export function ProfilePanel() {
       setCurrentTransactionPassword("");
       setNextTransactionPassword("");
       setConfirmTransactionPassword("");
-      setNotice("Transaction password saved.");
+      setTransactionNotice("Transaction password saved.");
     } catch (caught) {
-      setNotice(caught instanceof Error ? caught.message : "Could not save the transaction password.");
+      setTransactionError(caught instanceof Error ? caught.message : "Could not save the transaction password.");
     } finally {
       setSavingTransaction(false);
     }
@@ -189,6 +195,57 @@ export function ProfilePanel() {
             Referral code <strong>{shown.referralCode}</strong>
           </p>
         </div>
+        <form className={styles.passwordSection} id="transaction-password" onSubmit={onSaveTransactionPassword}>
+          <div>
+            <h2>Transaction password</h2>
+            <p>Used only to confirm withdrawals.</p>
+          </div>
+          {transactionNotice ? (
+            <p className={styles.saved} role="status">
+              {transactionNotice}
+            </p>
+          ) : null}
+          {transactionError ? (
+            <p className="form-error" role="alert">
+              {transactionError}
+            </p>
+          ) : null}
+          {transactionPasswordSet ? (
+            <Field label="Current transaction password" htmlFor="current-transaction-password">
+              <PasswordField
+                id="current-transaction-password"
+                autoComplete="off"
+                value={currentTransactionPassword}
+                onChange={(event) => setCurrentTransactionPassword(event.target.value)}
+                required
+                disabled={savingTransaction}
+              />
+            </Field>
+          ) : null}
+          <Field label="Transaction password" htmlFor="next-transaction-password">
+            <PasswordField
+              id="next-transaction-password"
+              autoComplete="new-password"
+              value={nextTransactionPassword}
+              onChange={(event) => setNextTransactionPassword(event.target.value)}
+              required
+              disabled={savingTransaction}
+            />
+          </Field>
+          <Field label="Confirm transaction password" htmlFor="confirm-transaction-password">
+            <PasswordField
+              id="confirm-transaction-password"
+              autoComplete="new-password"
+              value={confirmTransactionPassword}
+              onChange={(event) => setConfirmTransactionPassword(event.target.value)}
+              required
+              disabled={savingTransaction}
+            />
+          </Field>
+          <Button type="submit" disabled={savingTransaction}>
+            {savingTransaction ? "Saving…" : "Save transaction password"}
+          </Button>
+        </form>
         {notice ? <p role="status">{notice}</p> : null}
         <form className="stack" onSubmit={onSubmit}>
           <Field label="Email" htmlFor="profile-email">
@@ -244,47 +301,6 @@ export function ProfilePanel() {
           </Field>
           <Button type="submit" disabled={changingLogin}>
             {changingLogin ? "Saving…" : "Change login password"}
-          </Button>
-        </form>
-        <form className="stack" onSubmit={onSaveTransactionPassword}>
-          <div>
-            <h2>Transaction password</h2>
-            <p>Used only to confirm a withdrawal. This is not your login password.</p>
-          </div>
-          {transactionPasswordSet ? (
-            <Field label="Current transaction password" htmlFor="current-transaction-password">
-              <PasswordField
-                id="current-transaction-password"
-                autoComplete="off"
-                value={currentTransactionPassword}
-                onChange={(event) => setCurrentTransactionPassword(event.target.value)}
-                required
-                disabled={savingTransaction}
-              />
-            </Field>
-          ) : null}
-          <Field label="Transaction password" htmlFor="next-transaction-password">
-            <PasswordField
-              id="next-transaction-password"
-              autoComplete="new-password"
-              value={nextTransactionPassword}
-              onChange={(event) => setNextTransactionPassword(event.target.value)}
-              required
-              disabled={savingTransaction}
-            />
-          </Field>
-          <Field label="Confirm transaction password" htmlFor="confirm-transaction-password">
-            <PasswordField
-              id="confirm-transaction-password"
-              autoComplete="new-password"
-              value={confirmTransactionPassword}
-              onChange={(event) => setConfirmTransactionPassword(event.target.value)}
-              required
-              disabled={savingTransaction}
-            />
-          </Field>
-          <Button type="submit" disabled={savingTransaction}>
-            {savingTransaction ? "Saving…" : "Save transaction password"}
           </Button>
         </form>
         <div className={styles.referral}>

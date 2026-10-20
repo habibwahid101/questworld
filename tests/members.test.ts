@@ -423,6 +423,18 @@ test("a transaction password is stored only as a hash and does not change the lo
   assert.match(profile, /Copy referral link/);
   assert.match(profile, /Change login password/);
   assert.match(profile, /Transaction password/);
+  assert.match(profile, /Used only to confirm withdrawals\./);
+  assert.match(profile, /Transaction password saved\./);
+  assert.match(profile, /id="transaction-password"/);
+  assert.match(profile, /currentTransactionPassword: transactionPasswordSet \? currentTransactionPassword : undefined/);
+  assert.match(withdraw, /readCurrentMember/);
+  assert.match(withdraw, /transactionPasswordSet === false/);
+  assert.match(withdraw, /Set a transaction password first\. It is used only to confirm withdrawals\./);
+  assert.match(withdraw, /href="\/profile#transaction-password"/);
+  assert.match(withdraw, /form-error/);
+  assert.match(withdraw, /errorMessage\(caught/);
+  assert.match(withdraw, /Available /);
+  assert.match(withdraw, /Request withdrawal/);
   assert.match(withdraw, /transactionPassword/);
   assert.doesNotMatch(withdraw, /Pay out/);
 });

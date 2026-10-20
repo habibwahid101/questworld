@@ -66,11 +66,11 @@ export function ProfitHistoryPanel() {
         </Card>
       ) : (
         profits.map((entry) => (
-          <Card key={`${entry.investmentId}-${entry.paymentNumber}`}>
+          <Card key={`${entry.investmentId}-${entry.period}`}>
             <p className="eyebrow">{entry.planName}</p>
             <h2>{formatUsdtAmount(entry.profitMinor, entry.scale)}</h2>
-            <p style={{ marginTop: 10 }}>Payment {entry.paymentNumber} of 12</p>
-            <p>Due {new Date(entry.period).toLocaleString()}</p>
+            <p style={{ marginTop: 10 }}>Period {entry.period}</p>
+            <p>Rate {entry.rateBps / 100}%</p>
           </Card>
         ))
       )}

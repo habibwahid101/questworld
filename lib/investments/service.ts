@@ -5,9 +5,8 @@
  * that owned awaiting-deposit record as pending verification.
  * An admin review can only mark that pending record as deposit verified or rejected.
  * An admin activation can only mark that verified record as active.
- * A scheduled job posts one return payment when an active investment is due.
- * Twelve payments return double the investment. The 12th payment completes it.
- * The same run records sponsor commissions for that payment. It does not pay them.
+ * A scheduled job can append one 8 percent profit entry for an active investment.
+ * That entry does not change the investment amount or status.
  * A member can request a withdrawal of posted profit. The request does not pay out.
  * The same monthly run records sponsor commissions. It does not pay them.
  */
@@ -21,10 +20,9 @@ export const CREATABLE_INVESTMENT_STATUS = "awaiting_deposit";
 export const MONTHLY_PROFIT_RATE_BPS = 800;
 export const GENERATION_1_RATE_BPS = 300;
 export const GENERATION_2_RATE_BPS = 100;
-export const RETURN_PAYMENTS = 12;
-export const RETURN_CYCLE_MS = 30 * 24 * 60 * 60 * 1000;
 
 const MICRO_USDT = 1_000_000;
+const PERIOD_PATTERN = /^\d{4}-(0[1-9]|1[0-2])$/;
 
 export const investmentCatalog = {
   starter: { planId: "starter", planName: "Starter", amountMinor: 100 * MICRO_USDT },
@@ -34,7 +32,7 @@ export const investmentCatalog = {
 } as const;
 
 export type PlanId = keyof typeof investmentCatalog;
-export type InvestmentStatus = "awaiting_deposit" | "pending_verification" | "deposit_verified" | "rejected" | "active" | "completed";
+export type InvestmentStatus = "awaiting_deposit" | "pending_verification" | "deposit_verified" | "rejected" | "active";
 export const REVIEW_DECISIONS = ["deposit_verified", "rejected"] as const;
 export type ReviewDecision = (typeof REVIEW_DECISIONS)[number];
 
@@ -56,8 +54,6 @@ export type InvestmentRecord = {
   reviewedBy?: string;
   activatedAt?: string;
   activatedBy?: string;
-  nextDueAt?: string;
-  paymentsPosted?: number;
   depositProofKey?: string;
   rejectionReason?: string;
 };
@@ -70,7 +66,6 @@ export type ProfitEntry = {
   investmentId: string;
   ownerSub: string;
   period: string;
-  paymentNumber: number;
   rateBps: typeof MONTHLY_PROFIT_RATE_BPS;
   profitMinor: number;
   principalMinor: number;
@@ -93,7 +88,6 @@ export type CommissionEntry = {
   investmentId: string;
   recipientSub: string;
   period: string;
-  paymentNumber: number;
   generation: CommissionGeneration;
   rateBps: typeof GENERATION_1_RATE_BPS | typeof GENERATION_2_RATE_BPS;
   commissionMinor: number;
@@ -109,16 +103,6 @@ export type CommissionPostResult = {
   generation: CommissionGeneration;
   result: "posted" | "duplicate" | "skipped";
 };
-
-export type CycleAdvance = {
-  ownerSub: string;
-  investmentId: string;
-  paymentNumber: number;
-  dueAt: string;
-  postedAt: string;
-};
-
-export type CycleAdvanceResult = "advanced" | "completed" | "conflict";
 
 export type WithdrawalStatus = "pending_review" | "approved" | "rejected";
 export type WithdrawalDecision = "approved" | "rejected";
@@ -214,7 +198,6 @@ export type InvestmentStore = {
   findByInvestmentId(investmentId: string): Promise<InvestmentRecord | null>;
   activateInvestment(activation: InvestmentActivation): Promise<InvestmentActivationResult>;
   listActiveInvestments(): Promise<InvestmentRecord[]>;
-  advanceCycle(advance: CycleAdvance): Promise<CycleAdvanceResult>;
   putProfit(entry: ProfitEntry): Promise<"created" | "duplicate">;
   listProfits(ownerSub: string): Promise<ProfitEntry[]>;
   listAllProfits(): Promise<ProfitEntry[]>;
@@ -256,8 +239,7 @@ export function readStoredInvestmentStatus(value: unknown): InvestmentStatus {
     value === "pending_verification" ||
     value === "deposit_verified" ||
     value === "rejected" ||
-    value === "active" ||
-    value === "completed"
+    value === "active"
   ) {
     return value;
   }
@@ -280,7 +262,6 @@ export function investmentFromStoredItem(item: Record<string, unknown>): Investm
     ...storedDepositFields(item),
     ...storedReviewFields(item),
     ...storedActivationFields(item),
-    ...storedCycleFields(item),
     ...storedRejectionReason(item),
   };
 }
@@ -408,52 +389,22 @@ export function previousUtcMonth(isoTime: string): string {
   return `${previous.getUTCFullYear()}-${String(previous.getUTCMonth() + 1).padStart(2, "0")}`;
 }
 
-export function totalReturnMinor(amountMinor: number): number {
-  if (!Number.isSafeInteger(amountMinor) || amountMinor < 0) {
-    throw new InvestmentRequestError(500, "invalid_profit_amount", "That investment amount cannot earn a return.");
-  }
-  const total = amountMinor * 2;
-  if (!Number.isSafeInteger(total)) {
-    throw new InvestmentRequestError(500, "invalid_profit_amount", "That investment amount cannot earn a return.");
-  }
-  return total;
-}
-
-export function returnPaymentMinor(amountMinor: number, paymentNumber: number): number {
-  if (!Number.isInteger(paymentNumber) || paymentNumber < 1 || paymentNumber > RETURN_PAYMENTS) {
-    throw new InvestmentRequestError(500, "invalid_payment_number", "That payment number is not valid.");
-  }
-  const total = totalReturnMinor(amountMinor);
-  const base = Math.floor(total / RETURN_PAYMENTS);
-  const remainder = total - base * RETURN_PAYMENTS;
-  return paymentNumber === RETURN_PAYMENTS ? base + remainder : base;
-}
-
-export function addReturnCycle(isoTime: string, cycles = 1): string {
-  const date = new Date(isoTime);
-  if (Number.isNaN(date.getTime()) || !Number.isInteger(cycles)) {
-    throw new InvestmentRequestError(500, "invalid_due_date", "That due date is not valid.");
-  }
-  return new Date(date.getTime() + cycles * RETURN_CYCLE_MS).toISOString();
-}
-
 export async function postProfitForInvestment(input: {
   record: InvestmentRecord;
-  paymentNumber: number;
-  dueAt: string;
+  period: string;
   postedAt: string;
   store: InvestmentStore;
 }): Promise<ProfitPostResult> {
-  if (input.record.status !== "active" || input.record.nextDueAt !== input.dueAt) {
+  assertProfitPeriod(input.period);
+  if (input.record.status !== "active") {
     return { result: "skipped" };
   }
   const entry: ProfitEntry = {
     investmentId: input.record.investmentId,
     ownerSub: input.record.ownerSub,
-    period: input.dueAt,
-    paymentNumber: input.paymentNumber,
+    period: input.period,
     rateBps: MONTHLY_PROFIT_RATE_BPS,
-    profitMinor: returnPaymentMinor(input.record.amountMinor, input.paymentNumber),
+    profitMinor: monthlyProfitMinor(input.record.amountMinor),
     principalMinor: input.record.amountMinor,
     currency: INVESTMENT_CURRENCY,
     scale: INVESTMENT_SCALE,
@@ -468,59 +419,22 @@ export async function postProfitForInvestment(input: {
   return { result: "posted", entry };
 }
 
-export async function postDueReturns(input: {
+export async function postMonthlyProfits(input: {
   store: InvestmentStore;
-  sponsors: SponsorDirectory;
-  now: string;
-}): Promise<{ posted: number; duplicate: number; skipped: number; completed: number }> {
+  period: string;
+  postedAt: string;
+}): Promise<{ posted: number; duplicate: number; skipped: number }> {
+  assertProfitPeriod(input.period);
   const active = await input.store.listActiveInvestments();
-  const summary = { posted: 0, duplicate: 0, skipped: 0, completed: 0 };
+  const summary = { posted: 0, duplicate: 0, skipped: 0 };
   for (const record of active) {
-    let current = record;
-    while (current.status === "active" && current.nextDueAt && current.nextDueAt <= input.now) {
-      const paymentNumber = (current.paymentsPosted ?? 0) + 1;
-      if (paymentNumber > RETURN_PAYMENTS) {
-        summary.skipped += 1;
-        break;
-      }
-      const dueAt = current.nextDueAt;
-      const profit = await postProfitForInvestment({
-        record: current,
-        paymentNumber,
-        dueAt,
-        postedAt: input.now,
-        store: input.store,
-      });
-      if (profit.result === "skipped") {
-        summary.skipped += 1;
-        break;
-      }
-      await postCommissionsForInvestment({
-        record: current,
-        paymentNumber,
-        dueAt,
-        postedAt: input.now,
-        store: input.store,
-        sponsors: input.sponsors,
-      });
-      const advanced = await input.store.advanceCycle({
-        ownerSub: current.ownerSub,
-        investmentId: current.investmentId,
-        paymentNumber,
-        dueAt,
-        postedAt: input.now,
-      });
-      if (advanced === "conflict") {
-        summary.skipped += 1;
-        break;
-      }
-      summary[profit.result === "duplicate" ? "duplicate" : "posted"] += 1;
-      if (advanced === "completed") {
-        summary.completed += 1;
-        break;
-      }
-      current = { ...current, paymentsPosted: paymentNumber, nextDueAt: addReturnCycle(dueAt) };
-    }
+    const outcome = await postProfitForInvestment({
+      record,
+      period: input.period,
+      postedAt: input.postedAt,
+      store: input.store,
+    });
+    summary[outcome.result === "posted" ? "posted" : outcome.result === "duplicate" ? "duplicate" : "skipped"] += 1;
   }
   return summary;
 }
@@ -539,13 +453,13 @@ export function commissionMinor(amountMinor: number, generation: CommissionGener
 
 export async function postCommissionsForInvestment(input: {
   record: InvestmentRecord;
-  paymentNumber: number;
-  dueAt: string;
+  period: string;
   postedAt: string;
   store: InvestmentStore;
   sponsors: SponsorDirectory;
 }): Promise<CommissionPostResult[]> {
-  if (input.record.status !== "active" || input.paymentNumber < 1 || input.paymentNumber > RETURN_PAYMENTS) {
+  assertProfitPeriod(input.period);
+  if (input.record.status !== "active") {
     return [
       { generation: 1, result: "skipped" },
       { generation: 2, result: "skipped" },
@@ -568,11 +482,35 @@ export async function postCommissionsForInvestment(input: {
   return results;
 }
 
+export async function postMonthlyCommissions(input: {
+  store: InvestmentStore;
+  sponsors: SponsorDirectory;
+  period: string;
+  postedAt: string;
+}): Promise<{ posted: number; duplicate: number; skipped: number }> {
+  assertProfitPeriod(input.period);
+  const active = await input.store.listActiveInvestments();
+  const summary = { posted: 0, duplicate: 0, skipped: 0 };
+  for (const record of active) {
+    const outcomes = await postCommissionsForInvestment({
+      record,
+      period: input.period,
+      postedAt: input.postedAt,
+      store: input.store,
+      sponsors: input.sponsors,
+    });
+    for (const outcome of outcomes) {
+      summary[outcome.result] += 1;
+    }
+  }
+  return summary;
+}
+
 export function commissionFromStoredItem(item: Record<string, unknown>): CommissionEntry {
   const generation = item.generation === 1 || item.generation === 2 ? item.generation : null;
-  const period = typeof item.period === "string" ? item.period.trim() : "";
-  const paymentNumber = Number(item.paymentNumber);
-  if (!generation || !period || !Number.isInteger(paymentNumber) || paymentNumber < 1 || paymentNumber > RETURN_PAYMENTS) {
+  const period = typeof item.period === "string" ? item.period : "";
+  assertProfitPeriod(period);
+  if (!generation) {
     throw new InvestmentRequestError(500, "invalid_stored_commission", "That commission record is not valid.");
   }
   const rateBps = generation === 1 ? GENERATION_1_RATE_BPS : GENERATION_2_RATE_BPS;
@@ -592,7 +530,6 @@ export function commissionFromStoredItem(item: Record<string, unknown>): Commiss
     investmentId: item.investmentId,
     recipientSub: item.recipientSub,
     period,
-    paymentNumber,
     generation,
     rateBps,
     commissionMinor: storedCommission,
@@ -619,8 +556,7 @@ function sponsorId(value: string | null, blocked: readonly string[]): string | n
 async function writeCommission(
   input: {
     record: InvestmentRecord;
-    paymentNumber: number;
-    dueAt: string;
+    period: string;
     postedAt: string;
     store: InvestmentStore;
   },
@@ -631,8 +567,7 @@ async function writeCommission(
   const entry: CommissionEntry = {
     investmentId: input.record.investmentId,
     recipientSub,
-    period: input.dueAt,
-    paymentNumber: input.paymentNumber,
+    period: input.period,
     generation,
     rateBps,
     commissionMinor: commissionMinor(input.record.amountMinor, generation),
@@ -648,17 +583,14 @@ async function writeCommission(
 }
 
 export function profitFromStoredItem(item: Record<string, unknown>): ProfitEntry {
-  const period = typeof item.period === "string" ? item.period.trim() : "";
-  const paymentNumber = Number(item.paymentNumber);
-  if (!period || !Number.isInteger(paymentNumber) || paymentNumber < 1 || paymentNumber > RETURN_PAYMENTS) {
-    throw new InvestmentRequestError(500, "invalid_stored_profit", "That profit record is not valid.");
-  }
+  const period = typeof item.period === "string" ? item.period : "";
+  assertProfitPeriod(period);
   if (item.rateBps !== MONTHLY_PROFIT_RATE_BPS) {
     throw new InvestmentRequestError(500, "invalid_stored_profit", "That profit record is not valid.");
   }
   const principalMinor = Number(item.principalMinor);
   const profitMinor = Number(item.profitMinor);
-  if (profitMinor !== returnPaymentMinor(principalMinor, paymentNumber)) {
+  if (profitMinor !== monthlyProfitMinor(principalMinor)) {
     throw new InvestmentRequestError(500, "invalid_stored_profit", "That profit record is not valid.");
   }
   const planId = item.planId as PlanId;
@@ -672,7 +604,6 @@ export function profitFromStoredItem(item: Record<string, unknown>): ProfitEntry
     investmentId: item.investmentId,
     ownerSub: item.ownerSub,
     period,
-    paymentNumber,
     rateBps: MONTHLY_PROFIT_RATE_BPS,
     profitMinor,
     principalMinor,
@@ -682,6 +613,12 @@ export function profitFromStoredItem(item: Record<string, unknown>): ProfitEntry
     planName: String(item.planName),
     postedAt: item.postedAt,
   };
+}
+
+function assertProfitPeriod(period: string): void {
+  if (!PERIOD_PATTERN.test(period)) {
+    throw new InvestmentRequestError(500, "invalid_profit_period", "The profit period is not valid.");
+  }
 }
 
 export async function handleInvestmentApi(input: {
@@ -1059,7 +996,7 @@ async function activateInvestment(input: {
     throw new InvestmentRequestError(409, "activation_not_allowed", "Only a verified deposit can be activated.");
   }
   const saved = outcome.record;
-  if (saved.status !== "active" || saved.activatedBy !== input.activatedBy || saved.activatedAt === undefined || saved.nextDueAt !== addReturnCycle(saved.activatedAt) || saved.paymentsPosted !== 0) {
+  if (saved.status !== "active" || saved.activatedBy !== input.activatedBy || saved.ownerSub.length === 0) {
     throw new InvestmentRequestError(500, "activation_failed", "Could not activate that investment.");
   }
   return saved;
@@ -1391,24 +1328,6 @@ function storedActivationFields(item: Record<string, unknown>): Pick<InvestmentR
       throw new InvestmentRequestError(500, "invalid_stored_activation", "That investment record is not valid.");
     }
     fields.activatedBy = item.activatedBy;
-  }
-  return fields;
-}
-
-function storedCycleFields(item: Record<string, unknown>): Pick<InvestmentRecord, "nextDueAt" | "paymentsPosted"> {
-  const fields: Pick<InvestmentRecord, "nextDueAt" | "paymentsPosted"> = {};
-  if (item.nextDueAt !== undefined) {
-    if (typeof item.nextDueAt !== "string" || item.nextDueAt.trim() === "") {
-      throw new InvestmentRequestError(500, "invalid_stored_cycle", "That investment record is not valid.");
-    }
-    fields.nextDueAt = item.nextDueAt;
-  }
-  if (item.paymentsPosted !== undefined) {
-    const paymentsPosted = Number(item.paymentsPosted);
-    if (!Number.isInteger(paymentsPosted) || paymentsPosted < 0 || paymentsPosted > RETURN_PAYMENTS) {
-      throw new InvestmentRequestError(500, "invalid_stored_cycle", "That investment record is not valid.");
-    }
-    fields.paymentsPosted = paymentsPosted;
   }
   return fields;
 }

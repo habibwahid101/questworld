@@ -12,10 +12,7 @@ import {
   investmentFromStoredItem,
   isAdminClaims,
   postCommissionsForInvestment,
-  postDueReturns,
   postProfitForInvestment,
-  returnPaymentMinor,
-  addReturnCycle,
   previousUtcMonth,
   type InvestmentRecord,
   type InvestmentStore,
@@ -628,7 +625,6 @@ test("only an admin can activate a verified deposit once", async () => {
   assert.equal(saved.amountMinor, 100_000_000);
   assert.equal(saved.planId, "starter");
   assert.equal(saved.ownerSub, "member-1");
-  assert.equal((activated.body.investment as { nextDueAt: string }).nextDueAt, addReturnCycle(ACTIVATED_AT));
 
   const second = await activate(store, "admin-1", VERIFIED_ID, {}, "[Admins]");
   assert.equal(second.statusCode, 409);
@@ -685,8 +681,7 @@ test("deposit address saves are allowed by CORS", () => {
   assert.match(origins, /https:\/\/www\.questraworld\.online/);
 });
 
-test("a due return posts once, keeps the principal, and completes on the 12th payment", async () => {
-  const activatedAt = "2026-10-01T00:00:00.000Z";
+test("monthly profit posts once for an active investment and only the owner can read it", async () => {
   const active: InvestmentRecord = {
     investmentId: ACTIVE_ID,
     ownerSub: "member-1",
@@ -697,73 +692,59 @@ test("a due return posts once, keeps the principal, and completes on the 12th pa
     scale: 6,
     status: "active",
     createdAt: NOW,
-    updatedAt: activatedAt,
-    statusChangedAt: activatedAt,
-    activatedAt,
-    nextDueAt: addReturnCycle(activatedAt),
-    paymentsPosted: 0,
+    updatedAt: NOW,
+    statusChangedAt: NOW,
   };
-  const waiting: InvestmentRecord = { ...active, investmentId: PENDING_ID, status: "deposit_verified", nextDueAt: undefined, paymentsPosted: undefined };
+  const waiting: InvestmentRecord = { ...active, investmentId: PENDING_ID, status: "deposit_verified" };
   const store = createMemoryInvestmentStore([active, waiting]);
-  const sponsors: SponsorDirectory = { async sponsorOf() { return null; } };
-  assert.equal(previousUtcMonth("2026-11-01T01:00:00.000Z"), "2026-10");
-  assert.equal(returnPaymentMinor(100_000_000, 1), 16_666_666);
-  assert.equal(returnPaymentMinor(100_000_000, 12), 16_666_674);
-  assert.equal(returnPaymentMinor(100_000_000, 1) * 11 + returnPaymentMinor(100_000_000, 12), 200_000_000);
+  const period = "2026-10";
+  const postedAt = "2026-11-01T01:00:00.000Z";
+  assert.equal(previousUtcMonth(postedAt), period);
+  assert.equal(previousUtcMonth("2026-01-01T01:00:00.000Z"), "2025-12");
 
-  const early = await postDueReturns({ store, sponsors, now: activatedAt });
-  assert.equal(early.posted, 0);
+  const skipped = await postProfitForInvestment({
+    record: waiting,
+    period,
+    postedAt,
+    store,
+  });
+  assert.equal(skipped.result, "skipped");
   assert.equal((await store.listProfits("member-1")).length, 0);
 
-  const dueAt = addReturnCycle(activatedAt);
-  const posted = await postProfitForInvestment({
-    record: active,
-    paymentNumber: 1,
-    dueAt,
-    postedAt: dueAt,
-    store,
-  });
+  const posted = await postProfitForInvestment({ record: active, period, postedAt, store });
   assert.equal(posted.result, "posted");
-  if (posted.result === "posted") {
-    assert.equal(posted.entry.profitMinor, 16_666_666);
-    assert.equal(posted.entry.paymentNumber, 1);
+  if (posted.result !== "posted") {
+    return;
   }
-  const duplicate = await postProfitForInvestment({
-    record: active,
-    paymentNumber: 1,
-    dueAt,
-    postedAt: dueAt,
-    store,
-  });
+  assert.equal(posted.entry.profitMinor, 8_000_000);
+  assert.equal(posted.entry.rateBps, 800);
+  assert.equal(posted.entry.period, period);
+  assert.equal(posted.entry.principalMinor, 100_000_000);
+  const unchanged = await store.getById("member-1", ACTIVE_ID);
+  assert.equal(unchanged?.status, "active");
+  assert.equal(unchanged?.amountMinor, 100_000_000);
+
+  const duplicate = await postProfitForInvestment({ record: active, period, postedAt, store });
   assert.equal(duplicate.result, "duplicate");
-
-  const firstRun = await postDueReturns({ store, sponsors, now: dueAt });
-  assert.equal(firstRun.posted + firstRun.duplicate, 1);
-  assert.equal((await store.getById("member-1", ACTIVE_ID))?.status, "active");
-  assert.equal((await store.getById("member-1", ACTIVE_ID))?.amountMinor, 100_000_000);
-  assert.equal((await store.getById("member-1", ACTIVE_ID))?.nextDueAt, addReturnCycle(dueAt));
-
-  let cursor = addReturnCycle(dueAt);
-  for (let payment = 2; payment <= 12; payment += 1) {
-    const run = await postDueReturns({ store, sponsors, now: cursor });
-    assert.equal(run.posted, 1);
-    cursor = addReturnCycle(cursor);
-  }
-  const completed = await store.getById("member-1", ACTIVE_ID);
-  assert.equal(completed?.status, "completed");
-  assert.equal(completed?.nextDueAt, undefined);
-  assert.equal(completed?.paymentsPosted, 12);
-  const profits = await store.listProfits("member-1");
-  assert.equal(profits.length, 12);
-  assert.equal(profits.reduce((sum, entry) => sum + entry.profitMinor, 0), 200_000_000);
-  const again = await postDueReturns({ store, sponsors, now: cursor });
-  assert.equal(again.posted, 0);
-  assert.equal((await store.listProfits("member-1")).length, 12);
+  assert.equal((await store.listProfits("member-1")).length, 1);
 
   const owner = await handleInvestmentApi({ method: "GET", path: "/profits", claims: claims("member-1"), store });
+  const profits = owner.body.profits as Array<{ investmentId: string; profitMinor: number }>;
   assert.equal(owner.statusCode, 200);
-  assert.equal((owner.body.profits as unknown[]).length, 12);
-  const other = await handleInvestmentApi({ method: "GET", path: "/profits", claims: claims("member-2"), store });
+  assert.deepEqual(
+    profits.map((entry) => entry.investmentId),
+    [ACTIVE_ID],
+  );
+  assert.equal(profits[0]?.profitMinor, 8_000_000);
+
+  const other = await handleInvestmentApi({
+    method: "GET",
+    path: "/profits",
+    claims: claims("member-2"),
+    body: { ownerSub: "member-1" },
+    store,
+  });
+  assert.equal(other.statusCode, 200);
   assert.deepEqual(other.body.profits, []);
 });
 
@@ -786,7 +767,6 @@ test("a member can request posted profit and cannot read another member's reques
     ownerSub: "member-1",
     period: "2026-10",
     rateBps: 800,
-    paymentNumber: 1,
     profitMinor: 8_000_000,
     principalMinor: 100_000_000,
     currency: "USDT",
@@ -919,7 +899,6 @@ test("only an admin can review a pending withdrawal once and approval does not c
     ownerSub: "member-1",
     period: "2026-10",
     rateBps: 800,
-    paymentNumber: 1,
     profitMinor: 8_000_000,
     principalMinor: 100_000_000,
     currency: "USDT",
@@ -1025,8 +1004,6 @@ test("monthly commissions post generation 1 and 2 once and skip a missing sponso
     createdAt: NOW,
     updatedAt: NOW,
     statusChangedAt: NOW,
-    nextDueAt: "2026-11-01T01:00:00.000Z",
-    paymentsPosted: 0,
   };
   const alone: InvestmentRecord = { ...investor, investmentId: PENDING_ID, ownerSub: "member-4" };
   const store = createMemoryInvestmentStore([investor, alone]);
@@ -1044,17 +1021,17 @@ test("monthly commissions post generation 1 and 2 once and skip a missing sponso
       return null;
     },
   };
-  const dueAt = "2026-11-01T01:00:00.000Z";
+  const period = "2026-10";
+  const postedAt = "2026-11-01T01:00:00.000Z";
 
-  const profit = await postProfitForInvestment({ record: investor, paymentNumber: 1, dueAt, postedAt: dueAt, store });
+  const profit = await postProfitForInvestment({ record: investor, period, postedAt, store });
   assert.equal(profit.result, "posted");
   if (profit.result === "posted") {
     assert.equal(profit.entry.rateBps, 800);
-    assert.equal(profit.entry.profitMinor, 16_666_666);
-    assert.equal(profit.entry.paymentNumber, 1);
+    assert.equal(profit.entry.profitMinor, 8_000_000);
   }
 
-  const posted = await postCommissionsForInvestment({ record: investor, paymentNumber: 1, dueAt, postedAt: dueAt, store, sponsors });
+  const posted = await postCommissionsForInvestment({ record: investor, period, postedAt, store, sponsors });
   assert.deepEqual(
     posted.map((entry) => entry.result),
     ["posted", "posted"],
@@ -1071,7 +1048,7 @@ test("monthly commissions post generation 1 and 2 once and skip a missing sponso
   assert.equal((await store.getById("member-1", ACTIVE_ID))?.status, "active");
   assert.equal((await store.getById("member-1", ACTIVE_ID))?.amountMinor, 100_000_000);
 
-  const missing = await postCommissionsForInvestment({ record: alone, paymentNumber: 1, dueAt, postedAt: dueAt, store, sponsors });
+  const missing = await postCommissionsForInvestment({ record: alone, period, postedAt, store, sponsors });
   assert.deepEqual(
     missing.map((entry) => entry.result),
     ["skipped", "skipped"],
@@ -1079,7 +1056,7 @@ test("monthly commissions post generation 1 and 2 once and skip a missing sponso
   assert.equal((await store.listCommissions("member-4")).length, 0);
 
   const directOnly: InvestmentRecord = { ...investor, investmentId: VERIFIED_ID, ownerSub: "member-5" };
-  const partial = await postCommissionsForInvestment({ record: directOnly, paymentNumber: 1, dueAt, postedAt: dueAt, store, sponsors });
+  const partial = await postCommissionsForInvestment({ record: directOnly, period, postedAt, store, sponsors });
   assert.deepEqual(
     partial.map((entry) => entry.result),
     ["posted", "skipped"],
@@ -1087,7 +1064,7 @@ test("monthly commissions post generation 1 and 2 once and skip a missing sponso
   assert.equal((await store.listCommissions("member-6"))[0]?.generation, 1);
   assert.equal((await store.listCommissions("member-6"))[0]?.rateBps, 300);
 
-  const duplicate = await postCommissionsForInvestment({ record: investor, paymentNumber: 1, dueAt, postedAt: dueAt, store, sponsors });
+  const duplicate = await postCommissionsForInvestment({ record: investor, period, postedAt, store, sponsors });
   assert.deepEqual(
     duplicate.map((entry) => entry.result),
     ["duplicate", "duplicate"],
@@ -1234,11 +1211,7 @@ test("dashboard cards read existing totals and do not write records", () => {
   assert.match(dashboard, /listCurrentProfits/);
   assert.match(dashboard, /listCurrentCommissions/);
   assert.match(dashboard, /listCurrentWithdrawals/);
-  assert.match(dashboard, /readCurrentMember/);
-  assert.match(dashboard, /Will receive/);
-  assert.match(dashboard, /Available to withdraw/);
-  assert.match(dashboard, /record\.status === "active" \|\| record\.status === "completed"/);
-  assert.match(admin, /record\.status === "active"/);
+  assert.match(dashboard, /record\.status === "active"/);
   assert.doesNotMatch(dashboard, /requestCurrentWithdrawal|createCurrentInvestment|submitCurrentDeposit|Darmelk/);
   assert.match(admin, /listPendingDeposits/);
   assert.match(admin, /listVerifiedDeposits/);
@@ -1262,7 +1235,6 @@ test("admin trace lists are read-only and a member cannot read them", async () =
     ownerSub: "member-1",
     period: "2026-10",
     rateBps: 800,
-    paymentNumber: 1,
     profitMinor: 8_000_000,
     principalMinor: 100_000_000,
     currency: "USDT",
@@ -1277,7 +1249,6 @@ test("admin trace lists are read-only and a member cannot read them", async () =
     period: "2026-10",
     generation: 1,
     rateBps: 300,
-    paymentNumber: 1,
     commissionMinor: 3_000_000,
     principalMinor: 100_000_000,
     currency: "USDT",
@@ -1332,8 +1303,7 @@ test("admin trace lists are read-only and a member cannot read them", async () =
   assert.doesNotMatch(source, /path: "\/admin\/withdrawals",\s*\n\s*methods: \[apigwv2\.HttpMethod\.POST\]/);
   const profitsPanel = readFileSync(new URL("../components/admin/AdminProfitsPanel.tsx", import.meta.url), "utf8");
   const withdrawalsPanel = readFileSync(new URL("../components/admin/AdminWithdrawalsPanel.tsx", import.meta.url), "utf8");
-  assert.match(profitsPanel, /Payment \{entry\.paymentNumber\} of 12/);
-  assert.match(profitsPanel, /does not post profit or pay it out/);
+  assert.match(profitsPanel, /The November schedule has not run/);
   assert.match(withdrawalsPanel, /Nothing is paid out/);
   assert.match(withdrawalsPanel, /reviewAdminWithdrawal/);
   assert.doesNotMatch(withdrawalsPanel, /Pay out/);

@@ -21,7 +21,6 @@ const statusLabel: Record<InvestmentStatus, string> = {
   deposit_verified: "Deposit verified",
   rejected: "Rejected",
   active: "Active",
-  completed: "Completed",
 };
 
 export function InvestmentPaymentPanel({ investmentId }: { investmentId: string }) {

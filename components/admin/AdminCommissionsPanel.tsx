@@ -6,7 +6,7 @@ import { InvestmentClientError, listAdminCommissions } from "@/lib/investments/c
 import { formatUsdtAmount, type CommissionEntry } from "@/lib/investments/service";
 import { isMemberApiConfigured } from "@/lib/members/config";
 
-const NOT_RUN = "No entries are posted.";
+const NOT_RUN = "No entries are posted. The November schedule has not run.";
 
 export function AdminCommissionsPanel() {
   const [commissions, setCommissions] = useState<CommissionEntry[] | null>(null);
@@ -64,13 +64,12 @@ export function AdminCommissionsPanel() {
         </Card>
       ) : (
         commissions.map((entry) => (
-          <Card key={`${entry.recipientSub}:${entry.investmentId}:${entry.paymentNumber}:${entry.generation}`}>
+          <Card key={`${entry.recipientSub}:${entry.investmentId}:${entry.period}:${entry.generation}`}>
             <p className="eyebrow">Generation {entry.generation}</p>
             <h2>{formatUsdtAmount(entry.commissionMinor, entry.scale)}</h2>
             <p style={{ marginTop: 10 }}>Recipient {entry.recipientSub}</p>
-            <p>Payment {entry.paymentNumber} of 12</p>
             <p>Rate {entry.rateBps / 100}%</p>
-            <p>Due {new Date(entry.period).toLocaleString()}</p>
+            <p>Period {entry.period}</p>
             <p>Posted {new Date(entry.postedAt).toLocaleString()}</p>
           </Card>
         ))

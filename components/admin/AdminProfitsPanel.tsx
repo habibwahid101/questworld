@@ -6,7 +6,7 @@ import { InvestmentClientError, listAdminProfits } from "@/lib/investments/clien
 import { formatUsdtAmount, type ProfitEntry } from "@/lib/investments/service";
 import { isMemberApiConfigured } from "@/lib/members/config";
 
-const NOT_RUN = "No entries are posted.";
+const NOT_RUN = "No entries are posted. The November schedule has not run.";
 
 export function AdminProfitsPanel() {
   const [profits, setProfits] = useState<ProfitEntry[] | null>(null);
@@ -49,7 +49,7 @@ export function AdminProfitsPanel() {
       <Card>
         <h1>Monthly profit</h1>
         <p className="lead" style={{ marginTop: 12 }}>
-          Posted return payments only. This page does not post profit or pay it out.
+          Posted 8 percent entries only. This page does not post profit or pay it out.
         </p>
         {message ? <p style={{ marginTop: 16 }}>{message}</p> : null}
       </Card>
@@ -64,12 +64,12 @@ export function AdminProfitsPanel() {
         </Card>
       ) : (
         profits.map((entry) => (
-          <Card key={`${entry.ownerSub}:${entry.investmentId}:${entry.paymentNumber}`}>
+          <Card key={`${entry.ownerSub}:${entry.investmentId}:${entry.period}`}>
             <p className="eyebrow">{entry.planName}</p>
             <h2>{formatUsdtAmount(entry.profitMinor, entry.scale)}</h2>
             <p style={{ marginTop: 10 }}>Owner {entry.ownerSub}</p>
-            <p>Payment {entry.paymentNumber} of 12</p>
-            <p>Due {new Date(entry.period).toLocaleString()}</p>
+            <p>Period {entry.period}</p>
+            <p>Rate {entry.rateBps / 100}%</p>
             <p>Posted {new Date(entry.postedAt).toLocaleString()}</p>
           </Card>
         ))

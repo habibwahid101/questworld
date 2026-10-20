@@ -1,0 +1,5 @@
+.profileLink {
+  color: var(--color-info);
+  font-weight: 650;
+  text-decoration: underline;
+}

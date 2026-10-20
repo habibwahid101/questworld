@@ -419,8 +419,11 @@ test("a transaction password is stored only as a hash and does not change the lo
   assert.match(profile, /shown\.email/);
   assert.match(profile, /shown\.referralCode/);
   assert.match(profile, /Copy referral code/);
-  assert.doesNotMatch(profile, /listStoredMembers/);
   assert.match(profile, /Copy referral link/);
+  assert.match(profile, /navigator\.clipboard\.writeText/);
+  assert.match(profile, /"Copied"/);
+  assert.match(profile, /2000/);
+  assert.doesNotMatch(profile, /listStoredMembers/);
   assert.match(profile, /Change login password/);
   assert.match(profile, /Transaction password/);
   assert.match(profile, /Used only to confirm withdrawals\./);
@@ -435,6 +438,10 @@ test("a transaction password is stored only as a hash and does not change the lo
   assert.match(withdraw, /errorMessage\(caught/);
   assert.match(withdraw, /Available /);
   assert.match(withdraw, /Request withdrawal/);
+  assert.match(withdraw, /Withdrawal requested\./);
+  assert.match(withdraw, /Transaction password is set\./);
+  assert.match(withdraw, /disabled=\{saving \|\| loading\}/);
+  assert.doesNotMatch(withdraw, /availableMinor <= 0/);
   assert.match(withdraw, /transactionPassword/);
   assert.doesNotMatch(withdraw, /Pay out/);
 });

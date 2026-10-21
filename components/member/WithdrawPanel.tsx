@@ -4,10 +4,10 @@ import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
-import { Field } from "@/components/ui/Field";
+import { Field, Input } from "@/components/ui/Field";
 import { PasswordField } from "@/components/auth/PasswordField";
 import { InvestmentClientError, listCurrentWithdrawals, requestCurrentWithdrawal } from "@/lib/investments/client";
-import { formatUsdtAmount, type WithdrawalRequest, type WithdrawalStatus } from "@/lib/investments/service";
+import { formatUsdtAmount, INVESTMENT_SCALE, type WithdrawalRequest, type WithdrawalStatus } from "@/lib/investments/service";
 import { formatRecordedAt } from "@/lib/investments/history";
 import { MemberClientError, readCurrentMember } from "@/lib/members/client";
 import { isMemberApiConfigured } from "@/lib/members/config";
@@ -28,6 +28,7 @@ export function WithdrawPanel() {
   const [saving, setSaving] = useState(false);
   const [transactionPassword, setTransactionPassword] = useState("");
   const [transactionPasswordSet, setTransactionPasswordSet] = useState<boolean | null>(null);
+  const [amountText, setAmountText] = useState("");
 
   const load = useCallback(async () => {
     const [withdrawals, profile] = await Promise.allSettled([listCurrentWithdrawals(), readCurrentMember()]);
@@ -70,20 +71,16 @@ export function WithdrawPanel() {
     };
   }, [load]);
 
-  async function requestWithdrawal() {
-    if (saving || loading || !transactionPasswordSet) {
-      return;
-    }
-    if (transactionPassword.length === 0) {
-      setStatusNote(null);
-      setMessage("Enter the transaction password.");
+  async function requestWithdrawal(amountMinor: number) {
+    if (saving || loading || !transactionPasswordSet || transactionPassword.length === 0) {
       return;
     }
     setSaving(true);
     setMessage(null);
     setStatusNote(null);
     try {
-      await requestCurrentWithdrawal(availableMinor, transactionPassword);
+      await requestCurrentWithdrawal(amountMinor, transactionPassword);
+      setAmountText("");
       setTransactionPassword("");
       const error = await load();
       setStatusNote(error ? null : "Withdrawal requested.");
@@ -105,6 +102,10 @@ export function WithdrawPanel() {
     );
   }
 
+  const parsedAmount = parseWithdrawalAmount(amountText);
+  const amountAlert = loading ? null : amountAlertText(amountText, parsedAmount, availableMinor);
+  const amountReady = !loading && parsedAmount !== null && amountAlert === null;
+
   return (
     <div className="stack">
       <Card>
@@ -113,6 +114,21 @@ export function WithdrawPanel() {
           Request the available posted profit. This does not pay out.
         </p>
         <p style={{ marginTop: 10 }}>Available {loading ? "…" : formatUsdtAmount(availableMinor)}</p>
+        <Field label="Amount" htmlFor="withdrawal-amount">
+          <Input
+            id="withdrawal-amount"
+            inputMode="decimal"
+            autoComplete="off"
+            value={amountText}
+            onChange={(event) => setAmountText(event.target.value)}
+            disabled={saving || loading}
+          />
+        </Field>
+        {amountAlert ? (
+          <p className="form-error" role="alert">
+            {amountAlert}
+          </p>
+        ) : null}
         {transactionPasswordSet === false ? (
           <p style={{ marginTop: 16 }}>
             Set a transaction password first. It is used only to confirm withdrawals.{" "}
@@ -121,7 +137,7 @@ export function WithdrawPanel() {
             </Link>
           </p>
         ) : null}
-        {transactionPasswordSet ? (
+        {amountReady && transactionPasswordSet ? (
           <Field label="Transaction password" htmlFor="withdrawal-transaction-password">
             <PasswordField
               id="withdrawal-transaction-password"
@@ -143,8 +159,12 @@ export function WithdrawPanel() {
         ) : null}
         {transactionPasswordSet ? (
           <Button
-            disabled={saving || loading}
-            onClick={() => void requestWithdrawal()}
+            disabled={saving || loading || !amountReady || transactionPassword.length === 0}
+            onClick={() => {
+              if (parsedAmount !== null) {
+                void requestWithdrawal(parsedAmount);
+              }
+            }}
             style={{ marginTop: 16 }}
           >
             {saving ? "Saving…" : "Request withdrawal"}
@@ -182,4 +202,34 @@ function errorMessage(caught: unknown, fallback: string): string {
     return caught.message;
   }
   return fallback;
+}
+
+function parseWithdrawalAmount(raw: string): number | null {
+  const trimmed = raw.trim();
+  if (!/^\d+(\.\d+)?$/.test(trimmed)) {
+    return null;
+  }
+  const [whole = "0", fraction = ""] = trimmed.split(".");
+  if (whole.length > 12 || fraction.length > INVESTMENT_SCALE) {
+    return null;
+  }
+  const minor = Number(whole) * 10 ** INVESTMENT_SCALE + Number(fraction.padEnd(INVESTMENT_SCALE, "0"));
+  return Number.isSafeInteger(minor) ? minor : null;
+}
+
+function amountAlertText(raw: string, parsed: number | null, availableMinor: number): string | null {
+  const trimmed = raw.trim();
+  if (trimmed.length === 0) {
+    return null;
+  }
+  if (trimmed.startsWith("-") || parsed === 0) {
+    return "Enter an amount above zero.";
+  }
+  if (parsed === null) {
+    return "Enter a valid amount.";
+  }
+  if (parsed > availableMinor) {
+    return "That amount is above the available balance.";
+  }
+  return null;
 }

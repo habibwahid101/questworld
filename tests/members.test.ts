@@ -449,5 +449,85 @@ test("a transaction password is stored only as a hash and does not change the lo
   assert.ok(withdraw.indexOf('htmlFor="withdrawal-transaction-password"') < withdraw.indexOf("Request withdrawal"));
   assert.doesNotMatch(withdraw, /availableMinor <= 0/);
   assert.match(withdraw, /transactionPassword/);
+  assert.match(profile, /uploadCurrentProfilePhoto/);
+  assert.match(profile, /ProfilePhoto/);
+  assert.match(profile, /URL\.createObjectURL/);
+  const photo = readFileSync(new URL("../components/member/ProfilePhoto.tsx", import.meta.url), "utf8");
+  const photoCss = readFileSync(new URL("../components/member/ProfilePhoto.module.css", import.meta.url), "utf8");
+  assert.match(photo, /Upload photo/);
+  assert.match(photoCss, /border-radius: 50%/);
+  const shell = readFileSync(new URL("../components/member/MemberShell.tsx", import.meta.url), "utf8");
+  assert.match(shell, /pageLabel=\{pathname === "\/dashboard" \? "Dashboard"/);
   assert.doesNotMatch(withdraw, /Pay out/);
+});
+
+test("a profile photo is private to the signed-in member", async () => {
+  const store = createMemoryMemberStore();
+  const saved = new Map<string, { bytes: Uint8Array; contentType: "image/jpeg" | "image/png" | "image/webp" }>();
+  const photos = {
+    async put(input: { userId: string; bytes: Uint8Array; contentType: "image/jpeg" | "image/png" | "image/webp" }) {
+      const key = `profile/${input.userId}/photo`;
+      saved.set(key, { bytes: input.bytes, contentType: input.contentType });
+      return key;
+    },
+    async get(input: { userId: string }) {
+      return saved.get(`profile/${input.userId}/photo`) ?? null;
+    },
+  };
+  await initialize(store, "member-a", { firstName: "Ada", lastName: "Lovelace", phone: "+1 555 0100" });
+  await initialize(store, "member-b", { firstName: "Grace", lastName: "Hopper", phone: "+1 555 0101" });
+  const jpeg = Buffer.from([0xff, 0xd8, 0xff, 0x00]);
+  const rejectedOwner = await handleMemberApi({
+    method: "POST",
+    path: "/me/photo",
+    claims: claims("member-a"),
+    body: { userId: "member-b", contentType: "image/jpeg", dataBase64: jpeg.toString("base64") },
+    store,
+    photos,
+    now: () => NOW,
+  });
+  assert.equal(rejectedOwner.statusCode, 400);
+  assert.equal((await store.getByUserId("member-b"))?.profilePhotoKey, null);
+  const uploaded = await handleMemberApi({
+    method: "POST",
+    path: "/me/photo",
+    claims: claims("member-a"),
+    body: { contentType: "image/jpeg", dataBase64: jpeg.toString("base64") },
+    store,
+    photos,
+    now: () => NOW,
+  });
+  assert.equal(uploaded.statusCode, 200);
+  assert.equal((uploaded.body.member as { hasProfilePhoto: boolean }).hasProfilePhoto, true);
+  assert.equal((await store.getByUserId("member-a"))?.profilePhotoKey, "profile/member-a/photo");
+  assert.equal((await store.getByUserId("member-b"))?.profilePhotoKey, null);
+  const own = await handleMemberApi({ method: "GET", path: "/me/photo", claims: claims("member-a"), store, photos });
+  assert.equal(own.statusCode, 200);
+  assert.equal(own.body.dataBase64, jpeg.toString("base64"));
+  const other = await handleMemberApi({ method: "GET", path: "/me/photo", claims: claims("member-b"), store, photos });
+  assert.equal(other.statusCode, 404);
+  const png = Buffer.from([0x89, 0x50, 0x4e, 0x47]);
+  const webp = Buffer.from([0x52, 0x49, 0x46, 0x46, 0, 0, 0, 0, 0x57, 0x45, 0x42, 0x50]);
+  assert.equal((await handleMemberApi({ method: "POST", path: "/me/photo", claims: claims("member-a"), body: { contentType: "image/png", dataBase64: png.toString("base64") }, store, photos, now: () => NOW })).statusCode, 200);
+  assert.equal((await handleMemberApi({ method: "POST", path: "/me/photo", claims: claims("member-a"), body: { contentType: "image/webp", dataBase64: webp.toString("base64") }, store, photos, now: () => NOW })).statusCode, 200);
+  const rejected = await handleMemberApi({
+    method: "POST",
+    path: "/me/photo",
+    claims: claims("member-a"),
+    body: { contentType: "image/gif", dataBase64: Buffer.from("GIF89a").toString("base64") },
+    store,
+    photos,
+    now: () => NOW,
+  });
+  assert.equal(rejected.statusCode, 400);
+  const listed = await handleMemberApi({
+    method: "GET",
+    path: "/admin/members",
+    claims: { ...claims("member-a"), "cognito:groups": ["Admins"] },
+    store,
+    photos,
+    adminUserIds: async () => ["member-a"],
+  });
+  assert.equal(listed.statusCode, 200);
+  assert.equal(JSON.stringify(listed.body).includes("profile/"), false);
 });

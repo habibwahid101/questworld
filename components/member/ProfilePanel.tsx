@@ -8,9 +8,10 @@ import { PasswordField } from "@/components/auth/PasswordField";
 import { changeLoginPassword } from "@/lib/auth/cognito";
 import { mapAuthError } from "@/lib/auth/errors";
 import { PASSWORD_HINT, passwordIssue } from "@/lib/auth/password";
-import { setCurrentTransactionPassword as saveTransactionPassword, readCurrentMember } from "@/lib/members/client";
+import { setCurrentTransactionPassword as saveTransactionPassword, readCurrentMember, readCurrentProfilePhoto, uploadCurrentProfilePhoto } from "@/lib/members/client";
 import { memberReferralUrl } from "@/lib/members/referral-url";
 import { useMemberData } from "@/components/member/MemberData";
+import { ProfilePhoto } from "@/components/member/ProfilePhoto";
 import type { MemberProfile } from "@/lib/members/service";
 import styles from "./ProfilePanel.module.css";
 
@@ -35,11 +36,28 @@ export function ProfilePanel() {
   const [savingTransaction, setSavingTransaction] = useState(false);
   const [readMember, setReadMember] = useState<MemberProfile | null>(null);
   const [copied, setCopied] = useState<"code" | "link" | null>(null);
+  const [photoUrl, setPhotoUrl] = useState<string | null>(null);
+  const [photoError, setPhotoError] = useState<string | null>(null);
+  const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const copyTimer = useRef<number | null>(null);
+  const shownMember = readMember ?? member;
 
   useEffect(() => {
-    setOrigin(window.location.origin);
-  }, []);
+    if (!shownMember?.hasProfilePhoto) {
+      return;
+    }
+    let active = true;
+    void readCurrentProfilePhoto()
+      .then((photo) => {
+        if (active && photo) {
+          setPhotoUrl(`data:${photo.contentType};base64,${photo.dataBase64}`);
+        }
+      })
+      .catch(() => undefined);
+    return () => {
+      active = false;
+    };
+  }, [shownMember?.hasProfilePhoto, shownMember?.userId]);
 
   useEffect(() => {
     return () => {
@@ -156,6 +174,35 @@ export function ProfilePanel() {
     }
   }
 
+  useEffect(() => {
+    setOrigin(window.location.origin);
+  }, []);
+
+  async function onPhoto(file: File) {
+    if (file.type !== "image/jpeg" && file.type !== "image/png" && file.type !== "image/webp") {
+      setPhotoError("Use a JPEG, PNG, or WebP image.");
+      return;
+    }
+    if (file.size === 0 || file.size > 1_500_000) {
+      setPhotoError("Use a JPEG, PNG, or WebP image under 1.5 MB.");
+      return;
+    }
+    const previous = photoUrl;
+    const local = URL.createObjectURL(file);
+    setPhotoUrl(local);
+    setPhotoError(null);
+    setUploadingPhoto(true);
+    try {
+      const dataBase64 = await fileToBase64(file);
+      await uploadCurrentProfilePhoto({ contentType: file.type, dataBase64 });
+    } catch (caught) {
+      URL.revokeObjectURL(local);
+      setPhotoUrl(previous);
+      setPhotoError(caught instanceof Error ? caught.message : "Could not save that profile photo.");
+    } finally {
+      setUploadingPhoto(false);
+    }
+  }
   async function copyCode() {
     const code = (readMember ?? member)?.referralCode ?? "";
     if (!code) {
@@ -211,6 +258,18 @@ export function ProfilePanel() {
     <Card>
       <div className="stack">
         <div>
+          <ProfilePhoto
+            name={shown.name}
+            src={photoUrl}
+            editable
+            uploading={uploadingPhoto}
+            onSelect={(file) => void onPhoto(file)}
+          />
+          {photoError ? (
+            <p className="form-error" role="alert">
+              {photoError}
+            </p>
+          ) : null}
           <h1>Profile</h1>
           <p className="lead">Your account details and referral code.</p>
           <p>Name {shown.name}</p>
@@ -346,6 +405,15 @@ export function ProfilePanel() {
       </div>
     </Card>
   );
+}
+
+async function fileToBase64(file: File): Promise<string> {
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  let binary = "";
+  for (const byte of bytes) {
+    binary += String.fromCharCode(byte);
+  }
+  return btoa(binary);
 }
 
 async function writeClipboard(value: string): Promise<boolean> {

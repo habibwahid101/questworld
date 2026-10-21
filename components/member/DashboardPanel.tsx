@@ -18,9 +18,10 @@ import {
   type CommissionEntry,
   type InvestmentRecord,
 } from "@/lib/investments/service";
-import { readCurrentMember } from "@/lib/members/client";
+import { readCurrentMember, readCurrentProfilePhoto } from "@/lib/members/client";
 import { isMemberApiConfigured } from "@/lib/members/config";
 import type { MemberProfile } from "@/lib/members/service";
+import { ProfilePhoto } from "@/components/member/ProfilePhoto";
 
 type Figures = {
   invested: number | null;
@@ -36,6 +37,7 @@ type Figures = {
 
 export function DashboardPanel() {
   const [profile, setProfile] = useState<MemberProfile | null>(null);
+  const [photoUrl, setPhotoUrl] = useState<string | null>(null);
   const [figures, setFigures] = useState<Figures | null>(null);
   const [message, setMessage] = useState<string | null>(null);
 
@@ -80,10 +82,31 @@ export function DashboardPanel() {
     };
   }, []);
 
+  useEffect(() => {
+    if (!profile?.hasProfilePhoto) {
+      setPhotoUrl(null);
+      return;
+    }
+    let active = true;
+    void readCurrentProfilePhoto()
+      .then((photo) => {
+        if (active) {
+          setPhotoUrl(photo ? `data:${photo.contentType};base64,${photo.dataBase64}` : null);
+        }
+      })
+      .catch(() => {
+        if (active) {
+          setPhotoUrl(null);
+        }
+      });
+    return () => {
+      active = false;
+    };
+  }, [profile]);
+
   if (!isMemberApiConfigured()) {
     return (
       <Card>
-        <h1>Dashboard</h1>
         <p className="lead">Authentication is connected. These totals are not connected in this build yet.</p>
       </Card>
     );
@@ -91,15 +114,14 @@ export function DashboardPanel() {
 
   return (
     <div className="stack">
-      <Card>
-        <h1>Dashboard</h1>
-        <p className="lead" style={{ marginTop: 12 }}>
-          Totals come from your recorded investments, posted returns, and posted commissions. Nothing is paid out here.
+      {message ? (
+        <p className="form-error" role="alert">
+          {message}
         </p>
-        {message ? <p style={{ marginTop: 16 }}>{message}</p> : null}
-      </Card>
+      ) : null}
       <Card>
         <p className="eyebrow">Profile</p>
+        <ProfilePhoto name={profile?.name ?? "Member"} src={photoUrl} />
         <p style={{ marginTop: 10 }}>Name {profile?.name ?? "…"}</p>
         <p>Referral ID {profile?.referralCode ?? "…"}</p>
         <p>Status {profile?.status ?? "…"}</p>

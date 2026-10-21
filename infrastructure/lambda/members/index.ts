@@ -6,12 +6,15 @@ import {
   TransactWriteCommand,
   UpdateCommand,
 } from "@aws-sdk/lib-dynamodb";
+import { GetObjectCommand, PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import { CognitoIdentityProviderClient, ListUsersInGroupCommand } from "@aws-sdk/client-cognito-identity-provider";
 import {
   handleMemberApi,
+  profilePhotoKey,
   type CreateResult,
   type MemberRecord,
   type MemberStore,
+  type ProfilePhotoStore,
 } from "../../../lib/members/service";
 
 const PROFILE_SK = "PROFILE";
@@ -31,6 +34,7 @@ const document = DynamoDBDocumentClient.from(new DynamoDBClient({}), {
   marshallOptions: { removeUndefinedValues: true },
 });
 const cognito = new CognitoIdentityProviderClient({});
+const photos = new S3Client({});
 
 export async function handler(event: ApiGatewayEvent): Promise<{
   statusCode: number;
@@ -59,6 +63,7 @@ export async function handler(event: ApiGatewayEvent): Promise<{
     body,
     store: createDynamoMemberStore(tableName),
     adminUserIds: process.env.USER_POOL_ID ? () => listAdminIdentifiers(process.env.USER_POOL_ID as string) : undefined,
+    photos: process.env.PROFILE_PHOTO_BUCKET ? createProfilePhotoStore(process.env.PROFILE_PHOTO_BUCKET) : undefined,
   });
 
   return json(result.statusCode, result.body);
@@ -210,6 +215,33 @@ export function createDynamoMemberStore(tableName: string): MemberStore {
         throw caught;
       }
     },
+    async setProfilePhoto(userId, profilePhotoKeyValue, updatedAt) {
+      try {
+        const response = await document.send(
+          new UpdateCommand({
+            TableName: tableName,
+            Key: { pk: userKey(userId), sk: PROFILE_SK },
+            UpdateExpression: "SET #profilePhotoKey = :profilePhotoKey, #updatedAt = :updatedAt",
+            ExpressionAttributeNames: {
+              "#profilePhotoKey": "profilePhotoKey",
+              "#updatedAt": "updatedAt",
+            },
+            ExpressionAttributeValues: {
+              ":profilePhotoKey": profilePhotoKeyValue,
+              ":updatedAt": updatedAt,
+            },
+            ConditionExpression: "attribute_exists(pk)",
+            ReturnValues: "ALL_NEW",
+          }),
+        );
+        return response.Attributes ? itemToMember(response.Attributes) : null;
+      } catch (caught) {
+        if (isConditionalFailure(caught)) {
+          return null;
+        }
+        throw caught;
+      }
+    },
   };
 }
 
@@ -306,10 +338,64 @@ function itemToMember(item: Record<string, unknown>): MemberRecord {
     sponsorUserId: optionalString(item.sponsorUserId),
     sponsorReferralCode: optionalString(item.sponsorReferralCode),
     transactionPasswordHash: optionalString(item.transactionPasswordHash),
+    profilePhotoKey: storedPhotoKey(item),
     createdAt: requiredString(item.createdAt),
     updatedAt: requiredString(item.updatedAt),
     status: "active",
   };
+}
+
+function storedPhotoKey(item: Record<string, unknown>): string | null {
+  const userId = typeof item.userId === "string" ? item.userId : "";
+  const key = item.profilePhotoKey;
+  if (typeof key !== "string" || !key) {
+    return null;
+  }
+  try {
+    return key === profilePhotoKey(userId) ? key : null;
+  } catch {
+    return null;
+  }
+}
+
+function createProfilePhotoStore(bucket: string): ProfilePhotoStore {
+  return {
+    async put(input) {
+      const key = profilePhotoKey(input.userId);
+      await photos.send(
+        new PutObjectCommand({
+          Bucket: bucket,
+          Key: key,
+          Body: input.bytes,
+          ContentType: input.contentType,
+          ServerSideEncryption: "AES256",
+        }),
+      );
+      return key;
+    },
+    async get(input) {
+      const key = profilePhotoKey(input.userId);
+      try {
+        const response = await photos.send(new GetObjectCommand({ Bucket: bucket, Key: key }));
+        const bytes = await response.Body?.transformToByteArray();
+        const contentType = response.ContentType;
+        if (!bytes || (contentType !== "image/jpeg" && contentType !== "image/png" && contentType !== "image/webp")) {
+          return null;
+        }
+        return { bytes, contentType };
+      } catch (caught) {
+        if (isMissingObject(caught)) {
+          return null;
+        }
+        throw caught;
+      }
+    },
+  };
+}
+
+function isMissingObject(caught: unknown): boolean {
+  const name = caught && typeof caught === "object" ? (caught as { name?: string }).name : "";
+  return name === "NoSuchKey" || name === "NotFound";
 }
 
 function requiredString(value: unknown): string {

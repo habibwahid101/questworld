@@ -13,13 +13,14 @@ import styles from "./AppShell.module.css";
 
 type AppShellProps = {
   title: string;
+  pageLabel?: string;
   homeHref: string;
   items: readonly NavItem[];
   showPhoneBar?: boolean;
   children: React.ReactNode;
 };
 
-export function AppShell({ title, homeHref, items, showPhoneBar = false, children }: AppShellProps) {
+export function AppShell({ title, pageLabel, homeHref, items, showPhoneBar = false, children }: AppShellProps) {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
   const { logout, user } = useAuth();
@@ -59,7 +60,10 @@ export function AppShell({ title, homeHref, items, showPhoneBar = false, childre
       </aside>
       <div className={styles.main}>
         <div className={styles.topbar}>
-          <strong className={styles.topTitle}>{title}</strong>
+          <strong className={styles.topTitle}>
+            {title}
+            {pageLabel ? <span className={styles.pageLabel}>{pageLabel}</span> : null}
+          </strong>
           <div className={styles.topActions}>
             {shellSwitch ? (
               <Link className={styles.logoutButton} href={shellSwitch.href}>

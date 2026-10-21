@@ -24,13 +24,15 @@ export type MemberRecord = {
   sponsorUserId: string | null;
   sponsorReferralCode: string | null;
   transactionPasswordHash: string | null;
+  profilePhotoKey: string | null;
   createdAt: string;
   updatedAt: string;
   status: MemberStatus;
 };
 
-export type MemberProfile = Omit<MemberRecord, "sponsorUserId" | "transactionPasswordHash"> & {
+export type MemberProfile = Omit<MemberRecord, "sponsorUserId" | "transactionPasswordHash" | "profilePhotoKey"> & {
   transactionPasswordSet: boolean;
+  hasProfilePhoto: boolean;
 };
 
 export type ListedMember = {
@@ -64,6 +66,7 @@ export type MemberStore = {
   createMember(member: MemberRecord): Promise<CreateResult>;
   updateProfile(userId: string, patch: ProfilePatch): Promise<MemberRecord | null>;
   setTransactionPassword(userId: string, hash: string, updatedAt: string): Promise<MemberRecord | null>;
+  setProfilePhoto(userId: string, profilePhotoKey: string, updatedAt: string): Promise<MemberRecord | null>;
 };
 
 export class MemberRequestError extends Error {
@@ -109,6 +112,7 @@ export function toMemberProfile(record: MemberRecord): MemberProfile {
     referralCode: record.referralCode,
     sponsorReferralCode: record.sponsorReferralCode,
     transactionPasswordSet: Boolean(record.transactionPasswordHash),
+    hasProfilePhoto: ownsProfilePhoto(record),
     createdAt: record.createdAt,
     updatedAt: record.updatedAt,
     status: record.status,
@@ -191,6 +195,7 @@ export async function initializeMember(input: {
       sponsorUserId: sponsor?.userId ?? null,
       sponsorReferralCode: sponsor?.code ?? null,
       transactionPasswordHash: input.transactionPassword ? hashTransactionPassword(input.transactionPassword) : null,
+      profilePhotoKey: null,
       createdAt: timestamp,
       updatedAt: timestamp,
       status: "active",
@@ -304,6 +309,7 @@ export async function handleMemberApi(input: {
   now?: () => string;
   newReferralCode?: () => string;
   adminUserIds?: () => Promise<readonly string[]>;
+  photos?: ProfilePhotoStore;
 }): Promise<{ statusCode: number; body: Record<string, unknown> }> {
   const identity = identityFromClaims(input.claims);
   if (!identity) {
@@ -348,6 +354,29 @@ export async function handleMemberApi(input: {
         return errorBody(404, "member_not_found", "Create your member profile first.");
       }
       return { statusCode: 200, body: { member: toMemberProfile(record) } };
+    }
+
+    if (method === "POST" && path === "/me/photo") {
+      const record = await saveProfilePhoto({
+        userId: identity.userId,
+        body: input.body,
+        store: input.store,
+        photos: input.photos,
+        now,
+      });
+      return { statusCode: 200, body: { member: toMemberProfile(record) } };
+    }
+
+    if (method === "GET" && path === "/me/photo") {
+      const photo = await readProfilePhoto({
+        userId: identity.userId,
+        store: input.store,
+        photos: input.photos,
+      });
+      return {
+        statusCode: 200,
+        body: { contentType: photo.contentType, dataBase64: Buffer.from(photo.bytes).toString("base64") },
+      };
     }
 
     if (method === "PATCH" && path === "/me") {
@@ -518,6 +547,121 @@ function referralFromBody(body: unknown): string {
     throw new MemberRequestError(400, "invalid_body", "Referral code must be text.");
   }
   return source.referralCode;
+}
+
+export type ProfilePhotoContentType = "image/jpeg" | "image/png" | "image/webp";
+
+export type ProfilePhotoBytes = {
+  contentType: ProfilePhotoContentType;
+  bytes: Uint8Array;
+};
+
+export type ProfilePhotoStore = {
+  put(input: { userId: string; bytes: Uint8Array; contentType: ProfilePhotoContentType }): Promise<string>;
+  get(input: { userId: string }): Promise<ProfilePhotoBytes | null>;
+};
+
+const PHOTO_LIMIT = 1_500_000;
+
+export function profilePhotoKey(userId: string): string {
+  if (!/^[A-Za-z0-9_-]{1,128}$/.test(userId)) {
+    throw new MemberRequestError(400, "invalid_photo", "That profile photo could not be stored.");
+  }
+  return `profile/${userId}/photo`;
+}
+
+function ownsProfilePhoto(record: MemberRecord): boolean {
+  if (!record.profilePhotoKey) {
+    return false;
+  }
+  try {
+    return record.profilePhotoKey === profilePhotoKey(record.userId);
+  } catch {
+    return false;
+  }
+}
+
+async function saveProfilePhoto(input: {
+  userId: string;
+  body: unknown;
+  store: MemberStore;
+  photos: ProfilePhotoStore | undefined;
+  now: () => string;
+}): Promise<MemberRecord> {
+  const current = await input.store.getByUserId(input.userId);
+  if (!current) {
+    throw new MemberRequestError(404, "member_not_found", "Create your member profile first.");
+  }
+  if (!input.photos) {
+    throw new MemberRequestError(500, "configuration", "Profile photos are not configured.");
+  }
+  const photo = photoFromBody(input.body);
+  const key = profilePhotoKey(input.userId);
+  const stored = await input.photos.put({ userId: input.userId, bytes: photo.bytes, contentType: photo.contentType });
+  if (stored !== key) {
+    throw new MemberRequestError(500, "photo_failed", "Could not save that profile photo.");
+  }
+  const updated = await input.store.setProfilePhoto(input.userId, key, input.now());
+  if (!updated) {
+    throw new MemberRequestError(404, "member_not_found", "Create your member profile first.");
+  }
+  return updated;
+}
+
+async function readProfilePhoto(input: {
+  userId: string;
+  store: MemberStore;
+  photos: ProfilePhotoStore | undefined;
+}): Promise<ProfilePhotoBytes> {
+  const current = await input.store.getByUserId(input.userId);
+  const key = profilePhotoKey(input.userId);
+  if (!current?.profilePhotoKey || current.profilePhotoKey !== key) {
+    throw new MemberRequestError(404, "photo_not_found", "No profile photo is stored.");
+  }
+  if (!input.photos) {
+    throw new MemberRequestError(500, "configuration", "Profile photos are not configured.");
+  }
+  const photo = await input.photos.get({ userId: input.userId });
+  if (!photo || !matchesPhoto(photo.bytes, photo.contentType)) {
+    throw new MemberRequestError(404, "photo_not_found", "No profile photo is stored.");
+  }
+  return photo;
+}
+
+function photoFromBody(body: unknown): ProfilePhotoBytes {
+  if (!body || typeof body !== "object" || Array.isArray(body)) {
+    throw new MemberRequestError(400, "invalid_photo", "Use a JPEG, PNG, or WebP image.");
+  }
+  const source = body as Record<string, unknown>;
+  const extra = Object.keys(source).filter((name) => name !== "contentType" && name !== "dataBase64");
+  if (extra.length > 0) {
+    throw new MemberRequestError(400, "invalid_photo", "Use a JPEG, PNG, or WebP image.");
+  }
+  const contentType = source.contentType;
+  if (contentType !== "image/jpeg" && contentType !== "image/png" && contentType !== "image/webp") {
+    throw new MemberRequestError(400, "invalid_photo", "Use a JPEG, PNG, or WebP image.");
+  }
+  if (typeof source.dataBase64 !== "string" || source.dataBase64.trim() === "") {
+    throw new MemberRequestError(400, "invalid_photo", "Use a JPEG, PNG, or WebP image.");
+  }
+  const bytes = Buffer.from(source.dataBase64, "base64");
+  if (bytes.byteLength === 0 || bytes.byteLength > PHOTO_LIMIT || !matchesPhoto(bytes, contentType)) {
+    throw new MemberRequestError(400, "invalid_photo", "Use a JPEG, PNG, or WebP image under 1.5 MB.");
+  }
+  return { contentType, bytes };
+}
+
+function matchesPhoto(bytes: Uint8Array, contentType: string): contentType is ProfilePhotoContentType {
+  if (contentType === "image/jpeg") {
+    return bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff;
+  }
+  if (contentType === "image/png") {
+    return bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4e && bytes[3] === 0x47;
+  }
+  if (contentType === "image/webp") {
+    return bytes[0] === 0x52 && bytes[1] === 0x49 && bytes[2] === 0x46 && bytes[3] === 0x46 && bytes[8] === 0x57 && bytes[9] === 0x45 && bytes[10] === 0x42 && bytes[11] === 0x50;
+  }
+  return false;
 }
 
 function normalizePath(path: string): string {

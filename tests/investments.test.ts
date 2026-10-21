@@ -1235,8 +1235,10 @@ test("dashboard cards read existing totals and do not write records", () => {
   assert.match(dashboard, /listCurrentCommissions/);
   assert.match(dashboard, /listCurrentWithdrawals/);
   assert.match(dashboard, /readCurrentMember/);
+  assert.match(dashboard, /ProfilePhoto/);
   assert.match(dashboard, /Will receive/);
   assert.match(dashboard, /Available to withdraw/);
+  assert.doesNotMatch(dashboard, /<h1>Dashboard<\/h1>/);
   assert.match(dashboard, /record\.status === "active" \|\| record\.status === "completed"/);
   assert.match(admin, /record\.status === "active"/);
   assert.doesNotMatch(dashboard, /requestCurrentWithdrawal|createCurrentInvestment|submitCurrentDeposit|Darmelk/);

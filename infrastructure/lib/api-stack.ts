@@ -115,6 +115,12 @@ export class ApiStack extends cdk.Stack {
       authorizer,
     });
     httpApi.addRoutes({
+      path: "/me/photo",
+      methods: [apigwv2.HttpMethod.GET, apigwv2.HttpMethod.POST],
+      integration,
+      authorizer,
+    });
+    httpApi.addRoutes({
       path: "/admin/members",
       methods: [apigwv2.HttpMethod.GET],
       integration,
@@ -175,6 +181,13 @@ export class ApiStack extends cdk.Stack {
       new iam.PolicyStatement({
         actions: ["s3:PutObject", "s3:GetObject"],
         resources: [depositProofs.arnForObjects("deposit-proofs/*")],
+      }),
+    );
+    membersFn.addEnvironment("PROFILE_PHOTO_BUCKET", depositProofs.bucketName);
+    membersFn.addToRolePolicy(
+      new iam.PolicyStatement({
+        actions: ["s3:PutObject", "s3:GetObject"],
+        resources: [depositProofs.arnForObjects("profile/*")],
       }),
     );
     investmentsFn.addToRolePolicy(

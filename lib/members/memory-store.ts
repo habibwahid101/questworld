@@ -54,5 +54,18 @@ export function createMemoryMemberStore(): MemberStore {
       members.set(userId, next);
       return structuredClone(next);
     },
+    async setProfilePhoto(userId, profilePhotoKey, updatedAt) {
+      const current = members.get(userId);
+      if (!current) {
+        return null;
+      }
+      const next: MemberRecord = {
+        ...current,
+        profilePhotoKey,
+        updatedAt,
+      };
+      members.set(userId, next);
+      return structuredClone(next);
+    },
   };
 }

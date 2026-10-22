@@ -2,8 +2,8 @@ import type { Metadata } from "next";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
-import { displayMonthlyRatePercent, investmentPlans } from "@/constants/site";
-import { estimatedMonthlyProfit, formatUsd, formatUsdPrecise } from "@/utils/format";
+import { investmentPlans, yearlyReturnCopy } from "@/constants/site";
+import { formatUsd } from "@/utils/format";
 import { pageMetadata } from "@/utils/metadata";
 
 export const metadata: Metadata = pageMetadata(
@@ -21,13 +21,11 @@ export default function PlansPage() {
           <h1>Choose a listed allocation</h1>
           <p className="lead" style={{ marginTop: 12 }}>
             Each plan is paid by manual USDT transfer and activated after admin
-            verification. The Current Monthly Rate shown here is public display content
-            only.
+            verification. {yearlyReturnCopy}
           </p>
         </div>
         <div className="grid-2">
           {investmentPlans.map((plan) => {
-            const monthly = estimatedMonthlyProfit(plan.amountUsd, displayMonthlyRatePercent);
             return (
               <Card key={plan.id}>
                 <div className="cluster">
@@ -38,14 +36,8 @@ export default function PlansPage() {
                   {formatUsd(plan.amountUsd)}
                 </p>
                 <p style={{ marginTop: 10 }}>{plan.summary}</p>
+                <p style={{ marginTop: 16 }}>{yearlyReturnCopy}</p>
                 <ul className="stack" style={{ marginTop: 16, paddingLeft: 18 }}>
-                  <li>Current Monthly Rate: {displayMonthlyRatePercent}%</li>
-                  <li>
-                    Estimated Monthly Earnings: {formatUsdPrecise(monthly)}
-                  </li>
-                  <li>
-                    {formatUsd(plan.amountUsd)} × {displayMonthlyRatePercent}% = {formatUsdPrecise(monthly)} monthly
-                  </li>
                   <li>Referral eligible</li>
                   <li>USDT payment</li>
                 </ul>
@@ -62,8 +54,7 @@ export default function PlansPage() {
               <tr>
                 <th>Plan</th>
                 <th>Amount</th>
-                <th>Current Monthly Rate</th>
-                <th>Estimated Monthly Earnings</th>
+                <th>Return</th>
               </tr>
             </thead>
             <tbody>
@@ -71,12 +62,7 @@ export default function PlansPage() {
                 <tr key={plan.id}>
                   <td>{plan.name}</td>
                   <td>{formatUsd(plan.amountUsd)}</td>
-                  <td>{displayMonthlyRatePercent}%</td>
-                  <td>
-                    {formatUsdPrecise(
-                      estimatedMonthlyProfit(plan.amountUsd, displayMonthlyRatePercent),
-                    )}
-                  </td>
+                  <td>{yearlyReturnCopy}</td>
                 </tr>
               ))}
             </tbody>

@@ -32,6 +32,7 @@ type Figures = {
   generationExpected: number | null;
   generationReceived: number | null;
   available: number | null;
+  activeInvested: number | null;
   activeDate: string | null;
 };
 
@@ -74,6 +75,7 @@ export function DashboardPanel() {
         generationExpected: generation.expected,
         generationReceived: generation.received,
         available: withdrawals.status === "fulfilled" ? withdrawals.value.availableMinor : null,
+        activeInvested: investmentRows ? totalMinor(investmentRows.filter((record) => record.status === "active"), (record) => record.amountMinor) : null,
         activeDate: investmentRows ? earliestActivation(investmentRows) : null,
       });
     });
@@ -121,12 +123,13 @@ export function DashboardPanel() {
       ) : null}
       <Card>
         <p className="eyebrow">Profile</p>
-        <ProfilePhoto name={profile?.name ?? "Member"} src={photoUrl} />
-        <p style={{ marginTop: 10 }}>Name {profile?.name ?? "…"}</p>
-        <p>Referral ID {profile?.referralCode ?? "…"}</p>
-        <p>Status {profile?.status ?? "…"}</p>
-        <p>Joining date {profile ? formatWhen(profile.createdAt) : "…"}</p>
-        <p>Active date {figures?.activeDate === null ? "Could not read" : figures?.activeDate ? formatWhen(figures.activeDate) : figures ? "Not active" : "…"}</p>
+        <ProfilePhoto name={profile?.name ?? "Member"} src={photoUrl}>
+          <p style={{ marginTop: 0 }}>Name {profile?.name ?? "…"}</p>
+          <p>Referral ID {profile?.referralCode ?? "…"}</p>
+          <p>Status {profile?.status ?? "…"}</p>
+          <p>Joining date {profile ? formatWhen(profile.createdAt) : "…"}</p>
+          <p>Active date {figures?.activeDate === null ? "Could not read" : figures?.activeDate ? formatWhen(figures.activeDate) : figures ? "Not active" : "…"}</p>
+        </ProfilePhoto>
       </Card>
       <div className="grid-2">
         <AmountCard label="Invested" amountMinor={figures?.invested} />
@@ -143,6 +146,12 @@ export function DashboardPanel() {
           <p>Received {amountText(figures?.generationReceived)}</p>
         </Card>
         <AmountCard label="Available to withdraw" amountMinor={figures?.available} />
+      </div>
+      <div className="grid-2">
+        <AmountCard label="Investment Wallet" amountMinor={figures?.activeInvested} />
+        <AmountCard label="Profit Wallet" amountMinor={figures?.received} />
+        <AmountCard label="Commission Wallet" amountMinor={figures?.generationReceived} />
+        <AmountCard label="Available Withdrawal" amountMinor={figures?.available} />
       </div>
     </div>
   );

@@ -6,11 +6,8 @@ export const brand = {
   tagline: "Build your investment journey with clear plans and recorded activity.",
 } as const;
 
-/**
- * Display-only monthly rate for public marketing examples in Step 02.
- * Not a locked product engine value. Future backend will supply the applicable rate.
- */
-export const displayMonthlyRatePercent = 8;
+export const yearlyReturnCopy =
+  "Double in a year. After 12 months the investment returns the original amount plus the same amount as profit. This is not a payout.";
 
 export const investmentPlans: readonly InvestmentPlan[] = [
   {
@@ -170,8 +167,7 @@ export const faqItems: readonly FaqItem[] = [
   },
   {
     question: "How is monthly profit calculated?",
-    answer:
-      "Estimated monthly earnings are shown as the investment amount multiplied by the applicable monthly rate for that period. The rate shown on this website is display content for the current public pages and will be supplied by the backend in a later step.",
+    answer: yearlyReturnCopy,
   },
   {
     question: "When does my monthly investment cycle begin?",

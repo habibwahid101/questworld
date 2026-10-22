@@ -5,6 +5,7 @@ import { Card } from "@/components/ui/Card";
 import { listCurrentProfits, InvestmentClientError } from "@/lib/investments/client";
 import { formatUsdtAmount, type ProfitEntry } from "@/lib/investments/service";
 import { isMemberApiConfigured } from "@/lib/members/config";
+import { yearlyReturnCopy } from "@/constants/site";
 
 export function ProfitHistoryPanel() {
   const [profits, setProfits] = useState<ProfitEntry[]>([]);
@@ -52,7 +53,7 @@ export function ProfitHistoryPanel() {
       <Card>
         <h1>Profit history</h1>
         <p className="lead" style={{ marginTop: 12 }}>
-          One monthly entry is 8% of the investment amount. This is not a withdrawal.
+          {yearlyReturnCopy}
         </p>
         {message ? <p style={{ marginTop: 16 }}>{message}</p> : null}
       </Card>

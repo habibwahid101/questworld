@@ -264,19 +264,20 @@ export function ProfilePanel() {
             editable
             uploading={uploadingPhoto}
             onSelect={(file) => void onPhoto(file)}
-          />
+          >
+            <h1>Profile</h1>
+            <p className="lead">Your account details and referral code.</p>
+            <p>Name {shown.name}</p>
+            <p>Email {shown.email}</p>
+            <p>
+              Referral code <strong>{shown.referralCode}</strong>
+            </p>
+          </ProfilePhoto>
           {photoError ? (
             <p className="form-error" role="alert">
               {photoError}
             </p>
           ) : null}
-          <h1>Profile</h1>
-          <p className="lead">Your account details and referral code.</p>
-          <p>Name {shown.name}</p>
-          <p>Email {shown.email}</p>
-          <p>
-            Referral code <strong>{shown.referralCode}</strong>
-          </p>
         </div>
         <form className={styles.passwordSection} id="transaction-password" onSubmit={onSaveTransactionPassword}>
           <div>

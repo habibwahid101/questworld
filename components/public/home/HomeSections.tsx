@@ -3,20 +3,18 @@ import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import {
-  displayMonthlyRatePercent,
   faqItems,
   howItWorksSteps,
   investmentPlans,
   referralRates,
   whyItems,
+  yearlyReturnCopy,
 } from "@/constants/site";
 import type { InvestmentPlan } from "@/types";
-import { estimatedMonthlyProfit, formatUsd, formatUsdPrecise } from "@/utils/format";
+import { formatUsd } from "@/utils/format";
 import styles from "./HomeSections.module.css";
 
 function PlanCard({ plan }: { plan: InvestmentPlan }) {
-  const monthly = estimatedMonthlyProfit(plan.amountUsd, displayMonthlyRatePercent);
-
   return (
     <Card className={`${styles.planCard} ${plan.featured ? styles.planCardFeatured : ""}`}>
       <div className="cluster">
@@ -25,15 +23,7 @@ function PlanCard({ plan }: { plan: InvestmentPlan }) {
       </div>
       <p className={styles.planAmount}>{formatUsd(plan.amountUsd)}</p>
       <div className={styles.planMeta}>
-        <p>
-          Current Monthly Rate: {displayMonthlyRatePercent}%
-        </p>
-        <p>
-          Estimated Monthly Earnings: {formatUsdPrecise(monthly)}
-        </p>
-        <p>
-          {formatUsd(plan.amountUsd)} × {displayMonthlyRatePercent}% = {formatUsdPrecise(monthly)} monthly
-        </p>
+        <p>{yearlyReturnCopy}</p>
         <p>Referral eligible</p>
         <p>USDT payment</p>
       </div>
@@ -74,14 +64,11 @@ export function HeroSection() {
           </div>
           <div className={styles.visualRow}>
             <div className={styles.metric}>
-              <div className={styles.metricLabel}>Current monthly rate</div>
-              <div className={styles.metricValue}>{displayMonthlyRatePercent}%</div>
-            </div>
-            <div className={styles.metric}>
-              <div className={styles.metricLabel}>Estimated monthly</div>
-              <div className={styles.metricValue}>$80</div>
+              <div className={styles.metricLabel}>Return</div>
+              <div className={styles.metricValue}>Double in a year</div>
             </div>
           </div>
+          <p className={styles.heroNote}>{yearlyReturnCopy}</p>
         </div>
       </div>
     </section>
@@ -143,8 +130,7 @@ export function PlansSection() {
           <p className="eyebrow">Investment plans</p>
           <h2>Four listed allocations.</h2>
           <p className="lead">
-            Current Monthly Rate shown below is display content for these pages. The
-            applicable rate will come from the backend in a later step.
+            {yearlyReturnCopy}
           </p>
         </div>
         <div className={styles.planGrid}>
@@ -159,18 +145,16 @@ export function PlansSection() {
 
 export function EarningsExampleSection() {
   const amount = 1000;
-  const monthly = estimatedMonthlyProfit(amount, displayMonthlyRatePercent);
 
   return (
     <section className="section">
       <div className="container">
         <div className="grid-2">
           <div>
-            <p className="eyebrow">Monthly earnings example</p>
-            <h2>A simple period example, not a compounded projection.</h2>
+            <p className="eyebrow">Return</p>
+            <h2>Double in a year.</h2>
             <p className="lead" style={{ marginTop: 12 }}>
-              Earnings are calculated according to the applicable monthly rate for the
-              investment period.
+              {yearlyReturnCopy}
             </p>
           </div>
           <Card>
@@ -180,12 +164,8 @@ export function EarningsExampleSection() {
                 <span>{formatUsd(amount)}</span>
               </div>
               <div className={styles.exampleRow}>
-                <span>Current Monthly Rate</span>
-                <span>{displayMonthlyRatePercent}%</span>
-              </div>
-              <div className={styles.exampleRow}>
-                <span>Estimated Monthly Profit</span>
-                <span>{formatUsdPrecise(monthly)}</span>
+                <span>After 12 months</span>
+                <span>Original amount plus the same amount as profit</span>
               </div>
             </div>
           </Card>

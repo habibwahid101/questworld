@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { Card } from "@/components/ui/Card";
+import { AdminTrace } from "@/components/admin/AdminTrace";
+import { useStoredMembers } from "@/components/admin/useStoredMembers";
 import { InvestmentClientError, listAdminProfits } from "@/lib/investments/client";
 import { formatUsdtAmount, type ProfitEntry } from "@/lib/investments/service";
 import { isMemberApiConfigured } from "@/lib/members/config";
@@ -11,6 +13,7 @@ const NOT_RUN = "No entries are posted.";
 export function AdminProfitsPanel() {
   const [profits, setProfits] = useState<ProfitEntry[] | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+  const members = useStoredMembers();
 
   useEffect(() => {
     if (!isMemberApiConfigured()) {
@@ -67,10 +70,16 @@ export function AdminProfitsPanel() {
           <Card key={`${entry.ownerSub}:${entry.investmentId}:${entry.paymentNumber}`}>
             <p className="eyebrow">{entry.planName}</p>
             <h2>{formatUsdtAmount(entry.profitMinor, entry.scale)}</h2>
-            <p style={{ marginTop: 10 }}>Owner {entry.ownerSub}</p>
+            <AdminTrace
+              members={members}
+              ownerSub={entry.ownerSub}
+              recordedAt={entry.postedAt}
+              plan={entry.planName}
+              amount={formatUsdtAmount(entry.profitMinor, entry.scale)}
+              status="Posted"
+            />
             <p>Payment {entry.paymentNumber} of 12</p>
             <p>Due {new Date(entry.period).toLocaleString()}</p>
-            <p>Posted {new Date(entry.postedAt).toLocaleString()}</p>
           </Card>
         ))
       )}

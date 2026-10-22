@@ -3,9 +3,20 @@
 import { useCallback, useEffect, useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
+import { AdminTrace } from "@/components/admin/AdminTrace";
+import { useStoredMembers } from "@/components/admin/useStoredMembers";
 import { InvestmentClientError, activateVerifiedInvestment, listPendingDeposits, listVerifiedDeposits, readCurrentDepositAddresses, readDepositProofUrl, reviewPendingDeposit, saveDepositAddresses } from "@/lib/investments/client";
-import { formatUsdtAmount, type InvestmentRecord } from "@/lib/investments/service";
+import { formatUsdtAmount, type InvestmentRecord, type InvestmentStatus } from "@/lib/investments/service";
 import { isMemberApiConfigured } from "@/lib/members/config";
+
+const statusLabel: Record<InvestmentStatus, string> = {
+  awaiting_deposit: "Awaiting deposit",
+  pending_verification: "Pending verification",
+  deposit_verified: "Deposit verified",
+  rejected: "Rejected",
+  active: "Active",
+  completed: "Completed",
+};
 
 export function AdminDepositsPanel() {
   const [pending, setPending] = useState<InvestmentRecord[]>([]);
@@ -17,6 +28,7 @@ export function AdminDepositsPanel() {
   const [trc20Draft, setTrc20Draft] = useState("");
   const [savingAddress, setSavingAddress] = useState(false);
   const [reasons, setReasons] = useState<Record<string, string>>({});
+  const members = useStoredMembers();
 
   const load = useCallback(async () => {
     const [pendingDeposits, verifiedDeposits, wallets] = await Promise.all([
@@ -187,7 +199,19 @@ export function AdminDepositsPanel() {
           <Card key={investment.investmentId}>
             <p className="eyebrow">{investment.planName}</p>
             <h2>{formatUsdtAmount(investment.amountMinor, investment.scale)}</h2>
-            <p style={{ marginTop: 10 }}>Reference {investment.depositReference ?? "—"}</p>
+            <AdminTrace
+              members={members}
+              ownerSub={investment.ownerSub}
+              recordedAt={investment.createdAt}
+              plan={investment.planName}
+              amount={formatUsdtAmount(investment.amountMinor, investment.scale)}
+              status={statusLabel[investment.status]}
+              reference={investment.depositReference || "No reference"}
+              submittedAt={investment.submittedAt}
+              reviewedAt={investment.reviewedAt}
+              activatedAt={investment.activatedAt}
+              nextDueAt={investment.nextDueAt}
+            />
             {investment.depositProofKey ? (
               <p>
                 <Button
@@ -201,7 +225,6 @@ export function AdminDepositsPanel() {
                 </Button>
               </p>
             ) : null}
-            <p>Submitted {investment.submittedAt ? new Date(investment.submittedAt).toLocaleString() : "—"}</p>
             <div className="grid-2" style={{ marginTop: 16 }}>
               <Button
                 disabled={saving !== null}
@@ -247,8 +270,19 @@ export function AdminDepositsPanel() {
           <Card key={investment.investmentId}>
             <p className="eyebrow">{investment.planName}</p>
             <h2>{formatUsdtAmount(investment.amountMinor, investment.scale)}</h2>
-            <p style={{ marginTop: 10 }}>Reference {investment.depositReference ?? "—"}</p>
-            <p>Verified {investment.reviewedAt ? new Date(investment.reviewedAt).toLocaleString() : "—"}</p>
+            <AdminTrace
+              members={members}
+              ownerSub={investment.ownerSub}
+              recordedAt={investment.createdAt}
+              plan={investment.planName}
+              amount={formatUsdtAmount(investment.amountMinor, investment.scale)}
+              status={statusLabel[investment.status]}
+              reference={investment.depositReference || "No reference"}
+              submittedAt={investment.submittedAt}
+              reviewedAt={investment.reviewedAt}
+              activatedAt={investment.activatedAt}
+              nextDueAt={investment.nextDueAt}
+            />
             <Button
               disabled={saving !== null}
               aria-busy={saving?.id === investment.investmentId && saving.kind === "activate"}

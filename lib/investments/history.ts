@@ -35,6 +35,15 @@ export type TransactionHistoryItem = {
   title: string;
   at: string;
   flow: string;
+  ownerSub: string;
+  amountMinor: number;
+  scale: number;
+  planName?: string;
+  reference?: string;
+  submittedAt?: string;
+  reviewedAt?: string;
+  activatedAt?: string;
+  nextDueAt?: string;
 };
 
 export function transactionHistory(input: {
@@ -49,24 +58,45 @@ export function transactionHistory(input: {
       title: record.planName,
       at: record.statusChangedAt || record.createdAt,
       flow: record.status,
+      ownerSub: record.ownerSub,
+      amountMinor: record.amountMinor,
+      scale: record.scale,
+      planName: record.planName,
+      reference: record.depositReference,
+      submittedAt: record.submittedAt,
+      reviewedAt: record.reviewedAt,
+      activatedAt: record.activatedAt,
+      nextDueAt: record.nextDueAt,
     })),
     ...input.profits.map((entry) => ({
       id: `profit:${entry.investmentId}:${entry.period}`,
       title: entry.planName,
       at: entry.postedAt,
       flow: "Profit posted",
+      ownerSub: entry.ownerSub,
+      amountMinor: entry.profitMinor,
+      scale: entry.scale,
+      planName: entry.planName,
     })),
     ...input.commissions.map((entry) => ({
       id: `commission:${entry.investmentId}:${entry.period}:${entry.generation}`,
       title: entry.planName,
       at: entry.postedAt,
       flow: `Generation ${entry.generation} commission posted`,
+      ownerSub: entry.recipientSub,
+      amountMinor: entry.commissionMinor,
+      scale: entry.scale,
+      planName: entry.planName,
     })),
     ...input.withdrawals.map((request) => ({
       id: `withdrawal:${request.withdrawalId}`,
       title: "Withdrawal",
       at: request.createdAt,
       flow: request.status,
+      ownerSub: request.ownerSub,
+      amountMinor: request.amountMinor,
+      scale: request.scale,
+      reviewedAt: request.reviewedAt,
     })),
   ];
   return items.sort((left, right) => right.at.localeCompare(left.at) || left.id.localeCompare(right.id));

@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
+import { AdminTrace } from "@/components/admin/AdminTrace";
+import { useStoredMembers } from "@/components/admin/useStoredMembers";
 import { InvestmentClientError, listAdminWithdrawals, reviewAdminWithdrawal } from "@/lib/investments/client";
 import { formatUsdtAmount, type WithdrawalRequest, type WithdrawalStatus } from "@/lib/investments/service";
 import { isMemberApiConfigured } from "@/lib/members/config";
@@ -17,6 +19,7 @@ export function AdminWithdrawalsPanel() {
   const [withdrawals, setWithdrawals] = useState<WithdrawalRequest[] | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [saving, setSaving] = useState<{ id: string; decision: "approved" | "rejected" } | null>(null);
+  const members = useStoredMembers();
 
   const load = useCallback(async () => {
     setWithdrawals(await listAdminWithdrawals());
@@ -94,8 +97,14 @@ export function AdminWithdrawalsPanel() {
           <Card key={request.withdrawalId}>
             <p className="eyebrow">{statusLabel[request.status]}</p>
             <h2>{formatUsdtAmount(request.amountMinor, request.scale)}</h2>
-            <p style={{ marginTop: 10 }}>Member {request.ownerSub}</p>
-            <p>Created {new Date(request.createdAt).toLocaleString()}</p>
+            <AdminTrace
+              members={members}
+              ownerSub={request.ownerSub}
+              recordedAt={request.createdAt}
+              amount={formatUsdtAmount(request.amountMinor, request.scale)}
+              status={statusLabel[request.status]}
+              reviewedAt={request.reviewedAt}
+            />
             {request.status === "pending_review" ? (
               <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
                 <Button

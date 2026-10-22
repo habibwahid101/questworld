@@ -187,17 +187,13 @@ export function ProfilePanel() {
       setPhotoError("Use a JPEG, PNG, or WebP image under 1.5 MB.");
       return;
     }
-    const previous = photoUrl;
-    const local = URL.createObjectURL(file);
-    setPhotoUrl(local);
     setPhotoError(null);
     setUploadingPhoto(true);
     try {
       const dataBase64 = await fileToBase64(file);
       await uploadCurrentProfilePhoto({ contentType: file.type, dataBase64 });
+      setPhotoUrl(`data:${file.type};base64,${dataBase64}`);
     } catch (caught) {
-      URL.revokeObjectURL(local);
-      setPhotoUrl(previous);
       setPhotoError(caught instanceof Error ? caught.message : "Could not save that profile photo.");
     } finally {
       setUploadingPhoto(false);

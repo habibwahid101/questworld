@@ -451,7 +451,9 @@ test("a transaction password is stored only as a hash and does not change the lo
   assert.match(withdraw, /transactionPassword/);
   assert.match(profile, /uploadCurrentProfilePhoto/);
   assert.match(profile, /ProfilePhoto/);
-  assert.match(profile, /URL\.createObjectURL/);
+  const onPhoto = profile.slice(profile.indexOf("async function onPhoto"), profile.indexOf("async function copyCode"));
+  assert.ok(onPhoto.indexOf("uploadCurrentProfilePhoto") < onPhoto.indexOf("setPhotoUrl"));
+  assert.doesNotMatch(onPhoto, /createObjectURL/);
   const photo = readFileSync(new URL("../components/member/ProfilePhoto.tsx", import.meta.url), "utf8");
   const photoCss = readFileSync(new URL("../components/member/ProfilePhoto.module.css", import.meta.url), "utf8");
   assert.match(photo, /Upload photo/);

@@ -3,8 +3,9 @@
 import { useCallback, useEffect, useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
-import { AdminTrace } from "@/components/admin/AdminTrace";
+import { AdminRecordTable } from "@/components/admin/AdminRecordTable";
 import { useStoredMembers } from "@/components/admin/useStoredMembers";
+import { adminTableRow, investmentColumns } from "@/lib/admin/table";
 import { InvestmentClientError, activateVerifiedInvestment, listPendingDeposits, listVerifiedDeposits, readCurrentDepositAddresses, readDepositProofUrl, reviewPendingDeposit, saveDepositAddresses } from "@/lib/investments/client";
 import { formatUsdtAmount, type InvestmentRecord, type InvestmentStatus } from "@/lib/investments/service";
 import { isMemberApiConfigured } from "@/lib/members/config";
@@ -186,34 +187,35 @@ export function AdminDepositsPanel() {
         </form>
         {message ? <p style={{ marginTop: 16 }}>{message}</p> : null}
       </Card>
-      {loading ? (
-        <Card>
-          <p>Loading pending deposits…</p>
-        </Card>
-      ) : pending.length === 0 ? (
-        <Card>
-          <h2>No pending deposits</h2>
-        </Card>
-      ) : (
-        pending.map((investment) => (
-          <Card key={investment.investmentId}>
-            <p className="eyebrow">{investment.planName}</p>
-            <h2>{formatUsdtAmount(investment.amountMinor, investment.scale)}</h2>
-            <AdminTrace
-              members={members}
-              ownerSub={investment.ownerSub}
-              recordedAt={investment.createdAt}
-              plan={investment.planName}
-              amount={formatUsdtAmount(investment.amountMinor, investment.scale)}
-              status={statusLabel[investment.status]}
-              reference={investment.depositReference || "No reference"}
-              submittedAt={investment.submittedAt}
-              reviewedAt={investment.reviewedAt}
-              activatedAt={investment.activatedAt}
-              nextDueAt={investment.nextDueAt}
-            />
-            {investment.depositProofKey ? (
-              <p>
+      <AdminRecordTable
+        columns={investmentColumns}
+        loading={loading}
+        empty="No deposits"
+        rows={[...pending, ...verified].map((investment) =>
+          adminTableRow({
+            id: investment.investmentId,
+            ownerSub: investment.ownerSub,
+            members,
+            recordedAt: investment.createdAt,
+            plan: investment.planName,
+            amount: formatUsdtAmount(investment.amountMinor, investment.scale),
+            status: statusLabel[investment.status],
+            reference: investment.depositReference,
+            submittedAt: investment.submittedAt,
+            reviewedAt: investment.reviewedAt,
+            activatedAt: investment.activatedAt,
+            nextDueAt: investment.nextDueAt,
+            paymentsPosted: investment.paymentsPosted,
+          }),
+        )}
+        actions={(row) => {
+          const investment = [...pending, ...verified].find((item) => item.investmentId === row.id);
+          if (!investment) {
+            return null;
+          }
+          return (
+            <div className="stack">
+              {investment.depositProofKey ? (
                 <Button
                   type="button"
                   variant="secondary"
@@ -223,77 +225,46 @@ export function AdminDepositsPanel() {
                 >
                   {saving?.id === investment.investmentId && saving.kind === "screenshot" ? "Please wait" : "Open screenshot"}
                 </Button>
-              </p>
-            ) : null}
-            <div className="grid-2" style={{ marginTop: 16 }}>
-              <Button
-                disabled={saving !== null}
-                aria-busy={saving?.id === investment.investmentId && saving.kind === "verify"}
-                onClick={() => void decide(investment.investmentId, "deposit_verified")}
-              >
-                {saving?.id === investment.investmentId && saving.kind === "verify" ? "Saving…" : "Verify deposit"}
-              </Button>
-              <div>
-                <label htmlFor={`reject-reason-${investment.investmentId}`}>Rejection reason</label>
-                <textarea
-                  id={`reject-reason-${investment.investmentId}`}
-                  value={reasons[investment.investmentId] ?? ""}
-                  maxLength={500}
-                  onChange={(event) =>
-                    setReasons((current) => ({ ...current, [investment.investmentId]: event.target.value }))
-                  }
-                  style={{ display: "block", width: "100%", marginTop: 8 }}
-                />
+              ) : null}
+              {investment.status === "pending_verification" ? (
+                <>
+                  <Button
+                    disabled={saving !== null}
+                    aria-busy={saving?.id === investment.investmentId && saving.kind === "verify"}
+                    onClick={() => void decide(investment.investmentId, "deposit_verified")}
+                  >
+                    {saving?.id === investment.investmentId && saving.kind === "verify" ? "Saving…" : "Verify deposit"}
+                  </Button>
+                  <label htmlFor={`reject-reason-${investment.investmentId}`}>Rejection reason</label>
+                  <textarea
+                    id={`reject-reason-${investment.investmentId}`}
+                    value={reasons[investment.investmentId] ?? ""}
+                    maxLength={500}
+                    onChange={(event) => setReasons((current) => ({ ...current, [investment.investmentId]: event.target.value }))}
+                  />
+                  <Button
+                    variant="secondary"
+                    disabled={saving !== null}
+                    aria-busy={saving?.id === investment.investmentId && saving.kind === "reject"}
+                    onClick={() => void decide(investment.investmentId, "rejected")}
+                  >
+                    {saving?.id === investment.investmentId && saving.kind === "reject" ? "Saving…" : "Reject"}
+                  </Button>
+                </>
+              ) : null}
+              {investment.status === "deposit_verified" ? (
                 <Button
-                  variant="secondary"
                   disabled={saving !== null}
-                  aria-busy={saving?.id === investment.investmentId && saving.kind === "reject"}
-                  onClick={() => void decide(investment.investmentId, "rejected")}
-                  style={{ marginTop: 12 }}
+                  aria-busy={saving?.id === investment.investmentId && saving.kind === "activate"}
+                  onClick={() => void activate(investment.investmentId)}
                 >
-                  {saving?.id === investment.investmentId && saving.kind === "reject" ? "Saving…" : "Reject"}
+                  {saving?.id === investment.investmentId && saving.kind === "activate" ? "Saving…" : "Activate investment"}
                 </Button>
-              </div>
+              ) : null}
             </div>
-          </Card>
-        ))
-      )}
-      <Card>
-        <h2>Verified deposits</h2>
-      </Card>
-      {loading ? null : verified.length === 0 ? (
-        <Card>
-          <p>No verified deposits</p>
-        </Card>
-      ) : (
-        verified.map((investment) => (
-          <Card key={investment.investmentId}>
-            <p className="eyebrow">{investment.planName}</p>
-            <h2>{formatUsdtAmount(investment.amountMinor, investment.scale)}</h2>
-            <AdminTrace
-              members={members}
-              ownerSub={investment.ownerSub}
-              recordedAt={investment.createdAt}
-              plan={investment.planName}
-              amount={formatUsdtAmount(investment.amountMinor, investment.scale)}
-              status={statusLabel[investment.status]}
-              reference={investment.depositReference || "No reference"}
-              submittedAt={investment.submittedAt}
-              reviewedAt={investment.reviewedAt}
-              activatedAt={investment.activatedAt}
-              nextDueAt={investment.nextDueAt}
-            />
-            <Button
-              disabled={saving !== null}
-              aria-busy={saving?.id === investment.investmentId && saving.kind === "activate"}
-              onClick={() => void activate(investment.investmentId)}
-              style={{ marginTop: 16 }}
-            >
-              {saving?.id === investment.investmentId && saving.kind === "activate" ? "Saving…" : "Activate investment"}
-            </Button>
-          </Card>
-        ))
-      )}
+          );
+        }}
+      />
     </div>
   );
 }

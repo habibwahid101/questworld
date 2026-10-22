@@ -44,6 +44,7 @@ export type TransactionHistoryItem = {
   reviewedAt?: string;
   activatedAt?: string;
   nextDueAt?: string;
+  paymentsPosted?: number;
 };
 
 export function transactionHistory(input: {
@@ -67,6 +68,7 @@ export function transactionHistory(input: {
       reviewedAt: record.reviewedAt,
       activatedAt: record.activatedAt,
       nextDueAt: record.nextDueAt,
+      paymentsPosted: record.paymentsPosted,
     })),
     ...input.profits.map((entry) => ({
       id: `profit:${entry.investmentId}:${entry.period}`,

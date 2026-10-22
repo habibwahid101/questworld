@@ -3,8 +3,9 @@
 import { useCallback, useEffect, useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
-import { AdminTrace } from "@/components/admin/AdminTrace";
+import { AdminRecordTable } from "@/components/admin/AdminRecordTable";
 import { useStoredMembers } from "@/components/admin/useStoredMembers";
+import { adminTableRow, withdrawalColumns } from "@/lib/admin/table";
 import { InvestmentClientError, listAdminWithdrawals, reviewAdminWithdrawal } from "@/lib/investments/client";
 import { formatUsdtAmount, type WithdrawalRequest, type WithdrawalStatus } from "@/lib/investments/service";
 import { isMemberApiConfigured } from "@/lib/members/config";
@@ -39,6 +40,7 @@ export function AdminWithdrawalsPanel() {
         }
         const error = caught instanceof InvestmentClientError ? caught : new InvestmentClientError("investment_request_failed", "Could not load withdrawal requests.");
         setMessage(error.message);
+        setWithdrawals([]);
       });
     return () => {
       active = false;
@@ -84,51 +86,49 @@ export function AdminWithdrawalsPanel() {
         </p>
         {message ? <p style={{ marginTop: 16 }}>{message}</p> : null}
       </Card>
-      {withdrawals === null ? (
-        <Card>
-          <p>Loading withdrawal requests…</p>
-        </Card>
-      ) : withdrawals.length === 0 ? (
-        <Card>
-          <h2>No withdrawal requests stored</h2>
-        </Card>
-      ) : (
-        withdrawals.map((request) => (
-          <Card key={request.withdrawalId}>
-            <p className="eyebrow">{statusLabel[request.status]}</p>
-            <h2>{formatUsdtAmount(request.amountMinor, request.scale)}</h2>
-            <AdminTrace
-              members={members}
-              ownerSub={request.ownerSub}
-              recordedAt={request.createdAt}
-              amount={formatUsdtAmount(request.amountMinor, request.scale)}
-              status={statusLabel[request.status]}
-              reviewedAt={request.reviewedAt}
-            />
-            {request.status === "pending_review" ? (
-              <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
-                <Button
-                  type="button"
-                  disabled={saving !== null}
-                  aria-busy={saving?.id === request.withdrawalId && saving.decision === "approved"}
-                  onClick={() => void review(request.withdrawalId, "approved")}
-                >
-                  {saving?.id === request.withdrawalId && saving.decision === "approved" ? "Saving…" : "Approve"}
-                </Button>
-                <Button
-                  type="button"
-                  variant="secondary"
-                  disabled={saving !== null}
-                  aria-busy={saving?.id === request.withdrawalId && saving.decision === "rejected"}
-                  onClick={() => void review(request.withdrawalId, "rejected")}
-                >
-                  {saving?.id === request.withdrawalId && saving.decision === "rejected" ? "Saving…" : "Reject"}
-                </Button>
-              </div>
-            ) : null}
-          </Card>
-        ))
-      )}
+      <AdminRecordTable
+        columns={withdrawalColumns}
+        loading={withdrawals === null}
+        empty="No withdrawal requests stored"
+        rows={(withdrawals ?? []).map((request) =>
+          adminTableRow({
+            id: request.withdrawalId,
+            ownerSub: request.ownerSub,
+            members,
+            recordedAt: request.createdAt,
+            amount: formatUsdtAmount(request.amountMinor, request.scale),
+            status: statusLabel[request.status],
+            reviewedAt: request.reviewedAt,
+          }),
+        )}
+        actions={(row) => {
+          const request = withdrawals?.find((item) => item.withdrawalId === row.id);
+          if (!request || request.status !== "pending_review") {
+            return null;
+          }
+          return (
+            <div style={{ display: "flex", gap: 8 }}>
+              <Button
+                type="button"
+                disabled={saving !== null}
+                aria-busy={saving?.id === request.withdrawalId && saving.decision === "approved"}
+                onClick={() => void review(request.withdrawalId, "approved")}
+              >
+                {saving?.id === request.withdrawalId && saving.decision === "approved" ? "Saving…" : "Approve"}
+              </Button>
+              <Button
+                type="button"
+                variant="secondary"
+                disabled={saving !== null}
+                aria-busy={saving?.id === request.withdrawalId && saving.decision === "rejected"}
+                onClick={() => void review(request.withdrawalId, "rejected")}
+              >
+                {saving?.id === request.withdrawalId && saving.decision === "rejected" ? "Saving…" : "Reject"}
+              </Button>
+            </div>
+          );
+        }}
+      />
     </div>
   );
 }

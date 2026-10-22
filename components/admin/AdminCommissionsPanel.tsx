@@ -2,8 +2,9 @@
 
 import { useEffect, useState } from "react";
 import { Card } from "@/components/ui/Card";
-import { AdminTrace } from "@/components/admin/AdminTrace";
+import { AdminRecordTable } from "@/components/admin/AdminRecordTable";
 import { useStoredMembers } from "@/components/admin/useStoredMembers";
+import { adminTableRow, profitColumns } from "@/lib/admin/table";
 import { InvestmentClientError, listAdminCommissions } from "@/lib/investments/client";
 import { formatUsdtAmount, type CommissionEntry } from "@/lib/investments/service";
 import { isMemberApiConfigured } from "@/lib/members/config";
@@ -32,6 +33,7 @@ export function AdminCommissionsPanel() {
         }
         const error = caught instanceof InvestmentClientError ? caught : new InvestmentClientError("investment_request_failed", "Could not load commission entries.");
         setMessage(error.message);
+        setCommissions([]);
       });
     return () => {
       active = false;
@@ -56,34 +58,22 @@ export function AdminCommissionsPanel() {
         </p>
         {message ? <p style={{ marginTop: 16 }}>{message}</p> : null}
       </Card>
-      {commissions === null ? (
-        <Card>
-          <p>Loading commission entries…</p>
-        </Card>
-      ) : commissions.length === 0 ? (
-        <Card>
-          <h2>No commission entries</h2>
-          <p style={{ marginTop: 10 }}>{NOT_RUN}</p>
-        </Card>
-      ) : (
-        commissions.map((entry) => (
-          <Card key={`${entry.recipientSub}:${entry.investmentId}:${entry.paymentNumber}:${entry.generation}`}>
-            <p className="eyebrow">Generation {entry.generation}</p>
-            <h2>{formatUsdtAmount(entry.commissionMinor, entry.scale)}</h2>
-            <AdminTrace
-              members={members}
-              ownerSub={entry.recipientSub}
-              recordedAt={entry.postedAt}
-              plan={entry.planName}
-              amount={formatUsdtAmount(entry.commissionMinor, entry.scale)}
-              status="Posted"
-            />
-            <p>Payment {entry.paymentNumber} of 12</p>
-            <p>Rate {entry.rateBps / 100}%</p>
-            <p>Due {new Date(entry.period).toLocaleString()}</p>
-          </Card>
-        ))
-      )}
+      <AdminRecordTable
+        columns={profitColumns}
+        loading={commissions === null}
+        empty={NOT_RUN}
+        rows={(commissions ?? []).map((entry) =>
+          adminTableRow({
+            id: `${entry.recipientSub}:${entry.investmentId}:${entry.paymentNumber}:${entry.generation}`,
+            ownerSub: entry.recipientSub,
+            members,
+            recordedAt: entry.postedAt,
+            plan: entry.planName,
+            amount: formatUsdtAmount(entry.commissionMinor, entry.scale),
+            status: "Posted",
+          }),
+        )}
+      />
     </div>
   );
 }

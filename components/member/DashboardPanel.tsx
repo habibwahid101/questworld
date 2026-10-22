@@ -12,10 +12,7 @@ import {
 import {
   INVESTMENT_CURRENCY,
   INVESTMENT_SCALE,
-  RETURN_PAYMENTS,
-  commissionMinor,
   formatUsdtAmount,
-  type CommissionEntry,
   type InvestmentRecord,
 } from "@/lib/investments/service";
 import { readCurrentMember, readCurrentProfilePhoto } from "@/lib/members/client";
@@ -24,12 +21,7 @@ import type { MemberProfile } from "@/lib/members/service";
 import { ProfilePhoto } from "@/components/member/ProfilePhoto";
 
 type Figures = {
-  invested: number | null;
-  willReceive: number | null;
-  posted: number | null;
-  remaining: number | null;
   received: number | null;
-  generationExpected: number | null;
   generationReceived: number | null;
   available: number | null;
   activeInvested: number | null;
@@ -64,16 +56,9 @@ export function DashboardPanel() {
       const investmentRows = investments.status === "fulfilled" ? investments.value : null;
       const profitRows = profits.status === "fulfilled" ? profits.value : null;
       const commissionRows = commissions.status === "fulfilled" ? commissions.value : null;
-      const invested = investmentRows ? totalMinor(cycleInvestments(investmentRows), (record) => record.amountMinor) : null;
-      const generation = commissionRows ? generationTotals(commissionRows) : { expected: null, received: null };
       setFigures({
-        invested,
-        willReceive: invested === null ? null : invested * 2,
-        posted: profitRows ? profitRows.length : null,
-        remaining: investmentRows ? remainingPayments(investmentRows) : null,
         received: profitRows ? totalMinor(profitRows, (entry) => entry.profitMinor) : null,
-        generationExpected: generation.expected,
-        generationReceived: generation.received,
+        generationReceived: commissionRows ? totalMinor(commissionRows, (entry) => entry.commissionMinor) : null,
         available: withdrawals.status === "fulfilled" ? withdrawals.value.availableMinor : null,
         activeInvested: investmentRows ? totalMinor(investmentRows.filter((record) => record.status === "active"), (record) => record.amountMinor) : null,
         activeDate: investmentRows ? earliestActivation(investmentRows) : null,
@@ -132,22 +117,6 @@ export function DashboardPanel() {
         </ProfilePhoto>
       </Card>
       <div className="grid-2">
-        <AmountCard label="Invested" amountMinor={figures?.invested} />
-        <AmountCard label="Will receive" amountMinor={figures?.willReceive} note="Double the invested amount." />
-        <Card>
-          <p className="eyebrow">Months</p>
-          <h2>{countText(figures?.posted)} / {countText(figures?.remaining)}</h2>
-          <p style={{ marginTop: 8 }}>Posted / remaining</p>
-        </Card>
-        <AmountCard label="Received so far" amountMinor={figures?.received} />
-        <Card>
-          <p className="eyebrow">Generation</p>
-          <p style={{ marginTop: 10 }}>Expected {amountText(figures?.generationExpected)}</p>
-          <p>Received {amountText(figures?.generationReceived)}</p>
-        </Card>
-        <AmountCard label="Available to withdraw" amountMinor={figures?.available} />
-      </div>
-      <div className="grid-2">
         <AmountCard label="Investment Wallet" amountMinor={figures?.activeInvested} />
         <AmountCard label="Profit Wallet" amountMinor={figures?.received} />
         <AmountCard label="Commission Wallet" amountMinor={figures?.generationReceived} />
@@ -157,12 +126,11 @@ export function DashboardPanel() {
   );
 }
 
-function AmountCard({ label, amountMinor, note }: { label: string; amountMinor: number | null | undefined; note?: string }) {
+function AmountCard({ label, amountMinor }: { label: string; amountMinor: number | null | undefined }) {
   return (
     <Card>
       <p className="eyebrow">{label}</p>
       <h2>{amountText(amountMinor)}</h2>
-      {note ? <p style={{ marginTop: 8 }}>{note}</p> : null}
     </Card>
   );
 }
@@ -177,52 +145,14 @@ function amountText(amountMinor: number | null | undefined): string {
   return "…";
 }
 
-function countText(value: number | null | undefined): string {
-  if (value === null) {
-    return "—";
-  }
-  return typeof value === "number" ? String(value) : "…";
-}
-
-function cycleInvestments(records: readonly InvestmentRecord[]): InvestmentRecord[] {
-  return records.filter((record) => record.status === "active" || record.status === "completed");
-}
-
-function remainingPayments(records: readonly InvestmentRecord[]): number | null {
-  const cycle = cycleInvestments(records);
-  if (cycle.some((record) => record.paymentsPosted !== undefined && (!Number.isInteger(record.paymentsPosted) || record.paymentsPosted < 0 || record.paymentsPosted > RETURN_PAYMENTS))) {
-    return null;
-  }
-  return cycle.reduce((sum, record) => sum + (RETURN_PAYMENTS - (record.paymentsPosted ?? 0)), 0);
-}
-
 function earliestActivation(records: readonly InvestmentRecord[]): string | null {
   const dates = records.flatMap((record) => (record.activatedAt ? [record.activatedAt] : []));
   return dates.sort()[0] ?? null;
 }
 
-function generationTotals(records: readonly CommissionEntry[]): { expected: number | null; received: number | null } {
-  if (records.some((record) => record.currency !== INVESTMENT_CURRENCY || record.scale !== INVESTMENT_SCALE)) {
-    return { expected: null, received: null };
-  }
-  const perPayment = new Map<string, number>();
-  for (const entry of records) {
-    const amount = commissionMinor(entry.principalMinor, entry.generation);
-    const key = `${entry.investmentId}:${entry.generation}`;
-    const existing = perPayment.get(key);
-    if (existing !== undefined && existing !== amount) {
-      return { expected: null, received: null };
-    }
-    perPayment.set(key, amount);
-  }
-  let expected = 0;
-  for (const amount of perPayment.values()) {
-    expected += amount * RETURN_PAYMENTS;
-  }
-  return {
-    expected,
-    received: records.reduce((sum, entry) => sum + entry.commissionMinor, 0),
-  };
+function formatWhen(value: string): string {
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? value : date.toLocaleString();
 }
 
 function totalMinor<T extends { currency: string; scale: number }>(records: readonly T[], amount: (record: T) => number): number | null {
@@ -230,11 +160,6 @@ function totalMinor<T extends { currency: string; scale: number }>(records: read
     return null;
   }
   return records.reduce((sum, record) => sum + amount(record), 0);
-}
-
-function formatWhen(value: string): string {
-  const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? value : date.toLocaleString();
 }
 
 function readError(caught: unknown): string {

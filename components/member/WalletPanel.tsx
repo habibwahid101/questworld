@@ -14,8 +14,6 @@ import { isMemberApiConfigured } from "@/lib/members/config";
 type Figures = {
   profit: number | null;
   available: number | null;
-  pendingCount: number | null;
-  pendingTotal: number | null;
   activeInvested: number | null;
   commissions: number | null;
 };
@@ -41,14 +39,11 @@ export function WalletPanel() {
       const [profits, withdrawals, investments, commissions] = results;
       const errors = results.flatMap((result) => (result.status === "rejected" ? [readError(result.reason)] : []));
       setMessage(errors[0] ?? null);
-      const pending = withdrawals.status === "fulfilled" ? withdrawals.value.withdrawals.filter((request) => request.status === "pending_review") : null;
       const investmentRows = investments.status === "fulfilled" ? investments.value : null;
       const commissionRows = commissions.status === "fulfilled" ? commissions.value : null;
       setFigures({
         profit: profits.status === "fulfilled" ? totalMinor(profits.value, (entry) => entry.profitMinor) : null,
         available: withdrawals.status === "fulfilled" ? withdrawals.value.availableMinor : null,
-        pendingCount: pending ? pending.length : null,
-        pendingTotal: pending ? totalMinor(pending, (request) => request.amountMinor) : null,
         activeInvested: investmentRows ? totalMinor(investmentRows.filter((record) => record.status === "active"), (record) => record.amountMinor) : null,
         commissions: commissionRows ? totalMinor(commissionRows, (entry) => entry.commissionMinor) : null,
       });
@@ -86,11 +81,6 @@ export function WalletPanel() {
           <p style={{ marginTop: 12 }}>
             <Link href="/withdraw">Withdraw</Link>
           </p>
-        </Card>
-        <Card>
-          <p className="eyebrow">Pending requests</p>
-          <h2>{figures?.pendingCount === null ? "Could not total" : figures ? String(figures.pendingCount) : "…"}</h2>
-          <p style={{ marginTop: 12 }}>{amountText(figures?.pendingTotal)}</p>
         </Card>
       </div>
     </div>

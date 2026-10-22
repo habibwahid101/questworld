@@ -1222,13 +1222,13 @@ test("plan cards use the catalog amounts, the given descriptions, and mark 8 per
   assert.match(wallet, /listCurrentInvestments/);
   assert.match(wallet, /listCurrentCommissions/);
   assert.match(wallet, /availableMinor/);
-  assert.match(wallet, /pending_review/);
   assert.match(wallet, /href="\/withdraw"/);
   assert.match(wallet, /Nothing is paid out/);
   assert.match(wallet, /Investment Wallet/);
   assert.match(wallet, /Profit Wallet/);
   assert.match(wallet, /Commission Wallet/);
   assert.match(wallet, /Available Withdrawal/);
+  assert.doesNotMatch(wallet, /Pending requests/);
   assert.doesNotMatch(wallet, /requestCurrentWithdrawal|createCurrentInvestment|submitCurrentDeposit|Available balance/);
   assert.match(payment, /Transaction reference/);
   assert.match(payment, /Screenshot, optional/);
@@ -1247,15 +1247,14 @@ test("dashboard cards read existing totals and do not write records", () => {
   assert.match(dashboard, /listCurrentWithdrawals/);
   assert.match(dashboard, /readCurrentMember/);
   assert.match(dashboard, /ProfilePhoto/);
-  assert.match(dashboard, /Will receive/);
-  assert.match(dashboard, /Available to withdraw/);
   assert.match(dashboard, /Investment Wallet/);
   assert.match(dashboard, /Profit Wallet/);
   assert.match(dashboard, /Commission Wallet/);
   assert.match(dashboard, /Available Withdrawal/);
   assert.match(dashboard, /record\.status === "active"/);
+  assert.doesNotMatch(dashboard, /Will receive|Received so far|Available to withdraw|label="Invested"|eyebrow">Months|eyebrow">Generation/);
   assert.doesNotMatch(dashboard, /<h1>Dashboard<\/h1>/);
-  assert.match(dashboard, /record\.status === "active" \|\| record\.status === "completed"/);
+  assert.doesNotMatch(dashboard, /record\.status === "completed"/);
   assert.match(admin, /record\.status === "active"/);
   assert.doesNotMatch(dashboard, /requestCurrentWithdrawal|createCurrentInvestment|submitCurrentDeposit|Darmelk/);
   assert.match(admin, /listPendingDeposits/);
@@ -1266,6 +1265,13 @@ test("dashboard cards read existing totals and do not write records", () => {
   assert.match(admin, /record\.status === "active"/);
   assert.doesNotMatch(admin, /There is no pending-withdrawal list to read/);
   assert.doesNotMatch(admin, /members:\s*0|pendingWithdrawals\s*=\s*0|Darmelk/);
+  const withdrawals = readFileSync(new URL("../components/admin/AdminWithdrawalsPanel.tsx", import.meta.url), "utf8");
+  const deposits = readFileSync(new URL("../components/admin/AdminDepositsPanel.tsx", import.meta.url), "utf8");
+  assert.match(withdrawals, /decision === "rejected" \? "Saving…" : "Reject"/);
+  assert.match(deposits, /kind === "reject" \? "Saving…" : "Reject"/);
+  assert.match(deposits, /savingAddress \? "Saving…" : "Save addresses"/);
+  assert.match(readFileSync(new URL("../components/member/WithdrawPanel.tsx", import.meta.url), "utf8"), /saving \? "Saving…" : "Request withdrawal"/);
+  assert.match(readFileSync(new URL("../components/member/InvestmentPaymentPanel.tsx", import.meta.url), "utf8"), /submitting \? "Submitting…" : "Submit reference"/);
 });
 
 test("admin trace lists are read-only and a member cannot read them", async () => {

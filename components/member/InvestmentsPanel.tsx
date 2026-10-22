@@ -101,9 +101,10 @@ export function InvestmentsPanel() {
                 <Button
                   type="button"
                   disabled={savingPlan !== null}
+                  aria-busy={savingPlan === planId}
                   onClick={() => void choosePlan(planId)}
                 >
-                  {savingPlan === planId ? "Recording…" : "Choose"}
+                  {savingPlan === planId ? "Submitting…" : "Choose"}
                 </Button>
               </Card>
             );

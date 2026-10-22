@@ -94,10 +94,10 @@ export function AdminUsersPanel() {
           style={{ display: "block", width: "100%", marginTop: 8 }}
         />
         <div style={{ display: "flex", gap: 8, marginTop: 16 }}>
-          <Button disabled={saving !== null} onClick={() => void submit("grant")}>
+          <Button disabled={saving !== null} aria-busy={saving === "grant"} onClick={() => void submit("grant")}>
             {saving === "grant" ? "Saving…" : "Grant admin"}
           </Button>
-          <Button variant="secondary" disabled={saving !== null} onClick={() => void submit("remove")}>
+          <Button variant="secondary" disabled={saving !== null} aria-busy={saving === "remove"} onClick={() => void submit("remove")}>
             {saving === "remove" ? "Saving…" : "Remove admin"}
           </Button>
         </div>

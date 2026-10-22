@@ -196,7 +196,7 @@ function DepositReferenceForm({
         onChange={(event) => onScreenshot(event.target.files?.[0] ?? null)}
         style={{ display: "block", marginTop: 8 }}
       />
-      <Button type="submit" disabled={submitting} style={{ marginTop: 12 }}>
+      <Button type="submit" disabled={submitting} aria-busy={submitting} style={{ marginTop: 12 }}>
         {submitting ? "Submitting…" : "Submit reference"}
       </Button>
     </form>

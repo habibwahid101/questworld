@@ -350,6 +350,10 @@ test("account forms show password eyes and do not store the password", () => {
     cursor = next;
   }
   assert.match(register, /password !== confirmPassword/);
+  assert.match(register, /Passwords do not match\./);
+  assert.match(register, /Confirm password/);
+  assert.match(register, /Account created\. Sign in with the password you just set\./);
+  assert.match(register, /registerAccount\(\{ name: `\$\{firstName\} \$\{lastName\}`, email, password \}\)/);
   assert.match(register, /scrollIntoView/);
   assert.match(register, /transactionPassword !== confirmTransactionPassword/);
   assert.match(login, /PasswordField/);

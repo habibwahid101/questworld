@@ -5,7 +5,6 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useAuth } from "@/components/auth/AuthProvider";
 import { adminSwitchTarget } from "@/lib/auth/shell";
-import { memberPhoneNav } from "@/constants/site";
 import { BrandMark } from "@/components/ui/BrandMark";
 import type { NavItem } from "@/types";
 import { classNames } from "@/utils/format";
@@ -16,11 +15,10 @@ type AppShellProps = {
   pageLabel?: string;
   homeHref: string;
   items: readonly NavItem[];
-  showPhoneBar?: boolean;
   children: React.ReactNode;
 };
 
-export function AppShell({ title, pageLabel, homeHref, items, showPhoneBar = false, children }: AppShellProps) {
+export function AppShell({ title, pageLabel, homeHref, items, children }: AppShellProps) {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
   const { logout, user } = useAuth();
@@ -98,24 +96,8 @@ export function AppShell({ title, pageLabel, homeHref, items, showPhoneBar = fal
             </button>
           </nav>
         ) : null}
-        <div className={classNames(styles.content, showPhoneBar && styles.withPhoneBar)}>{children}</div>
+        <div className={styles.content}>{children}</div>
       </div>
-      {showPhoneBar ? (
-        <nav className={styles.phoneBar} aria-label="Member">
-          {memberPhoneNav.map((item) => (
-            <Link
-              key={item.href}
-              href={item.href}
-              className={classNames(styles.phoneLink, (pathname === item.href || pathname.startsWith(`${item.href}/`)) && styles.phoneLinkActive)}
-            >
-              {item.label}
-            </Link>
-          ))}
-          <button className={styles.phoneLink} type="button" aria-expanded={open} onClick={() => setOpen((value) => !value)}>
-            More
-          </button>
-        </nav>
-      ) : null}
     </div>
   );
 }

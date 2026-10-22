@@ -1251,6 +1251,15 @@ test("dashboard cards read existing totals and do not write records", () => {
   assert.match(dashboard, /Profit Wallet/);
   assert.match(dashboard, /Commission Wallet/);
   assert.match(dashboard, /Available Withdrawal/);
+  assert.match(dashboard, /Copy Referral ID/);
+  assert.match(dashboard, /Copy Referral Link/);
+  assert.match(dashboard, /uploadCurrentProfilePhoto/);
+  assert.ok(dashboard.indexOf("Active date") < dashboard.indexOf("Copy Referral ID"));
+  assert.ok(dashboard.indexOf("Copy Referral ID") < dashboard.indexOf("Copy Referral Link"));
+  assert.ok(dashboard.indexOf("Copy Referral Link") < dashboard.indexOf("Investment Wallet"));
+  assert.doesNotMatch(dashboard, /grid-2/);
+  const onPhoto = dashboard.slice(dashboard.indexOf("async function onPhoto"), dashboard.indexOf("async function copyReferral"));
+  assert.ok(onPhoto.indexOf("uploadCurrentProfilePhoto") < onPhoto.indexOf("setPhotoUrl"));
   assert.match(dashboard, /record\.status === "active"/);
   assert.doesNotMatch(dashboard, /Will receive|Received so far|Available to withdraw|label="Invested"|eyebrow">Months|eyebrow">Generation/);
   assert.doesNotMatch(dashboard, /<h1>Dashboard<\/h1>/);

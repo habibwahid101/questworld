@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { createCurrentInvestment, InvestmentClientError, listCurrentInvestments } from "@/lib/investments/client";
 import { formatUsdtAmount, investmentCatalog, type InvestmentRecord, type InvestmentStatus, type PlanId } from "@/lib/investments/service";
-import { PLAN_DESCRIPTIONS, PLAN_RATE_NOTE, planMonthlyRateLabel } from "@/lib/investments/plan-copy";
+import { PLAN_DESCRIPTIONS, planMonthlyRateLabel } from "@/lib/investments/plan-copy";
 import { isMemberApiConfigured } from "@/lib/members/config";
 import styles from "./InvestmentsPanel.module.css";
 
@@ -98,7 +98,6 @@ export function InvestmentsPanel() {
                 <h2>{formatUsdtAmount(plan.amountMinor)}</h2>
                 <p className={styles.description}>{PLAN_DESCRIPTIONS[planId]}</p>
                 <p className={styles.rate}>{planMonthlyRateLabel()}</p>
-                <p className={styles.note}>{PLAN_RATE_NOTE}</p>
                 <Button
                   type="button"
                   disabled={savingPlan !== null}

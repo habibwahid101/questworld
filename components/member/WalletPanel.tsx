@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Card } from "@/components/ui/Card";
-import { InvestmentClientError, listCurrentProfits, listCurrentWithdrawals } from "@/lib/investments/client";
+import { InvestmentClientError, listCurrentCommissions, listCurrentInvestments, listCurrentProfits, listCurrentWithdrawals } from "@/lib/investments/client";
 import {
   INVESTMENT_CURRENCY,
   INVESTMENT_SCALE,
@@ -16,6 +16,8 @@ type Figures = {
   available: number | null;
   pendingCount: number | null;
   pendingTotal: number | null;
+  activeInvested: number | null;
+  commissions: number | null;
 };
 
 export function WalletPanel() {
@@ -27,19 +29,28 @@ export function WalletPanel() {
       return;
     }
     let active = true;
-    void Promise.allSettled([listCurrentProfits(), listCurrentWithdrawals()]).then((results) => {
+    void Promise.allSettled([
+      listCurrentProfits(),
+      listCurrentWithdrawals(),
+      listCurrentInvestments(),
+      listCurrentCommissions(),
+    ]).then((results) => {
       if (!active) {
         return;
       }
-      const [profits, withdrawals] = results;
+      const [profits, withdrawals, investments, commissions] = results;
       const errors = results.flatMap((result) => (result.status === "rejected" ? [readError(result.reason)] : []));
       setMessage(errors[0] ?? null);
       const pending = withdrawals.status === "fulfilled" ? withdrawals.value.withdrawals.filter((request) => request.status === "pending_review") : null;
+      const investmentRows = investments.status === "fulfilled" ? investments.value : null;
+      const commissionRows = commissions.status === "fulfilled" ? commissions.value : null;
       setFigures({
         profit: profits.status === "fulfilled" ? totalMinor(profits.value, (entry) => entry.profitMinor) : null,
         available: withdrawals.status === "fulfilled" ? withdrawals.value.availableMinor : null,
         pendingCount: pending ? pending.length : null,
         pendingTotal: pending ? totalMinor(pending, (request) => request.amountMinor) : null,
+        activeInvested: investmentRows ? totalMinor(investmentRows.filter((record) => record.status === "active"), (record) => record.amountMinor) : null,
+        commissions: commissionRows ? totalMinor(commissionRows, (entry) => entry.commissionMinor) : null,
       });
     });
     return () => {
@@ -66,9 +77,11 @@ export function WalletPanel() {
         {message ? <p style={{ marginTop: 16 }}>{message}</p> : null}
       </Card>
       <div className="grid-2">
-        <AmountCard label="Posted profit" amountMinor={figures?.profit} />
+        <AmountCard label="Investment Wallet" amountMinor={figures?.activeInvested} />
+        <AmountCard label="Profit Wallet" amountMinor={figures?.profit} />
+        <AmountCard label="Commission Wallet" amountMinor={figures?.commissions} />
         <Card>
-          <p className="eyebrow">Available withdrawal</p>
+          <p className="eyebrow">Available Withdrawal</p>
           <h2>{amountText(figures?.available)}</h2>
           <p style={{ marginTop: 12 }}>
             <Link href="/withdraw">Withdraw</Link>

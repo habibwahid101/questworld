@@ -8,39 +8,44 @@ export function ProfilePhoto({
   editable = false,
   uploading = false,
   onSelect,
+  children,
 }: {
   name: string;
   src: string | null;
   editable?: boolean;
   uploading?: boolean;
   onSelect?: (file: File) => void;
+  children?: React.ReactNode;
 }) {
   return (
-    <div className={styles.row}>
-      {src ? (
-        // Member photos are private blob or data URLs, so they are not passed through the image optimizer.
-        // eslint-disable-next-line @next/next/no-img-element
-        <img className={styles.photo} src={src} alt={`${name} profile photo`} />
-      ) : (
-        <span className={styles.photo} aria-hidden="true" />
-      )}
-      {editable ? (
-        <label className={styles.upload}>
-          {uploading ? "Uploading…" : "Upload photo"}
-          <input
-            type="file"
-            accept="image/jpeg,image/png,image/webp"
-            disabled={uploading}
-            onChange={(event) => {
-              const file = event.target.files?.[0];
-              event.target.value = "";
-              if (file && onSelect) {
-                onSelect(file);
-              }
-            }}
-          />
-        </label>
-      ) : null}
+    <div className={styles.identity}>
+      <div className={styles.column}>
+        {src ? (
+          // Member photos are private blob or data URLs, so they are not passed through the image optimizer.
+          // eslint-disable-next-line @next/next/no-img-element
+          <img className={styles.photo} src={src} alt={`${name} profile photo`} />
+        ) : (
+          <span className={styles.photo} aria-hidden="true" />
+        )}
+        {editable ? (
+          <label className={styles.upload}>
+            {uploading ? "Uploading…" : "Upload photo"}
+            <input
+              type="file"
+              accept="image/jpeg,image/png,image/webp"
+              disabled={uploading}
+              onChange={(event) => {
+                const file = event.target.files?.[0];
+                event.target.value = "";
+                if (file && onSelect) {
+                  onSelect(file);
+                }
+              }}
+            />
+          </label>
+        ) : null}
+      </div>
+      {children ? <div className={styles.details}>{children}</div> : null}
     </div>
   );
 }

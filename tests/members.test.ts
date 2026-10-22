@@ -456,6 +456,8 @@ test("a transaction password is stored only as a hash and does not change the lo
   const photoCss = readFileSync(new URL("../components/member/ProfilePhoto.module.css", import.meta.url), "utf8");
   assert.match(photo, /Upload photo/);
   assert.match(photoCss, /border-radius: 50%/);
+  assert.match(photoCss, /flex-direction: row/);
+  assert.match(photoCss, /flex-wrap: nowrap/);
   const shell = readFileSync(new URL("../components/member/MemberShell.tsx", import.meta.url), "utf8");
   assert.match(shell, /pageLabel=\{pathname === "\/dashboard" \? "Dashboard"/);
   assert.doesNotMatch(withdraw, /Pay out/);

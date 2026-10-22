@@ -204,6 +204,7 @@ test("an admin can list stored members and a member cannot", async () => {
   assert.equal(listed.statusCode, 200);
   assert.deepEqual(listed.body.members, [
     {
+      userId: "member-b",
       name: "Member Name",
       email: "member-b@example.com",
       role: "Member",
@@ -212,6 +213,7 @@ test("an admin can list stored members and a member cannot", async () => {
       createdAt: NOW,
     },
     {
+      userId: "sponsor",
       name: "Member Name",
       email: "sponsor@example.com",
       role: "Admin",

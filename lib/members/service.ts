@@ -36,6 +36,7 @@ export type MemberProfile = Omit<MemberRecord, "sponsorUserId" | "transactionPas
 };
 
 export type ListedMember = {
+  userId: string;
   name: string;
   email: string;
   role: "Admin" | "Member";
@@ -90,6 +91,7 @@ function toListedMembers(records: readonly MemberRecord[], adminIds: readonly st
   const admins = new Set(adminIds.map((id) => id.trim().toLowerCase()).filter((id) => id.length > 0));
   return records
     .map((record) => ({
+      userId: record.userId,
       name: record.name,
       email: record.email,
       role: admins.has(record.userId.toLowerCase()) || admins.has(record.email.toLowerCase()) ? "Admin" as const : "Member" as const,

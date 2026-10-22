@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { Card } from "@/components/ui/Card";
+import { AdminTrace } from "@/components/admin/AdminTrace";
+import { useStoredMembers } from "@/components/admin/useStoredMembers";
 import { InvestmentClientError, listAdminCommissions } from "@/lib/investments/client";
 import { formatUsdtAmount, type CommissionEntry } from "@/lib/investments/service";
 import { isMemberApiConfigured } from "@/lib/members/config";
@@ -11,6 +13,7 @@ const NOT_RUN = "No entries are posted.";
 export function AdminCommissionsPanel() {
   const [commissions, setCommissions] = useState<CommissionEntry[] | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+  const members = useStoredMembers();
 
   useEffect(() => {
     if (!isMemberApiConfigured()) {
@@ -67,11 +70,17 @@ export function AdminCommissionsPanel() {
           <Card key={`${entry.recipientSub}:${entry.investmentId}:${entry.paymentNumber}:${entry.generation}`}>
             <p className="eyebrow">Generation {entry.generation}</p>
             <h2>{formatUsdtAmount(entry.commissionMinor, entry.scale)}</h2>
-            <p style={{ marginTop: 10 }}>Recipient {entry.recipientSub}</p>
+            <AdminTrace
+              members={members}
+              ownerSub={entry.recipientSub}
+              recordedAt={entry.postedAt}
+              plan={entry.planName}
+              amount={formatUsdtAmount(entry.commissionMinor, entry.scale)}
+              status="Posted"
+            />
             <p>Payment {entry.paymentNumber} of 12</p>
             <p>Rate {entry.rateBps / 100}%</p>
             <p>Due {new Date(entry.period).toLocaleString()}</p>
-            <p>Posted {new Date(entry.postedAt).toLocaleString()}</p>
           </Card>
         ))
       )}

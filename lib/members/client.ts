@@ -142,6 +142,8 @@ function isListedMember(value: unknown): value is ListedMember {
   }
   const record = value as ListedMember;
   return (
+    typeof record.userId === "string" &&
+    record.userId.length > 0 &&
     typeof record.name === "string" &&
     typeof record.email === "string" &&
     (record.role === "Admin" || record.role === "Member") &&

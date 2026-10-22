@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { Card } from "@/components/ui/Card";
+import { AdminTrace } from "@/components/admin/AdminTrace";
+import { useStoredMembers } from "@/components/admin/useStoredMembers";
 import { InvestmentClientError, listAdminInvestments } from "@/lib/investments/client";
 import { formatUsdtAmount, type InvestmentRecord, type InvestmentStatus } from "@/lib/investments/service";
 import { isMemberApiConfigured } from "@/lib/members/config";
@@ -18,6 +20,7 @@ const statusLabel: Record<InvestmentStatus, string> = {
 export function AdminInvestmentsPanel() {
   const [investments, setInvestments] = useState<InvestmentRecord[] | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+  const members = useStoredMembers();
 
   useEffect(() => {
     if (!isMemberApiConfigured()) {
@@ -73,11 +76,19 @@ export function AdminInvestmentsPanel() {
           <Card key={investment.investmentId}>
             <p className="eyebrow">{statusLabel[investment.status]}</p>
             <h2>{investment.planName}</h2>
-            <p style={{ marginTop: 10 }}>{formatUsdtAmount(investment.amountMinor, investment.scale)}</p>
-            <p>Owner {investment.ownerSub}</p>
-            <p>{investment.depositReference ? `Reference ${investment.depositReference}` : "No reference"}</p>
-            <p>Recorded {new Date(investment.createdAt).toLocaleString()}</p>
-            {investment.nextDueAt ? <p>Next due {new Date(investment.nextDueAt).toLocaleString()}</p> : null}
+            <AdminTrace
+              members={members}
+              ownerSub={investment.ownerSub}
+              recordedAt={investment.createdAt}
+              plan={investment.planName}
+              amount={formatUsdtAmount(investment.amountMinor, investment.scale)}
+              status={statusLabel[investment.status]}
+              reference={investment.depositReference || "No reference"}
+              submittedAt={investment.submittedAt}
+              reviewedAt={investment.reviewedAt}
+              activatedAt={investment.activatedAt}
+              nextDueAt={investment.nextDueAt}
+            />
             {typeof investment.paymentsPosted === "number" ? <p>Payments posted {investment.paymentsPosted}</p> : null}
           </Card>
         ))

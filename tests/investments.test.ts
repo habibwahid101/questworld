@@ -1365,7 +1365,7 @@ test("admin trace lists are read-only and a member cannot read them", async () =
   assert.doesNotMatch(source, /path: "\/admin\/withdrawals",\s*\n\s*methods: \[apigwv2\.HttpMethod\.POST\]/);
   const profitsPanel = readFileSync(new URL("../components/admin/AdminProfitsPanel.tsx", import.meta.url), "utf8");
   const withdrawalsPanel = readFileSync(new URL("../components/admin/AdminWithdrawalsPanel.tsx", import.meta.url), "utf8");
-  assert.match(profitsPanel, /Payment \{entry\.paymentNumber\} of 12/);
+  assert.match(profitsPanel, /profitColumns/);
   assert.match(profitsPanel, /does not post profit or pay it out/);
   assert.match(withdrawalsPanel, /Nothing is paid out/);
   assert.match(withdrawalsPanel, /reviewAdminWithdrawal/);

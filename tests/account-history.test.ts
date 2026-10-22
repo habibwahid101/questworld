@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 import { depositFlow, transactionHistory } from "../lib/investments/history.ts";
 import { traceLines, traceMember } from "../lib/admin/trace.ts";
+import { adminTableRow, filterAdminRows, profitColumns, withdrawalColumns } from "../lib/admin/table.ts";
 import type { InvestmentRecord } from "../lib/investments/service.ts";
 
 function investment(overrides: Partial<InvestmentRecord> = {}): InvestmentRecord {
@@ -62,6 +63,31 @@ test("deposit and transaction history use stored records only", () => {
     "Reference REF-1",
   ]);
   assert.equal(traceLines({ ownerSub: "user-1", member: { name: "Ada", email: "ada@example.com" } })[0], "Who Ada ada@example.com");
+  const missing = adminTableRow({ id: "row-1", ownerSub: "missing-sub", members: [], plan: "Starter", amount: "100 USDT", status: "Active" });
+  assert.equal(missing.whoName, "");
+  assert.equal(missing.whoEmail, "");
+  assert.equal(missing.ownerSub, "missing-sub");
+  assert.equal(missing.recorded, "");
+  assert.equal(missing.submitted, "");
+  assert.equal(missing.paymentsPosted, "");
+  const named = adminTableRow({
+    id: "row-2",
+    ownerSub: "user-1",
+    members: [{ userId: "user-1", name: "Ada", email: "ada@example.com" }],
+    plan: "Starter",
+    amount: "100 USDT",
+    status: "Active",
+    reference: "REF-1",
+    paymentsPosted: 2,
+  });
+  assert.equal(named.whoName, "Ada");
+  assert.equal(named.whoEmail, "ada@example.com");
+  assert.equal(named.paymentsPosted, "2");
+  assert.deepEqual(filterAdminRows([named, missing], "ada@example.com").map((row) => row.id), ["row-2"]);
+  assert.deepEqual(filterAdminRows([named, missing], "starter").map((row) => row.id), ["row-2", "row-1"]);
+  assert.deepEqual(filterAdminRows([named], "missing-sub"), []);
+  assert.deepEqual(profitColumns, ["who", "recorded", "plan", "amount", "status"]);
+  assert.deepEqual(withdrawalColumns, ["who", "recorded", "amount", "status", "reviewed"]);
   const panels = [
     "../components/admin/AdminInvestmentsPanel.tsx",
     "../components/admin/AdminDepositsPanel.tsx",
@@ -72,10 +98,14 @@ test("deposit and transaction history use stored records only", () => {
   ];
   for (const panel of panels) {
     const source = readFileSync(new URL(panel, import.meta.url), "utf8");
-    assert.match(source, /AdminTrace/);
+    assert.match(source, /AdminRecordTable/);
     assert.match(source, /useStoredMembers/);
+    assert.match(source, /adminTableRow/);
     assert.doesNotMatch(source, /Unknown member|name: "Member"/);
   }
+  const table = readFileSync(new URL("../components/admin/AdminRecordTable.tsx", import.meta.url), "utf8");
+  assert.match(table, /filterAdminRows/);
+  assert.match(table, /Search/);
   const profits = readFileSync(new URL("../components/admin/AdminProfitsPanel.tsx", import.meta.url), "utf8");
   assert.doesNotMatch(profits, /reviewAdminWithdrawal|activateVerifiedInvestment|reviewPendingDeposit/);
 });

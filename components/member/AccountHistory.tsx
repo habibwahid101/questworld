@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { Card } from "@/components/ui/Card";
-import { AdminTrace } from "@/components/admin/AdminTrace";
+import { AdminRecordTable } from "@/components/admin/AdminRecordTable";
 import { useStoredMembers } from "@/components/admin/useStoredMembers";
 import {
   InvestmentClientError,
@@ -16,6 +16,7 @@ import {
   listCurrentWithdrawals,
 } from "@/lib/investments/client";
 import { depositFlow, formatRecordedAt, transactionHistory, type HistoryLine } from "@/lib/investments/history";
+import { adminTableRow, investmentColumns } from "@/lib/admin/table";
 import { formatUsdtAmount, type CommissionEntry, type InvestmentRecord, type ProfitEntry, type WithdrawalRequest } from "@/lib/investments/service";
 import { isMemberApiConfigured } from "@/lib/members/config";
 
@@ -84,6 +85,42 @@ function AccountHistory({ title, audience }: { title: string; audience: "member"
 
   const transactions = data ? transactionHistory(data) : [];
 
+  if (audience === "admin") {
+    return (
+      <div className="stack">
+        <Card>
+          <h1>{title}</h1>
+          <p className="lead" style={{ marginTop: 12 }}>
+            Date, time, and flow come only from stored records. Nothing here is invented, and nothing is paid out.
+          </p>
+          {message ? <p style={{ marginTop: 16 }}>{message}</p> : null}
+        </Card>
+        <AdminRecordTable
+          columns={investmentColumns}
+          loading={data === null}
+          empty="No stored transactions."
+          rows={transactions.map((item) =>
+            adminTableRow({
+              id: item.id,
+              ownerSub: item.ownerSub,
+              members,
+              recordedAt: item.at,
+              plan: item.planName,
+              amount: formatUsdtAmount(item.amountMinor, item.scale),
+              status: item.flow,
+              reference: item.reference,
+              submittedAt: item.submittedAt,
+              reviewedAt: item.reviewedAt,
+              activatedAt: item.activatedAt,
+              nextDueAt: item.nextDueAt,
+              paymentsPosted: item.paymentsPosted,
+            }),
+          )}
+        />
+      </div>
+    );
+  }
+
   return (
     <div className="stack">
       <Card>
@@ -99,21 +136,6 @@ function AccountHistory({ title, audience }: { title: string; audience: "member"
             <p className="eyebrow">{investment.planName}</p>
             <h2>{formatUsdtAmount(investment.amountMinor, investment.scale)}</h2>
             <p style={{ marginTop: 10 }}>{investment.depositReference ? `Reference ${investment.depositReference}` : "No reference stored"}</p>
-            {audience === "admin" ? (
-              <AdminTrace
-                members={members}
-                ownerSub={investment.ownerSub}
-                recordedAt={investment.createdAt}
-                plan={investment.planName}
-                amount={formatUsdtAmount(investment.amountMinor, investment.scale)}
-                status={investment.status}
-                reference={investment.depositReference || "No reference"}
-                submittedAt={investment.submittedAt}
-                reviewedAt={investment.reviewedAt}
-                activatedAt={investment.activatedAt}
-                nextDueAt={investment.nextDueAt}
-              />
-            ) : null}
             <FlowLines lines={depositFlow(investment)} />
           </Card>
         ))}
@@ -123,23 +145,7 @@ function AccountHistory({ title, audience }: { title: string; audience: "member"
           <Card key={item.id}>
             <p className="eyebrow">{item.flow}</p>
             <h2>{item.title}</h2>
-            {audience === "admin" ? (
-              <AdminTrace
-                members={members}
-                ownerSub={item.ownerSub}
-                recordedAt={item.at}
-                plan={item.planName}
-                amount={formatUsdtAmount(item.amountMinor, item.scale)}
-                status={item.flow}
-                reference={item.reference}
-                submittedAt={item.submittedAt}
-                reviewedAt={item.reviewedAt}
-                activatedAt={item.activatedAt}
-                nextDueAt={item.nextDueAt}
-              />
-            ) : (
-              <p style={{ marginTop: 10 }}>Date and time {formatRecordedAt(item.at)}</p>
-            )}
+            <p style={{ marginTop: 10 }}>Date and time {formatRecordedAt(item.at)}</p>
           </Card>
         ))}
       </HistorySection>
@@ -148,16 +154,6 @@ function AccountHistory({ title, audience }: { title: string; audience: "member"
           <Card key={request.withdrawalId}>
             <p className="eyebrow">{request.status}</p>
             <h2>{formatUsdtAmount(request.amountMinor, request.scale)}</h2>
-            {audience === "admin" ? (
-              <AdminTrace
-                members={members}
-                ownerSub={request.ownerSub}
-                recordedAt={request.createdAt}
-                amount={formatUsdtAmount(request.amountMinor, request.scale)}
-                status={request.status}
-                reviewedAt={request.reviewedAt}
-              />
-            ) : null}
             <FlowLines lines={[{ at: request.createdAt, flow: `Requested as ${request.status}` }]} />
           </Card>
         ))}

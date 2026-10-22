@@ -2,8 +2,9 @@
 
 import { useEffect, useState } from "react";
 import { Card } from "@/components/ui/Card";
-import { AdminTrace } from "@/components/admin/AdminTrace";
+import { AdminRecordTable } from "@/components/admin/AdminRecordTable";
 import { useStoredMembers } from "@/components/admin/useStoredMembers";
+import { adminTableRow, profitColumns } from "@/lib/admin/table";
 import { InvestmentClientError, listAdminProfits } from "@/lib/investments/client";
 import { formatUsdtAmount, type ProfitEntry } from "@/lib/investments/service";
 import { isMemberApiConfigured } from "@/lib/members/config";
@@ -32,6 +33,7 @@ export function AdminProfitsPanel() {
         }
         const error = caught instanceof InvestmentClientError ? caught : new InvestmentClientError("investment_request_failed", "Could not load profit entries.");
         setMessage(error.message);
+        setProfits([]);
       });
     return () => {
       active = false;
@@ -56,33 +58,22 @@ export function AdminProfitsPanel() {
         </p>
         {message ? <p style={{ marginTop: 16 }}>{message}</p> : null}
       </Card>
-      {profits === null ? (
-        <Card>
-          <p>Loading profit entries…</p>
-        </Card>
-      ) : profits.length === 0 ? (
-        <Card>
-          <h2>No profit entries</h2>
-          <p style={{ marginTop: 10 }}>{NOT_RUN}</p>
-        </Card>
-      ) : (
-        profits.map((entry) => (
-          <Card key={`${entry.ownerSub}:${entry.investmentId}:${entry.paymentNumber}`}>
-            <p className="eyebrow">{entry.planName}</p>
-            <h2>{formatUsdtAmount(entry.profitMinor, entry.scale)}</h2>
-            <AdminTrace
-              members={members}
-              ownerSub={entry.ownerSub}
-              recordedAt={entry.postedAt}
-              plan={entry.planName}
-              amount={formatUsdtAmount(entry.profitMinor, entry.scale)}
-              status="Posted"
-            />
-            <p>Payment {entry.paymentNumber} of 12</p>
-            <p>Due {new Date(entry.period).toLocaleString()}</p>
-          </Card>
-        ))
-      )}
+      <AdminRecordTable
+        columns={profitColumns}
+        loading={profits === null}
+        empty={NOT_RUN}
+        rows={(profits ?? []).map((entry) =>
+          adminTableRow({
+            id: `${entry.ownerSub}:${entry.investmentId}:${entry.paymentNumber}`,
+            ownerSub: entry.ownerSub,
+            members,
+            recordedAt: entry.postedAt,
+            plan: entry.planName,
+            amount: formatUsdtAmount(entry.profitMinor, entry.scale),
+            status: "Posted",
+          }),
+        )}
+      />
     </div>
   );
 }

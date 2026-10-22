@@ -2,8 +2,9 @@
 
 import { useEffect, useState } from "react";
 import { Card } from "@/components/ui/Card";
-import { AdminTrace } from "@/components/admin/AdminTrace";
+import { AdminRecordTable } from "@/components/admin/AdminRecordTable";
 import { useStoredMembers } from "@/components/admin/useStoredMembers";
+import { adminTableRow, investmentColumns } from "@/lib/admin/table";
 import { InvestmentClientError, listAdminInvestments } from "@/lib/investments/client";
 import { formatUsdtAmount, type InvestmentRecord, type InvestmentStatus } from "@/lib/investments/service";
 import { isMemberApiConfigured } from "@/lib/members/config";
@@ -39,6 +40,7 @@ export function AdminInvestmentsPanel() {
         }
         const error = caught instanceof InvestmentClientError ? caught : new InvestmentClientError("investment_request_failed", "Could not load investments.");
         setMessage(error.message);
+        setInvestments([]);
       });
     return () => {
       active = false;
@@ -63,36 +65,28 @@ export function AdminInvestmentsPanel() {
         </p>
         {message ? <p style={{ marginTop: 16 }}>{message}</p> : null}
       </Card>
-      {investments === null ? (
-        <Card>
-          <p>Loading investments…</p>
-        </Card>
-      ) : investments.length === 0 ? (
-        <Card>
-          <h2>No stored investments</h2>
-        </Card>
-      ) : (
-        investments.map((investment) => (
-          <Card key={investment.investmentId}>
-            <p className="eyebrow">{statusLabel[investment.status]}</p>
-            <h2>{investment.planName}</h2>
-            <AdminTrace
-              members={members}
-              ownerSub={investment.ownerSub}
-              recordedAt={investment.createdAt}
-              plan={investment.planName}
-              amount={formatUsdtAmount(investment.amountMinor, investment.scale)}
-              status={statusLabel[investment.status]}
-              reference={investment.depositReference || "No reference"}
-              submittedAt={investment.submittedAt}
-              reviewedAt={investment.reviewedAt}
-              activatedAt={investment.activatedAt}
-              nextDueAt={investment.nextDueAt}
-            />
-            {typeof investment.paymentsPosted === "number" ? <p>Payments posted {investment.paymentsPosted}</p> : null}
-          </Card>
-        ))
-      )}
+      <AdminRecordTable
+        columns={investmentColumns}
+        loading={investments === null}
+        empty="No stored investments"
+        rows={(investments ?? []).map((investment) =>
+          adminTableRow({
+            id: investment.investmentId,
+            ownerSub: investment.ownerSub,
+            members,
+            recordedAt: investment.createdAt,
+            plan: investment.planName,
+            amount: formatUsdtAmount(investment.amountMinor, investment.scale),
+            status: statusLabel[investment.status],
+            reference: investment.depositReference,
+            submittedAt: investment.submittedAt,
+            reviewedAt: investment.reviewedAt,
+            activatedAt: investment.activatedAt,
+            nextDueAt: investment.nextDueAt,
+            paymentsPosted: investment.paymentsPosted,
+          }),
+        )}
+      />
     </div>
   );
 }

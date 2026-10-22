@@ -36,8 +36,10 @@ export function Button({
   }
 
   const buttonProps = props as ButtonAsButton;
+  const busy = buttonProps["aria-busy"] === true || buttonProps["aria-busy"] === "true";
   return (
     <button className={classes} type={buttonProps.type ?? "button"} {...buttonProps}>
+      {busy ? <span className={styles.spinner} aria-hidden="true" /> : null}
       {children}
     </button>
   );

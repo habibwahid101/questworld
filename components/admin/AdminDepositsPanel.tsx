@@ -12,7 +12,7 @@ export function AdminDepositsPanel() {
   const [verified, setVerified] = useState<InvestmentRecord[]>([]);
   const [message, setMessage] = useState<string | null>(null);
   const [loading, setLoading] = useState(isMemberApiConfigured());
-  const [savingId, setSavingId] = useState<string | null>(null);
+  const [saving, setSaving] = useState<{ id: string; kind: "verify" | "reject" | "activate" | "screenshot" } | null>(null);
   const [bep20Draft, setBep20Draft] = useState("");
   const [trc20Draft, setTrc20Draft] = useState("");
   const [savingAddress, setSavingAddress] = useState(false);
@@ -53,13 +53,13 @@ export function AdminDepositsPanel() {
   }, [load]);
 
   async function decide(investmentId: string, decision: "deposit_verified" | "rejected") {
-    if (savingId || savingAddress) {
+    if (saving || savingAddress) {
       return;
     }
     if (decision === "rejected" && !window.confirm("Reject this deposit?")) {
       return;
     }
-    setSavingId(investmentId);
+    setSaving({ id: investmentId, kind: decision === "rejected" ? "reject" : "verify" });
     setMessage(null);
     try {
       await reviewPendingDeposit(investmentId, decision, decision === "rejected" ? reasons[investmentId] : undefined);
@@ -68,15 +68,15 @@ export function AdminDepositsPanel() {
       const error = caught instanceof InvestmentClientError ? caught : new InvestmentClientError("investment_request_failed", "Could not save that review.");
       setMessage(error.message);
     } finally {
-      setSavingId(null);
+      setSaving(null);
     }
   }
 
   async function openScreenshot(investmentId: string) {
-    if (savingId || savingAddress) {
+    if (saving || savingAddress) {
       return;
     }
-    setSavingId(investmentId);
+    setSaving({ id: investmentId, kind: "screenshot" });
     setMessage(null);
     try {
       const url = await readDepositProofUrl(investmentId);
@@ -87,12 +87,12 @@ export function AdminDepositsPanel() {
       const error = caught instanceof InvestmentClientError ? caught : new InvestmentClientError("investment_request_failed", "Could not open that screenshot.");
       setMessage(error.message);
     } finally {
-      setSavingId(null);
+      setSaving(null);
     }
   }
 
   async function saveAddress() {
-    if (savingId || savingAddress) {
+    if (saving || savingAddress) {
       return;
     }
     setSavingAddress(true);
@@ -111,10 +111,10 @@ export function AdminDepositsPanel() {
   }
 
   async function activate(investmentId: string) {
-    if (savingId || savingAddress) {
+    if (saving || savingAddress) {
       return;
     }
-    setSavingId(investmentId);
+    setSaving({ id: investmentId, kind: "activate" });
     setMessage(null);
     try {
       await activateVerifiedInvestment(investmentId);
@@ -123,7 +123,7 @@ export function AdminDepositsPanel() {
       const error = caught instanceof InvestmentClientError ? caught : new InvestmentClientError("investment_request_failed", "Could not activate that investment.");
       setMessage(error.message);
     } finally {
-      setSavingId(null);
+      setSaving(null);
     }
   }
 
@@ -168,7 +168,7 @@ export function AdminDepositsPanel() {
             onChange={(event) => setTrc20Draft(event.target.value)}
             style={{ display: "block", width: "100%", marginTop: 8 }}
           />
-          <Button type="submit" disabled={savingAddress || savingId !== null} style={{ marginTop: 12 }}>
+          <Button type="submit" disabled={savingAddress || saving !== null} aria-busy={savingAddress} style={{ marginTop: 12 }}>
             {savingAddress ? "Saving…" : "Save addresses"}
           </Button>
         </form>
@@ -190,15 +190,25 @@ export function AdminDepositsPanel() {
             <p style={{ marginTop: 10 }}>Reference {investment.depositReference ?? "—"}</p>
             {investment.depositProofKey ? (
               <p>
-                <Button type="button" variant="secondary" disabled={savingId !== null} onClick={() => void openScreenshot(investment.investmentId)}>
-                  Open screenshot
+                <Button
+                  type="button"
+                  variant="secondary"
+                  disabled={saving !== null}
+                  aria-busy={saving?.id === investment.investmentId && saving.kind === "screenshot"}
+                  onClick={() => void openScreenshot(investment.investmentId)}
+                >
+                  {saving?.id === investment.investmentId && saving.kind === "screenshot" ? "Please wait" : "Open screenshot"}
                 </Button>
               </p>
             ) : null}
             <p>Submitted {investment.submittedAt ? new Date(investment.submittedAt).toLocaleString() : "—"}</p>
             <div className="grid-2" style={{ marginTop: 16 }}>
-              <Button disabled={savingId !== null} onClick={() => void decide(investment.investmentId, "deposit_verified")}>
-                {savingId === investment.investmentId ? "Saving…" : "Verify deposit"}
+              <Button
+                disabled={saving !== null}
+                aria-busy={saving?.id === investment.investmentId && saving.kind === "verify"}
+                onClick={() => void decide(investment.investmentId, "deposit_verified")}
+              >
+                {saving?.id === investment.investmentId && saving.kind === "verify" ? "Saving…" : "Verify deposit"}
               </Button>
               <div>
                 <label htmlFor={`reject-reason-${investment.investmentId}`}>Rejection reason</label>
@@ -211,8 +221,14 @@ export function AdminDepositsPanel() {
                   }
                   style={{ display: "block", width: "100%", marginTop: 8 }}
                 />
-                <Button variant="secondary" disabled={savingId !== null} onClick={() => void decide(investment.investmentId, "rejected")} style={{ marginTop: 12 }}>
-                  Reject
+                <Button
+                  variant="secondary"
+                  disabled={saving !== null}
+                  aria-busy={saving?.id === investment.investmentId && saving.kind === "reject"}
+                  onClick={() => void decide(investment.investmentId, "rejected")}
+                  style={{ marginTop: 12 }}
+                >
+                  {saving?.id === investment.investmentId && saving.kind === "reject" ? "Saving…" : "Reject"}
                 </Button>
               </div>
             </div>
@@ -233,8 +249,13 @@ export function AdminDepositsPanel() {
             <h2>{formatUsdtAmount(investment.amountMinor, investment.scale)}</h2>
             <p style={{ marginTop: 10 }}>Reference {investment.depositReference ?? "—"}</p>
             <p>Verified {investment.reviewedAt ? new Date(investment.reviewedAt).toLocaleString() : "—"}</p>
-            <Button disabled={savingId !== null} onClick={() => void activate(investment.investmentId)} style={{ marginTop: 16 }}>
-              {savingId === investment.investmentId ? "Saving…" : "Activate investment"}
+            <Button
+              disabled={saving !== null}
+              aria-busy={saving?.id === investment.investmentId && saving.kind === "activate"}
+              onClick={() => void activate(investment.investmentId)}
+              style={{ marginTop: 16 }}
+            >
+              {saving?.id === investment.investmentId && saving.kind === "activate" ? "Saving…" : "Activate investment"}
             </Button>
           </Card>
         ))

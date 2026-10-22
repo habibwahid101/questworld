@@ -326,7 +326,7 @@ export function ProfilePanel() {
               disabled={savingTransaction}
             />
           </Field>
-          <Button type="submit" disabled={savingTransaction}>
+          <Button type="submit" disabled={savingTransaction} aria-busy={savingTransaction}>
             {savingTransaction ? "Saving…" : "Save transaction password"}
           </Button>
         </form>
@@ -344,7 +344,7 @@ export function ProfilePanel() {
           <Field label="Country" htmlFor="profile-country" hint="Optional">
             <Input id="profile-country" value={country} onChange={(event) => setCountry(event.target.value)} maxLength={56} />
           </Field>
-          <Button type="submit" disabled={saving}>
+          <Button type="submit" disabled={saving} aria-busy={saving}>
             {saving ? "Saving…" : "Save profile"}
           </Button>
         </form>
@@ -383,7 +383,7 @@ export function ProfilePanel() {
               disabled={changingLogin}
             />
           </Field>
-          <Button type="submit" disabled={changingLogin}>
+          <Button type="submit" disabled={changingLogin} aria-busy={changingLogin}>
             {changingLogin ? "Saving…" : "Change login password"}
           </Button>
         </form>

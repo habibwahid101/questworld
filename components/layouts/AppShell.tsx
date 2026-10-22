@@ -70,7 +70,7 @@ export function AppShell({ title, pageLabel, homeHref, items, showPhoneBar = fal
                 {shellSwitch.label}
               </Link>
             ) : null}
-            <button className={classNames(styles.logoutButton, styles.topLogout)} type="button" onClick={() => void onLogout()} disabled={signingOut}>
+            <button className={classNames(styles.logoutButton, styles.topLogout)} type="button" onClick={() => void onLogout()} disabled={signingOut} aria-busy={signingOut}>
               {signingOut ? "Please wait…" : "Log out"}
             </button>
             <button
@@ -93,7 +93,7 @@ export function AppShell({ title, pageLabel, homeHref, items, showPhoneBar = fal
                 {item.label}
               </Link>
             ))}
-            <button className={styles.mobileLogout} type="button" onClick={() => void onLogout()} disabled={signingOut}>
+            <button className={styles.mobileLogout} type="button" onClick={() => void onLogout()} disabled={signingOut} aria-busy={signingOut}>
               {signingOut ? "Please wait…" : "Log out"}
             </button>
           </nav>

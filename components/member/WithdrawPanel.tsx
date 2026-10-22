@@ -160,6 +160,7 @@ export function WithdrawPanel() {
         {transactionPasswordSet ? (
           <Button
             disabled={saving || loading || !amountReady || transactionPassword.length === 0}
+            aria-busy={saving}
             onClick={() => {
               if (parsedAmount !== null) {
                 void requestWithdrawal(parsedAmount);

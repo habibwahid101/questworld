@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { clearPendingReferral, readPendingReferral } from "@/lib/auth/referral";
 import { clearPendingSignupProfile, readPendingSignupProfile } from "@/lib/auth/signup-profile";
 import { MemberClientError, initializeCurrentMember, updateCurrentMember } from "@/lib/members/client";
@@ -25,6 +25,8 @@ export function MemberDataProvider({ children }: { children: React.ReactNode }) 
   const [member, setMember] = useState<MemberProfile | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [referralBlocked, setReferralBlocked] = useState(false);
+  const [continuing, setContinuing] = useState(false);
+  const continuingRef = useRef(false);
 
   const applySuccess = useCallback((next: MemberProfile) => {
     clearPendingReferral(window.localStorage);
@@ -64,6 +66,11 @@ export function MemberDataProvider({ children }: { children: React.ReactNode }) 
   }, [initialize]);
 
   const continueWithoutReferral = useCallback(async () => {
+    if (continuingRef.current) {
+      return;
+    }
+    continuingRef.current = true;
+    setContinuing(true);
     setStatus("loading");
     try {
       await initialize("");
@@ -72,6 +79,9 @@ export function MemberDataProvider({ children }: { children: React.ReactNode }) 
       setReferralBlocked(false);
       setMessage(error.message);
       setStatus("error");
+    } finally {
+      continuingRef.current = false;
+      setContinuing(false);
     }
   }, [initialize]);
 
@@ -107,8 +117,8 @@ export function MemberDataProvider({ children }: { children: React.ReactNode }) 
           {referralBlocked ? (
             <>
               {" "}
-              <button type="button" onClick={() => void continueWithoutReferral()}>
-                Continue without this referral code
+              <button type="button" onClick={() => void continueWithoutReferral()} disabled={continuing} aria-busy={continuing}>
+                {continuing ? "Please wait" : "Continue without this referral code"}
               </button>
             </>
           ) : null}

@@ -16,7 +16,7 @@ const statusLabel: Record<WithdrawalStatus, string> = {
 export function AdminWithdrawalsPanel() {
   const [withdrawals, setWithdrawals] = useState<WithdrawalRequest[] | null>(null);
   const [message, setMessage] = useState<string | null>(null);
-  const [savingId, setSavingId] = useState<string | null>(null);
+  const [saving, setSaving] = useState<{ id: string; decision: "approved" | "rejected" } | null>(null);
 
   const load = useCallback(async () => {
     setWithdrawals(await listAdminWithdrawals());
@@ -43,14 +43,14 @@ export function AdminWithdrawalsPanel() {
   }, [load]);
 
   async function review(withdrawalId: string, decision: "approved" | "rejected") {
-    if (savingId) {
+    if (saving) {
       return;
     }
     const prompt = decision === "approved" ? "Approve this withdrawal? Nothing is paid out." : "Reject this withdrawal?";
     if (!window.confirm(prompt)) {
       return;
     }
-    setSavingId(withdrawalId);
+    setSaving({ id: withdrawalId, decision });
     setMessage(null);
     try {
       await reviewAdminWithdrawal(withdrawalId, decision);
@@ -59,7 +59,7 @@ export function AdminWithdrawalsPanel() {
       const error = caught instanceof InvestmentClientError ? caught : new InvestmentClientError("investment_request_failed", "Could not save that review.");
       setMessage(error.message);
     } finally {
-      setSavingId(null);
+      setSaving(null);
     }
   }
 
@@ -98,11 +98,22 @@ export function AdminWithdrawalsPanel() {
             <p>Created {new Date(request.createdAt).toLocaleString()}</p>
             {request.status === "pending_review" ? (
               <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
-                <Button type="button" disabled={savingId !== null} onClick={() => void review(request.withdrawalId, "approved")}>
-                  {savingId === request.withdrawalId ? "Saving…" : "Approve"}
+                <Button
+                  type="button"
+                  disabled={saving !== null}
+                  aria-busy={saving?.id === request.withdrawalId && saving.decision === "approved"}
+                  onClick={() => void review(request.withdrawalId, "approved")}
+                >
+                  {saving?.id === request.withdrawalId && saving.decision === "approved" ? "Saving…" : "Approve"}
                 </Button>
-                <Button type="button" variant="secondary" disabled={savingId !== null} onClick={() => void review(request.withdrawalId, "rejected")}>
-                  Reject
+                <Button
+                  type="button"
+                  variant="secondary"
+                  disabled={saving !== null}
+                  aria-busy={saving?.id === request.withdrawalId && saving.decision === "rejected"}
+                  onClick={() => void review(request.withdrawalId, "rejected")}
+                >
+                  {saving?.id === request.withdrawalId && saving.decision === "rejected" ? "Saving…" : "Reject"}
                 </Button>
               </div>
             ) : null}

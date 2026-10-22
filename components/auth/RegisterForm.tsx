@@ -23,6 +23,7 @@ export function RegisterForm() {
   const { refresh } = useAuth();
   const [referralCode, setReferralCode] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const alertRef = useRef<HTMLParagraphElement>(null);
   const linkedReferral = normalizeReferralCode(searchParams.get("ref") ?? "");
@@ -99,17 +100,32 @@ export function RegisterForm() {
 
     setSubmitting(true);
     setError(null);
+    setSuccess(null);
     try {
       await registerAccount({ name: `${firstName} ${lastName}`, email, password });
-      rememberPendingReferral(window.localStorage, referralCode);
-      rememberPendingSignupProfile(window.sessionStorage, { firstName, lastName, phone, country });
+    } catch (caught) {
+      setError(mapAuthError(caught));
+      setSubmitting(false);
+      return;
+    }
+
+    rememberPendingReferral(window.localStorage, referralCode);
+    rememberPendingSignupProfile(window.sessionStorage, { firstName, lastName, phone, country });
+    setSuccess("Account created. Sign in with the password you just set.");
+    try {
       await loginAccount({ email, password, remember: true });
       await initializeCurrentMember(referralCode, { firstName, lastName, phone, country, transactionPassword });
       await refresh();
       router.replace("/dashboard");
     } catch (caught) {
-      setError(caught instanceof MemberClientError ? caught.message : mapAuthError(caught));
-      setSubmitting(false);
+      if (caught instanceof MemberClientError) {
+        setError(caught.message);
+        setSubmitting(false);
+        return;
+      }
+      window.setTimeout(() => {
+        router.replace("/login");
+      }, 1200);
     }
   }
 
@@ -119,6 +135,9 @@ export function RegisterForm() {
         <p ref={alertRef} className="form-error" role="alert">
           {error}
         </p>
+      ) : null}
+      {success ? (
+        <p role="status">{success}</p>
       ) : null}
       <div className={styles.names}>
         <Field label="First name" htmlFor="firstName">
@@ -153,7 +172,7 @@ export function RegisterForm() {
           disabled={submitting}
         />
       </Field>
-      <Field label="Confirm Password" htmlFor="confirmPassword">
+      <Field label="Confirm password" htmlFor="confirmPassword">
         <PasswordField
           id="confirmPassword"
           name="confirmPassword"

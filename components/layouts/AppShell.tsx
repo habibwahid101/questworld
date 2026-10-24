@@ -62,7 +62,6 @@ export function AppShell({ title, pageLabel, homeHref, items, children }: AppShe
         <div className={styles.topbar}>
           <div className={styles.brandLockup}>
             <BrandMark href={homeHref} />
-            <span className={styles.subtitle}>REAL ESTATE & INVESTMENT</span>
             {pageLabel ? <span className="sr-only">{pageLabel}</span> : null}
           </div>
           <div className={styles.topActions}>

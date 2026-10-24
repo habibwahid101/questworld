@@ -48,13 +48,51 @@
   border-bottom: 1px solid var(--color-border);
 }
 
-.topTitle {
+.brandLockup {
+  display: flex;
+  align-items: center;
+  gap: 10px;
   min-width: 0;
 }
 
-.pageLabel {
-  margin-left: 8px;
-  font-weight: 400;
+.subtitle {
+  color: var(--color-text-soft);
+  font-size: 0.68rem;
+  font-weight: 650;
+  letter-spacing: 0.06em;
+}
+
+.clock {
+  color: var(--color-text-soft);
+  font-size: 0.85rem;
+  white-space: nowrap;
+}
+
+.iconButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  min-height: 44px;
+  border: 1px solid var(--color-border-strong);
+  border-radius: 6px;
+  background: #fff;
+  color: inherit;
+  cursor: pointer;
+}
+
+.avatar {
+  display: inline-grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  object-fit: cover;
+  background: var(--color-bg-subtle);
+  border: 1px solid var(--color-border);
+  color: var(--color-text);
+  font-size: 0.85rem;
+  font-weight: 650;
 }
 
 .content {

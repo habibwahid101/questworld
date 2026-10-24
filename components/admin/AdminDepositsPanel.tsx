@@ -9,6 +9,7 @@ import { adminTableRow, investmentColumns } from "@/lib/admin/table";
 import { InvestmentClientError, activateVerifiedInvestment, listPendingDeposits, listVerifiedDeposits, readCurrentDepositAddresses, readDepositProofUrl, reviewPendingDeposit, saveDepositAddresses } from "@/lib/investments/client";
 import { formatUsdtAmount, type InvestmentRecord, type InvestmentStatus } from "@/lib/investments/service";
 import { isMemberApiConfigured } from "@/lib/members/config";
+import styles from "./AdminDepositsPanel.module.css";
 
 const statusLabel: Record<InvestmentStatus, string> = {
   awaiting_deposit: "Awaiting deposit",
@@ -157,31 +158,33 @@ export function AdminDepositsPanel() {
           Review a pending deposit, then activate a verified one. This does not post profit or move money.
         </p>
         <form
-          style={{ marginTop: 16 }}
+          className={styles.form}
           onSubmit={(event) => {
             event.preventDefault();
             void saveAddress();
           }}
         >
-          <label htmlFor="deposit-bep20">BEP20</label>
-          <input
-            id="deposit-bep20"
-            value={bep20Draft}
-            autoComplete="off"
-            onChange={(event) => setBep20Draft(event.target.value)}
-            style={{ display: "block", width: "100%", marginTop: 8 }}
-          />
-          <label htmlFor="deposit-trc20" style={{ display: "block", marginTop: 12 }}>
-            TRC20
-          </label>
-          <input
-            id="deposit-trc20"
-            value={trc20Draft}
-            autoComplete="off"
-            onChange={(event) => setTrc20Draft(event.target.value)}
-            style={{ display: "block", width: "100%", marginTop: 8 }}
-          />
-          <Button type="submit" disabled={savingAddress || saving !== null} aria-busy={savingAddress} style={{ marginTop: 12 }}>
+          <div>
+            <label htmlFor="deposit-bep20">BEP20</label>
+            <input
+              id="deposit-bep20"
+              value={bep20Draft}
+              autoComplete="off"
+              onChange={(event) => setBep20Draft(event.target.value)}
+              style={{ display: "block", width: "100%", marginTop: 8 }}
+            />
+          </div>
+          <div>
+            <label htmlFor="deposit-trc20">TRC20</label>
+            <input
+              id="deposit-trc20"
+              value={trc20Draft}
+              autoComplete="off"
+              onChange={(event) => setTrc20Draft(event.target.value)}
+              style={{ display: "block", width: "100%", marginTop: 8 }}
+            />
+          </div>
+          <Button type="submit" disabled={savingAddress || saving !== null} aria-busy={savingAddress}>
             {savingAddress ? "Saving…" : "Save addresses"}
           </Button>
         </form>

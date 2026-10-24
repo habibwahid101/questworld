@@ -28,8 +28,9 @@ export function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { status, refresh } = useAuth();
-  const [error, setError] = useState<string | null>(reasonMessage(searchParams.get("reason")));
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [submitting, setSubmitting] = useState(false);
+  const notice = reasonMessage(searchParams.get("reason"));
 
   useEffect(() => {
     if (status === "authenticated") {
@@ -49,28 +50,31 @@ export function LoginForm() {
     const remember = form.get("remember") === "on";
 
     setSubmitting(true);
-    setError(null);
+    setFieldErrors({});
     try {
       await loginAccount({ email, password, remember });
       await refresh();
       router.replace("/dashboard");
     } catch (caught) {
-      setError(mapAuthError(caught));
+      const message = mapAuthError(caught);
+      if (/already exists|email/i.test(message) && !/password/i.test(message)) {
+        setFieldErrors({ email: message });
+      } else {
+        setFieldErrors({ password: message });
+      }
       setSubmitting(false);
     }
   }
 
   return (
     <form className="stack" onSubmit={onSubmit}>
-      {error ? (
-        <p className="form-error" role="alert">
-          {error}
-        </p>
+      {notice ? (
+        <p role="status">{notice}</p>
       ) : null}
-      <Field label="Email Address" htmlFor="email">
+      <Field label="Email Address" htmlFor="email" error={fieldErrors.email}>
         <Input id="email" name="email" type="email" autoComplete="email" required disabled={submitting} />
       </Field>
-      <Field label="Password" htmlFor="password">
+      <Field label="Password" htmlFor="password" error={fieldErrors.password}>
         <PasswordField
           id="password"
           name="password"

@@ -442,12 +442,14 @@ test("a transaction password is stored only as a hash and does not change the lo
   assert.match(withdraw, /htmlFor="withdrawal-amount"/);
   assert.match(withdraw, /Enter an amount above zero\./);
   assert.match(withdraw, /That amount is above the available balance\./);
-  assert.match(withdraw, /amountReady && transactionPasswordSet/);
+  assert.match(withdraw, /htmlFor="withdrawal-wallet"/);
+  assert.match(withdraw, /Transaction wallet/);
   assert.match(withdraw, /Request withdrawal/);
   assert.match(withdraw, /Withdrawal requested\./);
   assert.match(withdraw, /Transaction password is set\./);
   assert.match(withdraw, /disabled=\{saving \|\| loading \|\| !amountReady \|\| transactionPassword\.length === 0\}/);
-  assert.ok(withdraw.indexOf('htmlFor="withdrawal-amount"') < withdraw.indexOf('htmlFor="withdrawal-transaction-password"'));
+  assert.ok(withdraw.indexOf('htmlFor="withdrawal-amount"') < withdraw.indexOf('htmlFor="withdrawal-wallet"'));
+  assert.ok(withdraw.indexOf('htmlFor="withdrawal-wallet"') < withdraw.indexOf('htmlFor="withdrawal-transaction-password"'));
   assert.ok(withdraw.indexOf('htmlFor="withdrawal-transaction-password"') < withdraw.indexOf("Request withdrawal"));
   assert.doesNotMatch(withdraw, /availableMinor <= 0/);
   assert.match(withdraw, /transactionPassword/);

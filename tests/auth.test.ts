@@ -42,12 +42,13 @@ test("admin group check is exact", () => {
   assert.equal(isAdminGroups(normalizeGroups(["Admins"])), true);
 });
 
-test("password policy is at least 8 characters", () => {
-  assert.equal(passwordIssue("short"), "Use at least 8 characters.");
+test("password policy is at least 6 characters", () => {
+  assert.equal(passwordIssue("short"), "Use at least 6 characters.");
+  assert.equal(passwordIssue("sixchr"), null);
   assert.equal(passwordIssue("lowercase"), null);
   assert.equal(passwordIssue("simplepass"), null);
   const auth = readFileSync(new URL("../infrastructure/lib/auth-stack.ts", import.meta.url), "utf8");
-  assert.match(auth, /minLength: 8/);
+  assert.match(auth, /minLength: 6/);
   assert.match(auth, /requireLowercase: false/);
   assert.match(auth, /requireUppercase: false/);
   assert.match(auth, /requireDigits: false/);

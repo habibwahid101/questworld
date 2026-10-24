@@ -7,7 +7,7 @@ import { Field, Input } from "@/components/ui/Field";
 import { PasswordField } from "@/components/auth/PasswordField";
 import { changeLoginPassword } from "@/lib/auth/cognito";
 import { mapAuthError } from "@/lib/auth/errors";
-import { PASSWORD_HINT, passwordIssue } from "@/lib/auth/password";
+import { PASSWORD_HINT, passwordIssue, TRANSACTION_PASSWORD_MIN } from "@/lib/auth/password";
 import { setCurrentTransactionPassword as saveTransactionPassword, readCurrentMember, readCurrentProfilePhoto, uploadCurrentProfilePhoto } from "@/lib/members/client";
 import { memberReferralUrl } from "@/lib/members/referral-url";
 import { useMemberData } from "@/components/member/MemberData";
@@ -20,7 +20,10 @@ export function ProfilePanel() {
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
   const [country, setCountry] = useState("");
+  const [loginField, setLoginField] = useState<string | null>(null);
+  const [loginFieldError, setLoginFieldError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [profileFieldError, setProfileFieldError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [origin, setOrigin] = useState("");
   const [currentLoginPassword, setCurrentLoginPassword] = useState("");
@@ -98,11 +101,12 @@ export function ProfilePanel() {
     }
     setSaving(true);
     setNotice(null);
+    setProfileFieldError(null);
     try {
       await saveProfile({ name, phone, country });
       setNotice("Profile saved.");
     } catch (caught) {
-      setNotice(caught instanceof Error ? caught.message : "Could not save your profile.");
+      setProfileFieldError(caught instanceof Error ? caught.message : "Could not save your profile.");
     } finally {
       setSaving(false);
     }
@@ -115,15 +119,19 @@ export function ProfilePanel() {
     }
     const issue = passwordIssue(nextLoginPassword);
     if (issue) {
-      setNotice(issue);
+      setLoginField("next");
+      setLoginFieldError(issue);
       return;
     }
     if (nextLoginPassword !== confirmLoginPassword) {
-      setNotice("Passwords do not match.");
+      setLoginField("confirm");
+      setLoginFieldError("Passwords do not match.");
       return;
     }
     setChangingLogin(true);
     setNotice(null);
+    setLoginField(null);
+    setLoginFieldError(null);
     try {
       await changeLoginPassword({ currentPassword: currentLoginPassword, nextPassword: nextLoginPassword });
       setCurrentLoginPassword("");
@@ -131,7 +139,9 @@ export function ProfilePanel() {
       setConfirmLoginPassword("");
       setNotice("Login password changed.");
     } catch (caught) {
-      setNotice(mapAuthError(caught));
+      const message = mapAuthError(caught);
+      setLoginField(/current|incorrect/i.test(message) ? "current" : "confirm");
+      setLoginFieldError(message);
     } finally {
       setChangingLogin(false);
     }
@@ -142,7 +152,7 @@ export function ProfilePanel() {
     if (savingTransaction) {
       return;
     }
-    const issue = passwordIssue(nextTransactionPassword);
+    const issue = passwordIssue(nextTransactionPassword, TRANSACTION_PASSWORD_MIN);
     if (issue) {
       setTransactionError(issue);
       setTransactionNotice(null);
@@ -285,13 +295,8 @@ export function ProfilePanel() {
               {transactionNotice}
             </p>
           ) : null}
-          {transactionError ? (
-            <p className="form-error" role="alert">
-              {transactionError}
-            </p>
-          ) : null}
           {transactionPasswordSet ? (
-            <Field label="Current transaction password" htmlFor="current-transaction-password">
+            <Field label="Current transaction password" htmlFor="current-transaction-password" error={transactionError && /current|not correct/i.test(transactionError) ? transactionError : null}>
               <PasswordField
                 id="current-transaction-password"
                 autoComplete="off"
@@ -312,7 +317,7 @@ export function ProfilePanel() {
               disabled={savingTransaction}
             />
           </Field>
-          <Field label="Confirm transaction password" htmlFor="confirm-transaction-password">
+          <Field label="Confirm transaction password" htmlFor="confirm-transaction-password" error={transactionError && !/current|not correct/i.test(transactionError) ? transactionError : null}>
             <PasswordField
               id="confirm-transaction-password"
               autoComplete="new-password"
@@ -331,7 +336,7 @@ export function ProfilePanel() {
           <Field label="Email" htmlFor="profile-email">
             <Input id="profile-email" value={shown.email} readOnly />
           </Field>
-          <Field label="Name" htmlFor="profile-name">
+          <Field label="Name" htmlFor="profile-name" error={profileFieldError}>
             <Input id="profile-name" value={name} onChange={(event) => setName(event.target.value)} required maxLength={80} />
           </Field>
           <Field label="Phone" htmlFor="profile-phone" hint="Optional">
@@ -349,7 +354,7 @@ export function ProfilePanel() {
             <h2>Login password</h2>
             <p>Change the password you use to sign in. This does not change an existing password until you submit it.</p>
           </div>
-          <Field label="Current password" htmlFor="current-login-password">
+          <Field label="Current password" htmlFor="current-login-password" error={loginField === "current" ? loginFieldError : null}>
             <PasswordField
               id="current-login-password"
               autoComplete="current-password"
@@ -359,7 +364,7 @@ export function ProfilePanel() {
               disabled={changingLogin}
             />
           </Field>
-          <Field label="New password" htmlFor="next-login-password" hint={PASSWORD_HINT}>
+          <Field label="New password" htmlFor="next-login-password" hint={PASSWORD_HINT} error={loginField === "next" ? loginFieldError : null}>
             <PasswordField
               id="next-login-password"
               autoComplete="new-password"
@@ -369,7 +374,7 @@ export function ProfilePanel() {
               disabled={changingLogin}
             />
           </Field>
-          <Field label="Confirm new password" htmlFor="confirm-login-password">
+          <Field label="Confirm new password" htmlFor="confirm-login-password" error={loginField === "confirm" ? loginFieldError : null}>
             <PasswordField
               id="confirm-login-password"
               autoComplete="new-password"

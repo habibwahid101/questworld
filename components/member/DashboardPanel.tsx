@@ -1,8 +1,7 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { Card } from "@/components/ui/Card";
-import { Button } from "@/components/ui/Button";
 import {
   InvestmentClientError,
   listCurrentCommissions,
@@ -13,17 +12,19 @@ import {
 import {
   INVESTMENT_CURRENCY,
   INVESTMENT_SCALE,
+  availableWithdrawalMinor,
   formatUsdtAmount,
   type InvestmentRecord,
 } from "@/lib/investments/service";
 import { readCurrentMember, readCurrentProfilePhoto, uploadCurrentProfilePhoto } from "@/lib/members/client";
-import { memberReferralUrl } from "@/lib/members/referral-url";
 import { isMemberApiConfigured } from "@/lib/members/config";
 import type { MemberProfile } from "@/lib/members/service";
 import { ProfilePhoto } from "@/components/member/ProfilePhoto";
+import styles from "./DashboardPanel.module.css";
 
 type Figures = {
   received: number | null;
+  remaining: number | null;
   generationReceived: number | null;
   available: number | null;
   activeInvested: number | null;
@@ -35,20 +36,8 @@ export function DashboardPanel() {
   const [photoUrl, setPhotoUrl] = useState<string | null>(null);
   const [photoError, setPhotoError] = useState<string | null>(null);
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
-  const [origin, setOrigin] = useState("");
-  const [copied, setCopied] = useState<"id" | "link" | null>(null);
-  const copyTimer = useRef<number | null>(null);
   const [figures, setFigures] = useState<Figures | null>(null);
   const [message, setMessage] = useState<string | null>(null);
-
-  useEffect(() => {
-    setOrigin(window.location.origin);
-    return () => {
-      if (copyTimer.current !== null) {
-        window.clearTimeout(copyTimer.current);
-      }
-    };
-  }, []);
 
   useEffect(() => {
     if (!isMemberApiConfigured()) {
@@ -72,8 +61,10 @@ export function DashboardPanel() {
       const investmentRows = investments.status === "fulfilled" ? investments.value : null;
       const profitRows = profits.status === "fulfilled" ? profits.value : null;
       const commissionRows = commissions.status === "fulfilled" ? commissions.value : null;
+      const withdrawalRows = withdrawals.status === "fulfilled" ? withdrawals.value.withdrawals : null;
       setFigures({
         received: profitRows ? totalMinor(profitRows, (entry) => entry.profitMinor) : null,
+        remaining: profitRows && withdrawalRows ? availableWithdrawalMinor(profitRows, withdrawalRows) : null,
         generationReceived: commissionRows ? totalMinor(commissionRows, (entry) => entry.commissionMinor) : null,
         available: withdrawals.status === "fulfilled" ? withdrawals.value.availableMinor : null,
         activeInvested: investmentRows ? totalMinor(investmentRows.filter((record) => record.status === "active"), (record) => record.amountMinor) : null,
@@ -132,24 +123,6 @@ export function DashboardPanel() {
     }
   }
 
-  async function copyReferral(kind: "id" | "link") {
-    const code = profile?.referralCode ?? "";
-    if (!code || (kind === "link" && !origin)) {
-      return;
-    }
-    const copiedOk = await writeClipboard(kind === "id" ? code : memberReferralUrl(origin, code));
-    if (!copiedOk) {
-      return;
-    }
-    setCopied(kind);
-    if (copyTimer.current !== null) {
-      window.clearTimeout(copyTimer.current);
-    }
-    copyTimer.current = window.setTimeout(() => {
-      setCopied((current) => (current === kind ? null : current));
-    }, 2000);
-  }
-
   if (!isMemberApiConfigured()) {
     return (
       <Card>
@@ -185,28 +158,25 @@ export function DashboardPanel() {
             {photoError}
           </p>
         ) : null}
-        <div className="stack" style={{ marginTop: 16 }}>
-          <Button variant="secondary" onClick={() => void copyReferral("id")} disabled={!profile?.referralCode}>
-            {copied === "id" ? "Copied" : "Copy Referral ID"}
-          </Button>
-          <Button variant="secondary" onClick={() => void copyReferral("link")} disabled={!profile?.referralCode || !origin}>
-            {copied === "link" ? "Copied" : "Copy Referral Link"}
-          </Button>
-        </div>
       </Card>
-      <AmountCard label="Investment Wallet" amountMinor={figures?.activeInvested} />
-      <AmountCard label="Profit Wallet" amountMinor={figures?.received} />
-      <AmountCard label="Commission Wallet" amountMinor={figures?.generationReceived} />
-      <AmountCard label="Available Withdrawal" amountMinor={figures?.available} />
+      <AmountCard label="Available to withdraw" amountMinor={figures?.available} />
+      <AmountCard label="Investment wallet" amountMinor={figures?.activeInvested} />
+      <Card className={styles.wallet}>
+        <p className="eyebrow">Return wallet</p>
+        <h2 className={styles.amount}>{amountText(figures?.received)}</h2>
+        <p className={styles.line}>Received: {amountText(figures?.received)}</p>
+        <p className={styles.line}>Remaining: {amountText(figures?.remaining)}</p>
+      </Card>
+      <AmountCard label="Commission wallet" amountMinor={figures?.generationReceived} />
     </div>
   );
 }
 
 function AmountCard({ label, amountMinor }: { label: string; amountMinor: number | null | undefined }) {
   return (
-    <Card>
+    <Card className={styles.wallet}>
       <p className="eyebrow">{label}</p>
-      <h2>{amountText(amountMinor)}</h2>
+      <h2 className={styles.amount}>{amountText(amountMinor)}</h2>
     </Card>
   );
 }
@@ -249,22 +219,4 @@ async function fileToBase64(file: File): Promise<string> {
     binary += String.fromCharCode(byte);
   }
   return btoa(binary);
-}
-
-async function writeClipboard(value: string): Promise<boolean> {
-  try {
-    await navigator.clipboard.writeText(value);
-    return true;
-  } catch {
-    const area = document.createElement("textarea");
-    area.value = value;
-    area.setAttribute("readonly", "");
-    area.style.position = "fixed";
-    area.style.left = "-9999px";
-    document.body.appendChild(area);
-    area.select();
-    const copiedOk = document.execCommand("copy");
-    area.remove();
-    return copiedOk;
-  }
 }

@@ -6,13 +6,13 @@ import { PasswordField } from "@/components/auth/PasswordField";
 import { Field, Input } from "@/components/ui/Field";
 import { confirmPasswordReset } from "@/lib/auth/cognito";
 import { mapAuthError } from "@/lib/auth/errors";
-import { passwordIssue } from "@/lib/auth/password";
+import { PASSWORD_HINT, passwordIssue } from "@/lib/auth/password";
 import { RESET_EMAIL_KEY } from "@/lib/auth/referral";
 
 export function ResetPasswordForm() {
   const [email, setEmail] = useState("");
   const [updated, setUpdated] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
@@ -34,31 +34,39 @@ export function ResetPasswordForm() {
     const confirmPassword = String(form.get("confirmPassword") ?? "");
     const issue = passwordIssue(password);
 
+    const nextErrors: Record<string, string> = {};
     if (!email.trim()) {
-      setError("Enter the email address for the account.");
-      return;
+      nextErrors.email = "Enter the email address for the account.";
     }
     if (!code) {
-      setError("Enter the reset code from your email.");
-      return;
+      nextErrors.code = "Enter the reset code from your email.";
     }
     if (issue) {
-      setError(issue);
-      return;
+      nextErrors.password = issue;
     }
     if (password !== confirmPassword) {
-      setError("Passwords do not match.");
+      nextErrors.confirmPassword = "Passwords do not match.";
+    }
+    if (Object.keys(nextErrors).length > 0) {
+      setFieldErrors(nextErrors);
       return;
     }
 
     setSubmitting(true);
-    setError(null);
+    setFieldErrors({});
     try {
       await confirmPasswordReset({ email, code, password });
       window.sessionStorage.removeItem(RESET_EMAIL_KEY);
       setUpdated(true);
     } catch (caught) {
-      setError(mapAuthError(caught));
+      const message = mapAuthError(caught);
+      if (/code/i.test(message)) {
+        setFieldErrors({ code: message });
+      } else if (/password/i.test(message)) {
+        setFieldErrors({ confirmPassword: message });
+      } else {
+        setFieldErrors({ email: message });
+      }
       setSubmitting(false);
     }
   }
@@ -75,12 +83,7 @@ export function ResetPasswordForm() {
 
   return (
     <form className="stack" onSubmit={onSubmit}>
-      {error ? (
-        <p className="form-error" role="alert">
-          {error}
-        </p>
-      ) : null}
-      <Field label="Email Address" htmlFor="email">
+      <Field label="Email Address" htmlFor="email" error={fieldErrors.email}>
         <Input
           id="email"
           name="email"
@@ -96,6 +99,7 @@ export function ResetPasswordForm() {
         label="Reset code"
         htmlFor="code"
         hint="This code is for password recovery only. Signup does not ask for an email code."
+        error={fieldErrors.code}
       >
         <Input
           id="code"
@@ -106,7 +110,7 @@ export function ResetPasswordForm() {
           disabled={submitting}
         />
       </Field>
-      <Field label="New Password" htmlFor="password">
+      <Field label="New Password" htmlFor="password" hint={PASSWORD_HINT} error={fieldErrors.password}>
         <PasswordField
           id="password"
           name="password"
@@ -115,7 +119,7 @@ export function ResetPasswordForm() {
           disabled={submitting}
         />
       </Field>
-      <Field label="Confirm New Password" htmlFor="confirmPassword">
+      <Field label="Confirm New Password" htmlFor="confirmPassword" error={fieldErrors.confirmPassword}>
         <PasswordField
           id="confirmPassword"
           name="confirmPassword"

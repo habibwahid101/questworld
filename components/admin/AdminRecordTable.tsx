@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { adminTableLabels, filterAdminRows, type AdminTableColumn, type AdminTableRow } from "@/lib/admin/table";
+import styles from "./AdminRecordTable.module.css";
 
 export function AdminRecordTable({
   columns,
@@ -34,7 +35,7 @@ export function AdminRecordTable({
       {loading ? (
         <p>Loading…</p>
       ) : (
-        <div className="table-wrap">
+        <div className={`table-wrap ${styles.wrap}`}>
           <table>
             <thead>
               <tr>
@@ -53,9 +54,15 @@ export function AdminRecordTable({
                 visible.map((row) => (
                   <tr key={row.id}>
                     {columns.map((column) => (
-                      <td key={column}>{column === "who" ? <WhoCell row={row} /> : row[column]}</td>
+                      <td key={column} className={styles.cell} data-label={adminTableLabels[column]}>
+                        {column === "who" ? <WhoCell row={row} /> : row[column]}
+                      </td>
                     ))}
-                    {actions ? <td>{actions(row)}</td> : null}
+                    {actions ? (
+                      <td className={styles.cell} data-label="Actions">
+                        {actions(row)}
+                      </td>
+                    ) : null}
                   </tr>
                 ))
               )}

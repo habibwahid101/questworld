@@ -1,4 +1,4 @@
-import { passwordIssue } from "../auth/password.ts";
+import { passwordIssue, TRANSACTION_PASSWORD_MIN } from "../auth/password.ts";
 import { isAdminClaims } from "../investments/service.ts";
 import { hashTransactionPassword, verifyTransactionPassword } from "./transaction-password.ts";
 
@@ -254,7 +254,7 @@ async function setTransactionPassword(input: {
     throw new MemberRequestError(404, "member_not_found", "Create your member profile first.");
   }
   const nextPassword = transactionPasswordFromBody(input.body);
-  const issue = passwordIssue(nextPassword);
+  const issue = passwordIssue(nextPassword, TRANSACTION_PASSWORD_MIN);
   if (issue) {
     throw new MemberRequestError(400, "invalid_body", issue);
   }
@@ -509,7 +509,7 @@ function transactionPasswordFromInitialize(body: unknown): string | null {
   if (typeof value !== "string" || value.length === 0) {
     throw new MemberRequestError(400, "invalid_body", "Enter a transaction password.");
   }
-  const issue = passwordIssue(value);
+  const issue = passwordIssue(value, TRANSACTION_PASSWORD_MIN);
   if (issue) {
     throw new MemberRequestError(400, "invalid_body", issue);
   }

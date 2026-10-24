@@ -7,12 +7,14 @@ import { InvestmentClientError, listCurrentCommissions, listCurrentInvestments, 
 import {
   INVESTMENT_CURRENCY,
   INVESTMENT_SCALE,
+  availableWithdrawalMinor,
   formatUsdtAmount,
 } from "@/lib/investments/service";
 import { isMemberApiConfigured } from "@/lib/members/config";
 
 type Figures = {
   profit: number | null;
+  remaining: number | null;
   available: number | null;
   activeInvested: number | null;
   commissions: number | null;
@@ -41,8 +43,11 @@ export function WalletPanel() {
       setMessage(errors[0] ?? null);
       const investmentRows = investments.status === "fulfilled" ? investments.value : null;
       const commissionRows = commissions.status === "fulfilled" ? commissions.value : null;
+      const profitRows = profits.status === "fulfilled" ? profits.value : null;
+      const withdrawalRows = withdrawals.status === "fulfilled" ? withdrawals.value.withdrawals : null;
       setFigures({
-        profit: profits.status === "fulfilled" ? totalMinor(profits.value, (entry) => entry.profitMinor) : null,
+        profit: profitRows ? totalMinor(profitRows, (entry) => entry.profitMinor) : null,
+        remaining: profitRows && withdrawalRows ? availableWithdrawalMinor(profitRows, withdrawalRows) : null,
         available: withdrawals.status === "fulfilled" ? withdrawals.value.availableMinor : null,
         activeInvested: investmentRows ? totalMinor(investmentRows.filter((record) => record.status === "active"), (record) => record.amountMinor) : null,
         commissions: commissionRows ? totalMinor(commissionRows, (entry) => entry.commissionMinor) : null,
@@ -71,17 +76,19 @@ export function WalletPanel() {
         </p>
         {message ? <p style={{ marginTop: 16 }}>{message}</p> : null}
       </Card>
-      <div className="grid-2">
-        <AmountCard label="Investment Wallet" amountMinor={figures?.activeInvested} />
-        <AmountCard label="Profit Wallet" amountMinor={figures?.profit} />
-        <AmountCard label="Commission Wallet" amountMinor={figures?.commissions} />
+      <div className="stack">
+        <AmountCard label="Available to withdraw" amountMinor={figures?.available} />
+        <AmountCard label="Investment wallet" amountMinor={figures?.activeInvested} />
         <Card>
-          <p className="eyebrow">Available Withdrawal</p>
-          <h2>{amountText(figures?.available)}</h2>
-          <p style={{ marginTop: 12 }}>
-            <Link href="/withdraw">Withdraw</Link>
-          </p>
+          <p className="eyebrow">Return wallet</p>
+          <h2>{amountText(figures?.profit)}</h2>
+          <p>Received: {amountText(figures?.profit)}</p>
+          <p>Remaining: {amountText(figures?.remaining)}</p>
         </Card>
+        <AmountCard label="Commission wallet" amountMinor={figures?.commissions} />
+        <p>
+          <Link href="/withdraw">Withdraw</Link>
+        </p>
       </div>
     </div>
   );

@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { FormEvent, useEffect, useRef, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/Button";
 import { PasswordField } from "@/components/auth/PasswordField";
@@ -9,7 +9,7 @@ import { Field, Input, Select } from "@/components/ui/Field";
 import { useAuth } from "@/components/auth/AuthProvider";
 import { loginAccount, registerAccount } from "@/lib/auth/cognito";
 import { mapAuthError } from "@/lib/auth/errors";
-import { PASSWORD_HINT, passwordIssue } from "@/lib/auth/password";
+import { PASSWORD_HINT, passwordIssue, TRANSACTION_PASSWORD_MIN } from "@/lib/auth/password";
 import { normalizeReferralCode, rememberPendingReferral } from "@/lib/auth/referral";
 import { rememberPendingSignupProfile } from "@/lib/auth/signup-profile";
 import { countryNames } from "@/constants/countries";
@@ -22,9 +22,8 @@ export function RegisterForm() {
   const searchParams = useSearchParams();
   const { refresh } = useAuth();
   const [referralCode, setReferralCode] = useState("");
-  const [error, setError] = useState<string | null>(null);
+  const [errors, setErrors] = useState<Record<string, string>>({});
   const [submitting, setSubmitting] = useState(false);
-  const alertRef = useRef<HTMLParagraphElement>(null);
   const linkedReferral = normalizeReferralCode(searchParams.get("ref") ?? "");
   const countries = countryNames();
 
@@ -35,10 +34,11 @@ export function RegisterForm() {
   }, [linkedReferral]);
 
   useEffect(() => {
-    if (error) {
-      alertRef.current?.scrollIntoView({ block: "center" });
+    const field = Object.keys(errors)[0];
+    if (field) {
+      document.getElementById(`${field}-error`)?.scrollIntoView({ block: "center" });
     }
-  }, [error]);
+  }, [errors]);
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -58,47 +58,49 @@ export function RegisterForm() {
     const confirmTransactionPassword = String(form.get("confirmTransactionPassword") ?? "");
     const accepted = form.get("terms") === "on";
     const issue = passwordIssue(password);
-    const transactionIssue = passwordIssue(transactionPassword);
+    const transactionIssue = passwordIssue(transactionPassword, TRANSACTION_PASSWORD_MIN);
+    const nextErrors: Record<string, string> = {};
 
-    if (!firstName || !lastName || !email) {
-      setError("Enter your first name, last name, and email.");
-      return;
+    if (!firstName) {
+      nextErrors.firstName = "Enter your first name.";
+    }
+    if (!lastName) {
+      nextErrors.lastName = "Enter your last name.";
+    }
+    if (!email) {
+      nextErrors.email = "Enter your email.";
     }
     if (!/^[0-9+().\-\s]{6,32}$/.test(phone) || phone.replace(/\D/g, "").length < 6) {
-      setError("Enter a mobile number.");
-      return;
+      nextErrors.phone = "Enter a mobile number.";
     }
     if (!country) {
-      setError("Select a country.");
-      return;
+      nextErrors.country = "Select a country.";
     }
     if (issue) {
-      setError(issue);
-      return;
+      nextErrors.password = issue;
     }
     if (password !== confirmPassword) {
-      setError("Passwords do not match.");
-      return;
+      nextErrors.confirmPassword = "Passwords do not match.";
     }
     if (transactionIssue) {
-      setError(`Transaction password: ${transactionIssue}`);
-      return;
+      nextErrors.confirmTransactionPassword = transactionIssue;
     }
     if (transactionPassword !== confirmTransactionPassword) {
-      setError("Transaction passwords do not match.");
-      return;
+      nextErrors.confirmTransactionPassword = "Transaction passwords do not match.";
     }
-    if (transactionPassword === password) {
-      setError("Use a transaction password that is not your login password.");
-      return;
+    if (transactionPassword === password && transactionPassword.length > 0) {
+      nextErrors.confirmTransactionPassword = "Use a transaction password that is not your login password.";
     }
     if (!accepted) {
-      setError("Accept the Terms & Conditions and Privacy Policy to continue.");
+      nextErrors.terms = "Accept the Terms & Conditions and Privacy Policy to continue.";
+    }
+    if (Object.keys(nextErrors).length > 0) {
+      setErrors(nextErrors);
       return;
     }
 
     setSubmitting(true);
-    setError(null);
+    setErrors({});
     try {
       await registerAccount({ name: `${firstName} ${lastName}`, email, password });
       rememberPendingReferral(window.localStorage, referralCode);
@@ -108,33 +110,39 @@ export function RegisterForm() {
       await refresh();
       router.replace("/dashboard");
     } catch (caught) {
-      setError(caught instanceof MemberClientError ? caught.message : mapAuthError(caught));
+      const message = caught instanceof MemberClientError ? caught.message : mapAuthError(caught);
+      if (/already exists/i.test(message)) {
+        setErrors({ email: message });
+      } else if (/transaction password/i.test(message)) {
+        setErrors({ confirmTransactionPassword: message });
+      } else if (/password/i.test(message)) {
+        setErrors({ confirmPassword: message });
+      } else if (/mobile|phone/i.test(message)) {
+        setErrors({ phone: message });
+      } else {
+        setErrors({ email: message });
+      }
       setSubmitting(false);
     }
   }
 
   return (
     <form className="stack" onSubmit={onSubmit}>
-      {error ? (
-        <p ref={alertRef} className="form-error" role="alert">
-          {error}
-        </p>
-      ) : null}
       <div className={styles.names}>
-        <Field label="First name" htmlFor="firstName">
+        <Field label="First name" htmlFor="firstName" error={errors.firstName}>
           <Input id="firstName" name="firstName" autoComplete="given-name" required disabled={submitting} />
         </Field>
-        <Field label="Last name" htmlFor="lastName">
+        <Field label="Last name" htmlFor="lastName" error={errors.lastName}>
           <Input id="lastName" name="lastName" autoComplete="family-name" required disabled={submitting} />
         </Field>
       </div>
-      <Field label="Email Address" htmlFor="email">
+      <Field label="Email Address" htmlFor="email" error={errors.email}>
         <Input id="email" name="email" type="email" autoComplete="email" required disabled={submitting} />
       </Field>
-      <Field label="Mobile number" htmlFor="phone">
+      <Field label="Mobile number" htmlFor="phone" error={errors.phone}>
         <Input id="phone" name="phone" type="tel" autoComplete="tel" inputMode="tel" required disabled={submitting} />
       </Field>
-      <Field label="Country" htmlFor="country">
+      <Field label="Country" htmlFor="country" error={errors.country}>
         <Select id="country" name="country" autoComplete="country-name" required disabled={submitting} defaultValue="">
           <option value="">Select a country</option>
           {countries.map((country) => (
@@ -144,7 +152,7 @@ export function RegisterForm() {
           ))}
         </Select>
       </Field>
-      <Field label="Password" htmlFor="password" hint={PASSWORD_HINT}>
+      <Field label="Password" htmlFor="password" hint={PASSWORD_HINT} error={errors.password}>
         <PasswordField
           id="password"
           name="password"
@@ -153,7 +161,7 @@ export function RegisterForm() {
           disabled={submitting}
         />
       </Field>
-      <Field label="Confirm Password" htmlFor="confirmPassword">
+      <Field label="Confirm Password" htmlFor="confirmPassword" error={errors.confirmPassword}>
         <PasswordField
           id="confirmPassword"
           name="confirmPassword"
@@ -171,7 +179,7 @@ export function RegisterForm() {
           disabled={submitting}
         />
       </Field>
-      <Field label="Confirm transaction password" htmlFor="confirmTransactionPassword">
+      <Field label="Confirm transaction password" htmlFor="confirmTransactionPassword" error={errors.confirmTransactionPassword}>
         <PasswordField
           id="confirmTransactionPassword"
           name="confirmTransactionPassword"
@@ -201,6 +209,11 @@ export function RegisterForm() {
           <Link href="/privacy">Privacy Policy</Link>.
         </span>
       </label>
+      {errors.terms ? (
+        <p className="form-error" role="alert">
+          {errors.terms}
+        </p>
+      ) : null}
       <Button type="submit" disabled={submitting} aria-busy={submitting}>
         {submitting ? "Please wait…" : "Create Account"}
       </Button>

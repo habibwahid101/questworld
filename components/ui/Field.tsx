@@ -4,16 +4,22 @@ type FieldProps = {
   label: string;
   htmlFor: string;
   hint?: string;
+  error?: string | null;
   children: React.ReactNode;
 };
 
-export function Field({ label, htmlFor, hint, children }: FieldProps) {
+export function Field({ label, htmlFor, hint, error, children }: FieldProps) {
   return (
     <div className={styles.field}>
       <label className={styles.label} htmlFor={htmlFor}>
         {label}
       </label>
       {children}
+      {error ? (
+        <p className="form-error" role="alert" id={`${htmlFor}-error`}>
+          {error}
+        </p>
+      ) : null}
       {hint ? <p className={styles.hint}>{hint}</p> : null}
     </div>
   );

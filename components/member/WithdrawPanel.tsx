@@ -29,6 +29,9 @@ export function WithdrawPanel() {
   const [transactionPassword, setTransactionPassword] = useState("");
   const [transactionPasswordSet, setTransactionPasswordSet] = useState<boolean | null>(null);
   const [amountText, setAmountText] = useState("");
+  const [walletText, setWalletText] = useState("");
+  const [amountError, setAmountError] = useState<string | null>(null);
+  const [passwordError, setPasswordError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     const [withdrawals, profile] = await Promise.allSettled([listCurrentWithdrawals(), readCurrentMember()]);
@@ -77,16 +80,24 @@ export function WithdrawPanel() {
     }
     setSaving(true);
     setMessage(null);
+    setAmountError(null);
+    setPasswordError(null);
     setStatusNote(null);
     try {
       await requestCurrentWithdrawal(amountMinor, transactionPassword);
       setAmountText("");
+      setWalletText("");
       setTransactionPassword("");
       const error = await load();
       setStatusNote(error ? null : "Withdrawal requested.");
     } catch (caught) {
       setStatusNote(null);
-      setMessage(errorMessage(caught, "Could not save that withdrawal request."));
+      const text = errorMessage(caught, "Could not save that withdrawal request.");
+      if (/password/i.test(text)) {
+        setPasswordError(text);
+      } else {
+        setAmountError(text);
+      }
     } finally {
       setSaving(false);
       setLoading(false);
@@ -114,47 +125,56 @@ export function WithdrawPanel() {
           Request the available posted profit. This does not pay out.
         </p>
         <p style={{ marginTop: 10 }}>Available {loading ? "…" : formatUsdtAmount(availableMinor)}</p>
-        <Field label="Amount" htmlFor="withdrawal-amount">
+        <Field label="Amount" htmlFor="withdrawal-amount" error={amountError ?? amountAlert}>
           <Input
             id="withdrawal-amount"
             inputMode="decimal"
             autoComplete="off"
             value={amountText}
-            onChange={(event) => setAmountText(event.target.value)}
+            onChange={(event) => {
+              setAmountText(event.target.value);
+              setAmountError(null);
+            }}
             disabled={saving || loading}
           />
         </Field>
-        {amountAlert ? (
-          <p className="form-error" role="alert">
-            {amountAlert}
-          </p>
-        ) : null}
+        <Field label="Transaction wallet" htmlFor="withdrawal-wallet">
+          <Input
+            id="withdrawal-wallet"
+            autoComplete="off"
+            value={walletText}
+            onChange={(event) => setWalletText(event.target.value)}
+            disabled={saving || loading}
+          />
+        </Field>
         {transactionPasswordSet === false ? (
-          <p style={{ marginTop: 16 }}>
+          <p>
             Set a transaction password first. It is used only to confirm withdrawals.{" "}
             <Link className={styles.profileLink} href="/profile#transaction-password">
               Profile
             </Link>
           </p>
         ) : null}
-        {amountReady && transactionPasswordSet ? (
-          <Field label="Transaction password" htmlFor="withdrawal-transaction-password">
+        {transactionPasswordSet ? (
+          <Field label="Transaction password" htmlFor="withdrawal-transaction-password" error={passwordError}>
             <PasswordField
               id="withdrawal-transaction-password"
               autoComplete="off"
               value={transactionPassword}
-              onChange={(event) => setTransactionPassword(event.target.value)}
+              onChange={(event) => {
+                setTransactionPassword(event.target.value);
+                setPasswordError(null);
+              }}
               disabled={saving || loading}
             />
           </Field>
         ) : null}
+        {statusNote ? (
+          <p role="status">{statusNote}</p>
+        ) : null}
         {message ? (
-          <p className="form-error" role="alert" style={{ marginTop: 16 }}>
+          <p className="form-error" role="alert">
             {message}
-          </p>
-        ) : statusNote ? (
-          <p role="status" style={{ marginTop: 16 }}>
-            {statusNote}
           </p>
         ) : null}
         {transactionPasswordSet ? (

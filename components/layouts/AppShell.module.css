@@ -55,13 +55,6 @@
   min-width: 0;
 }
 
-.subtitle {
-  color: var(--color-text-soft);
-  font-size: 0.68rem;
-  font-weight: 650;
-  letter-spacing: 0.06em;
-}
-
 .clock {
   color: var(--color-text-soft);
   font-size: 0.85rem;

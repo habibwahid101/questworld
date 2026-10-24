@@ -118,7 +118,7 @@ test("the admin switch is only a shell target", () => {
   const site = readFileSync(new URL("../constants/site.ts", import.meta.url), "utf8");
   const memberShell = readFileSync(new URL("../components/member/MemberShell.tsx", import.meta.url), "utf8");
   const actions = shell.slice(shell.indexOf("styles.topActions"), shell.indexOf("styles.mobileNav"));
-  assert.match(actions, /shellSwitch/);
+  assert.doesNotMatch(actions, /shellSwitch|HeaderClock|aria-label="Notifications"/);
   assert.match(actions, /aria-label="Menu"/);
   assert.match(actions, /menuIcon/);
   assert.doesNotMatch(actions, />\s*Menu\s*</);
@@ -131,12 +131,15 @@ test("the admin switch is only a shell target", () => {
   const menu = shell.slice(shell.indexOf("styles.mobileNav"));
   const profileOrder = shell.indexOf("items.map");
   const mobileLogout = shell.indexOf("styles.mobileLogout");
+  const adminSwitch = menu.indexOf("shellSwitch");
   assert.ok(profileOrder !== -1 && profileOrder < mobileLogout);
+  assert.ok(menu.indexOf("styles.mobileLogout") < adminSwitch);
   assert.match(menu, /styles\.mobileLogout/);
+  assert.match(menu, /shellSwitch\.label/);
   assert.match(site, /href: "\/profile", label: "Profile"/);
   assert.match(css, /\.topLogout\s*\{\s*display:\s*none;/);
   assert.match(css, /@media \(min-width: 960px\)[\s\S]*\.topLogout\s*\{\s*display:\s*inline-flex;/);
-  assert.match(css, /@media \(min-width: 960px\)[\s\S]*\.mobileNav\s*\{\s*display:\s*none;/);
+  assert.doesNotMatch(css, /@media \(min-width: 960px\)[\s\S]*\.mobileNav\s*\{\s*display:\s*none;/);
   assert.doesNotMatch(css, /\.phoneBar/);
 });
 

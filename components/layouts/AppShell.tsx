@@ -65,16 +65,7 @@ export function AppShell({ title, pageLabel, homeHref, items, children }: AppShe
             {pageLabel ? <span className="sr-only">{pageLabel}</span> : null}
           </div>
           <div className={styles.topActions}>
-            <HeaderClock />
-            <button className={styles.iconButton} type="button" aria-label="Notifications">
-              <BellIcon />
-            </button>
             <HeaderAvatar />
-            {shellSwitch ? (
-              <Link className={styles.logoutButton} href={shellSwitch.href}>
-                {shellSwitch.label}
-              </Link>
-            ) : null}
             <button className={classNames(styles.logoutButton, styles.topLogout)} type="button" onClick={() => void onLogout()} disabled={signingOut} aria-busy={signingOut}>
               {signingOut ? "Please wait…" : "Log out"}
             </button>
@@ -101,28 +92,16 @@ export function AppShell({ title, pageLabel, homeHref, items, children }: AppShe
             <button className={styles.mobileLogout} type="button" onClick={() => void onLogout()} disabled={signingOut} aria-busy={signingOut}>
               {signingOut ? "Please wait…" : "Log out"}
             </button>
+            {shellSwitch ? (
+              <Link href={shellSwitch.href} onClick={() => setOpen(false)}>
+                {shellSwitch.label}
+              </Link>
+            ) : null}
           </nav>
         ) : null}
         <div className={styles.content}>{children}</div>
       </div>
     </div>
-  );
-}
-
-function HeaderClock() {
-  const [label, setLabel] = useState("");
-
-  useEffect(() => {
-    const tick = () => setLabel(new Date().toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }));
-    tick();
-    const timer = window.setInterval(tick, 30000);
-    return () => window.clearInterval(timer);
-  }, []);
-
-  return (
-    <time className={styles.clock} dateTime={label}>
-      {label}
-    </time>
   );
 }
 
@@ -160,19 +139,5 @@ function HeaderAvatar() {
     <span className={styles.avatar} aria-hidden="true">
       {initial}
     </span>
-  );
-}
-
-function BellIcon() {
-  return (
-    <svg className={styles.menuIcon} viewBox="0 0 24 24" aria-hidden="true">
-      <path
-        d="M6 16h12l-1.2-2.2a6 6 0 0 1-.8-3V9a4 4 0 1 0-8 0v1.8a6 6 0 0 1-.8 3L6 16z"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="1.8"
-      />
-      <path d="M10 17a2 2 0 0 0 4 0" fill="none" stroke="currentColor" strokeWidth="1.8" />
-    </svg>
   );
 }

@@ -34,7 +34,7 @@ export const metadata: Metadata = {
     siteName: brand.name,
     type: "website",
     url: "/",
-    images: [{ url: shareImage, width: 1000, height: 300, alt: brand.name }],
+    images: [{ url: shareImage, width: 32, height: 32, alt: brand.name }],
   },
   twitter: {
     card: "summary_large_image",

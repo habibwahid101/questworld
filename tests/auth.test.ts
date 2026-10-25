@@ -252,3 +252,16 @@ test("explicit public env overrides the deployed cognito configuration", () => {
   assert.equal(config.clientId, "overrideclientid1");
   assert.equal(isAuthConfigured(config), true);
 });
+
+test("share links use the full logo and the favicon stays a separate icon", () => {
+  const metadata = readFileSync(new URL("../utils/metadata.ts", import.meta.url), "utf8");
+  const layout = readFileSync(new URL("../app/layout.tsx", import.meta.url), "utf8");
+  const brand = readFileSync(new URL("../components/ui/BrandMark.tsx", import.meta.url), "utf8");
+  assert.match(metadata, /https:\/\/main\.d1xja8a1py5jgx\.amplifyapp\.com/);
+  assert.match(metadata, /\/brand\/logo\.png/);
+  assert.match(metadata, /images: shareImages/);
+  assert.match(layout, /shareImage/);
+  assert.match(layout, /apple-touch-icon\.png/);
+  assert.match(layout, /favicon\.ico/);
+  assert.match(brand, /\/brand\/logo\.png/);
+});

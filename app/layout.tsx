@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { AuthProvider } from "@/components/auth/AuthProvider";
 import { brand } from "@/constants/site";
-import { siteMetadataBase } from "@/utils/metadata";
+import { shareImage, siteMetadataBase } from "@/utils/metadata";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -34,9 +34,21 @@ export const metadata: Metadata = {
     siteName: brand.name,
     type: "website",
     url: "/",
+    images: [{ url: shareImage, width: 1000, height: 300, alt: brand.name }],
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: brand.name,
+    description:
+      "Listed investment plans from $100, monthly earnings tracking, and a two-generation referral program.",
+    images: [shareImage],
   },
   icons: {
-    icon: "/favicon.ico",
+    icon: [
+      { url: "/favicon.ico" },
+      { url: "/icon.png", type: "image/png", sizes: "32x32" },
+    ],
+    apple: [{ url: "/apple-touch-icon.png", sizes: "180x180", type: "image/png" }],
   },
 };
 

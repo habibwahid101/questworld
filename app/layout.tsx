@@ -34,7 +34,7 @@ export const metadata: Metadata = {
     siteName: brand.name,
     type: "website",
     url: "/",
-    images: [{ url: shareImage, width: 32, height: 32, alt: brand.name }],
+    images: [{ url: shareImage, width: 1024, height: 1024, alt: brand.name }],
   },
   twitter: {
     card: "summary_large_image",
@@ -46,7 +46,7 @@ export const metadata: Metadata = {
   icons: {
     icon: [
       { url: "/favicon.ico" },
-      { url: "/icon.png", type: "image/png", sizes: "32x32" },
+      { url: "/icon.png", type: "image/png", sizes: "1024x1024" },
     ],
     apple: [{ url: "/apple-touch-icon.png", sizes: "180x180", type: "image/png" }],
   },

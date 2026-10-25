@@ -7,7 +7,7 @@ const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? PRODUCTION_ORIGIN;
 export const siteMetadataBase = new URL(siteUrl);
 export const shareImage = "/icon.png";
 
-const shareImages = [{ url: shareImage, width: 32, height: 32, alt: brand.name }];
+const shareImages = [{ url: shareImage, width: 1024, height: 1024, alt: brand.name }];
 
 export function pageMetadata(title: string, description: string, path: string): Metadata {
   const url = new URL(path, siteMetadataBase).toString();

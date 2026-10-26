@@ -29,8 +29,10 @@ export function InvestmentPaymentPanel({ investmentId }: { investmentId: string 
   const [wallets, setWallets] = useState<DepositWallets>({ bep20: "", trc20: "" });
   const [reference, setReference] = useState("");
   const [screenshot, setScreenshot] = useState<File | null>(null);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [copiedNetwork, setCopiedNetwork] = useState<"BEP20" | "TRC20" | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+  const [submittedNote, setSubmittedNote] = useState<string | null>(null);
   const [loading, setLoading] = useState(isMemberApiConfigured());
   const [submitting, setSubmitting] = useState(false);
   const depositKey = useRef<string | null>(null);
@@ -66,6 +68,16 @@ export function InvestmentPaymentPanel({ investmentId }: { investmentId: string 
     };
   }, [load]);
 
+  useEffect(() => {
+    if (!screenshot) {
+      setPreviewUrl(null);
+      return;
+    }
+    const url = URL.createObjectURL(screenshot);
+    setPreviewUrl(url);
+    return () => URL.revokeObjectURL(url);
+  }, [screenshot]);
+
   async function submitReference() {
     if (!investment || submitting || investment.status !== "awaiting_deposit") {
       return;
@@ -80,6 +92,11 @@ export function InvestmentPaymentPanel({ investmentId }: { investmentId: string 
       depositKey.current = null;
       setInvestment(saved);
       setScreenshot(null);
+      setSubmittedNote(
+        proof
+          ? "Reference and screenshot received. They are pending verification. This does not move money."
+          : "Reference received. It is pending verification. This does not move money.",
+      );
     } catch (caught) {
       const error = caught instanceof InvestmentClientError ? caught : new InvestmentClientError("investment_request_failed", "Could not save that deposit reference.");
       setMessage(error.message);
@@ -109,7 +126,16 @@ export function InvestmentPaymentPanel({ investmentId }: { investmentId: string 
         <p style={{ marginTop: 12 }}>
           <Link href="/investments">Back to investments</Link>
         </p>
-        {message ? <p style={{ marginTop: 16 }}>{message}</p> : null}
+        {message ? (
+          <p className="form-error" role="alert" style={{ marginTop: 16 }}>
+            {message}
+          </p>
+        ) : null}
+        {submittedNote ? (
+          <p role="status" style={{ marginTop: 16 }}>
+            {submittedNote}
+          </p>
+        ) : null}
       </Card>
       {loading ? (
         <Card>
@@ -130,6 +156,7 @@ export function InvestmentPaymentPanel({ investmentId }: { investmentId: string 
               wallets={wallets}
               onReference={setReference}
               onScreenshot={setScreenshot}
+              previewUrl={previewUrl}
               onCopy={async (network, address) => {
                 await navigator.clipboard.writeText(address);
                 setCopiedNetwork(network);
@@ -153,6 +180,7 @@ function DepositReferenceForm({
   wallets,
   onReference,
   onScreenshot,
+  previewUrl,
   onCopy,
   onSubmit,
 }: {
@@ -163,6 +191,7 @@ function DepositReferenceForm({
   wallets: DepositWallets;
   onReference: (value: string) => void;
   onScreenshot: (file: File | null) => void;
+  previewUrl: string | null;
   onCopy: (network: "BEP20" | "TRC20", address: string) => Promise<void>;
   onSubmit: () => void;
 }) {
@@ -196,6 +225,11 @@ function DepositReferenceForm({
         onChange={(event) => onScreenshot(event.target.files?.[0] ?? null)}
         style={{ display: "block", marginTop: 8 }}
       />
+      {previewUrl ? (
+        // The preview is a local file the member just selected. It is not a remote image.
+        // eslint-disable-next-line @next/next/no-img-element
+        <img className={styles.preview} src={previewUrl} alt="Selected screenshot preview" />
+      ) : null}
       <Button type="submit" disabled={submitting} aria-busy={submitting} style={{ marginTop: 12 }}>
         {submitting ? "Submitting…" : "Submit reference"}
       </Button>

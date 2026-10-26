@@ -253,6 +253,81 @@ test("the member list read scans only the members table and does not delete", ()
   assert.doesNotMatch(membersPolicy, /new dynamodb\.Table/);
 });
 
+test("a second registration with the same email or mobile number is rejected", async () => {
+  const store = createMemoryMemberStore();
+  const first = await handleMemberApi({
+    method: "POST",
+    path: "/me/initialize",
+    claims: { sub: "user-a", email: "ada@example.com", name: "Ada Lovelace" },
+    body: { firstName: "Ada", lastName: "Lovelace", phone: "+1 555 0100" },
+    store,
+    now: () => NOW,
+    newReferralCode: () => "QWADA00001",
+  });
+  assert.equal(first.statusCode, 200);
+
+  const sameEmail = await handleMemberApi({
+    method: "POST",
+    path: "/me/initialize",
+    claims: { sub: "user-b", email: "Ada@Example.com", name: "Other" },
+    body: { firstName: "Other", lastName: "Person", phone: "+44 7700 900123" },
+    store,
+    now: () => NOW,
+    newReferralCode: () => "QWOTH00001",
+  });
+  assert.equal(sameEmail.statusCode, 409);
+  assert.equal(sameEmail.body.message, "An account with this email already exists.");
+  assert.equal(await store.getByUserId("user-b"), null);
+
+  const samePhone = await handleMemberApi({
+    method: "POST",
+    path: "/me/initialize",
+    claims: { sub: "user-c", email: "grace@example.com", name: "Grace" },
+    body: { firstName: "Grace", lastName: "Hopper", phone: "1 (555) 0100" },
+    store,
+    now: () => NOW,
+    newReferralCode: () => "QWGRA00001",
+  });
+  assert.equal(samePhone.statusCode, 409);
+  assert.equal(samePhone.body.message, "An account with this mobile number already exists.");
+  assert.equal(await store.getByUserId("user-c"), null);
+
+  const kept = await store.getByUserId("user-a");
+  assert.equal(kept?.email, "ada@example.com");
+  assert.equal(kept?.phone, "+1 555 0100");
+
+  const again = await handleMemberApi({
+    method: "POST",
+    path: "/me/initialize",
+    claims: { sub: "user-a", email: "ada@example.com", name: "Ada Lovelace" },
+    body: { firstName: "Changed", lastName: "Name", phone: "+44 7700 900999" },
+    store,
+    now: () => NOW,
+  });
+  assert.equal(again.statusCode, 200);
+  assert.equal((await store.getByUserId("user-a"))?.firstName, "Ada");
+  assert.equal((await store.getByUserId("user-a"))?.phone, "+1 555 0100");
+
+  const lambda = readFileSync(new URL("../infrastructure/lambda/members/index.ts", import.meta.url), "utf8");
+  const stack = readFileSync(new URL("../infrastructure/lib/api-stack.ts", import.meta.url), "utf8");
+  assert.match(lambda, /findRegistrationConflict/);
+  assert.match(lambda, /EMAIL#/);
+  assert.match(lambda, /PHONE#/);
+  assert.doesNotMatch(lambda, /addGlobalSecondaryIndex|new dynamodb\.Table/);
+  assert.doesNotMatch(stack, /addGlobalSecondaryIndex/);
+  const payment = readFileSync(new URL("../components/member/InvestmentPaymentPanel.tsx", import.meta.url), "utf8");
+  assert.match(payment, /Selected screenshot preview/);
+  assert.match(payment, /Reference and screenshot received/);
+  assert.match(payment, /pending verification/);
+  const shell = readFileSync(new URL("../components/layouts/AppShell.tsx", import.meta.url), "utf8");
+  const css = readFileSync(new URL("../app/globals.css", import.meta.url), "utf8");
+  assert.match(shell, /Switch to night mode/);
+  assert.match(shell, /qw-theme/);
+  assert.ok(shell.indexOf("ThemeToggle") < shell.indexOf("<HeaderAvatar"));
+  assert.match(css, /data-theme="dark"/);
+  assert.match(css, /--color-accent: #c81e4a/);
+});
+
 test("signup stores both names and the mobile number without changing an existing profile", async () => {
   const store = createMemoryMemberStore();
   const created = await initialize(

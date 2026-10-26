@@ -89,6 +89,7 @@ export function InvestmentsPanel() {
         <p className="lead" style={{ marginTop: 12 }}>
           Choose a listed plan to record an investment. This does not move money.
         </p>
+        <p className={styles.rate}>{planMonthlyRateLabel()}</p>
         <div className={styles.plans}>
           {(Object.keys(investmentCatalog) as PlanId[]).map((planId) => {
             const plan = investmentCatalog[planId];
@@ -97,7 +98,6 @@ export function InvestmentsPanel() {
                 <p className="eyebrow">{plan.planName}</p>
                 <h2>{formatUsdtAmount(plan.amountMinor)}</h2>
                 <p className={styles.description}>{PLAN_DESCRIPTIONS[planId]}</p>
-                <p className={styles.rate}>{planMonthlyRateLabel()}</p>
                 <Button
                   type="button"
                   disabled={savingPlan !== null}

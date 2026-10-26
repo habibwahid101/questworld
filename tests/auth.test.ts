@@ -58,7 +58,7 @@ test("password policy is at least 6 characters", () => {
 
 test("auth errors stay user-safe", () => {
   assert.equal(mapAuthError({ name: "NotAuthorizedException", message: "raw cognito text" }), "Email or password is incorrect.");
-  assert.equal(mapAuthError({ name: "UsernameExistsException" }), "An account with this email already exists. Try logging in.");
+  assert.equal(mapAuthError({ name: "UsernameExistsException" }), "An account with this email already exists. Try logging in. If you can sign in but your member profile was never created, logging in finishes setup.");
   assert.match(mapAuthError({ name: "ExpiredCodeException" }), /expired/i);
   assert.equal(mapAuthError(new Error("Failed to fetch")), "We could not reach the authentication service. Check your connection and try again.");
   assert.equal(mapAuthError({ name: "SomethingElse", message: "User pool abc leaked" }), "Something went wrong. Please try again.");

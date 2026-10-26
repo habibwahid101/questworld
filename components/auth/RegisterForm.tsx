@@ -170,24 +170,30 @@ export function RegisterForm() {
           disabled={submitting}
         />
       </Field>
-      <Field label="Transaction password" htmlFor="transactionPassword" hint="Used only to confirm a withdrawal. Not your login password.">
-        <PasswordField
-          id="transactionPassword"
-          name="transactionPassword"
-          autoComplete="new-password"
-          required
-          disabled={submitting}
-        />
-      </Field>
-      <Field label="Confirm transaction password" htmlFor="confirmTransactionPassword" error={errors.confirmTransactionPassword}>
-        <PasswordField
-          id="confirmTransactionPassword"
-          name="confirmTransactionPassword"
-          autoComplete="new-password"
-          required
-          disabled={submitting}
-        />
-      </Field>
+      <section className={styles.transactionSection} aria-labelledby="transaction-password-heading">
+        <div>
+          <h2 id="transaction-password-heading" className={styles.transactionHeading}>Transaction password</h2>
+          <p className={styles.transactionNote}>Used only to confirm a withdrawal. Not your login password.</p>
+        </div>
+        <Field label="Transaction password" htmlFor="transactionPassword">
+          <PasswordField
+            id="transactionPassword"
+            name="transactionPassword"
+            autoComplete="new-password"
+            required
+            disabled={submitting}
+          />
+        </Field>
+        <Field label="Confirm transaction password" htmlFor="confirmTransactionPassword" error={errors.confirmTransactionPassword}>
+          <PasswordField
+            id="confirmTransactionPassword"
+            name="confirmTransactionPassword"
+            autoComplete="new-password"
+            required
+            disabled={submitting}
+          />
+        </Field>
+      </section>
       <Field
         label="Referral Code — Optional"
         htmlFor="referralCode"

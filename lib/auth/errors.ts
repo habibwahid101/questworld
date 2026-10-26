@@ -24,7 +24,7 @@ export function mapAuthError(error: unknown): string {
     case "UserNotFoundException":
       return "Email or password is incorrect.";
     case "UsernameExistsException":
-      return "An account with this email already exists. Try logging in.";
+      return "An account with this email already exists. Try logging in. If you can sign in but your member profile was never created, logging in finishes setup.";
     case "InvalidPasswordException":
       return "Password must be at least 6 characters.";
     case "InvalidParameterException":

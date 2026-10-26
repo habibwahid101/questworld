@@ -21,7 +21,7 @@ export default function PlansPage() {
           <h1>Choose a listed allocation</h1>
           <p className="lead" style={{ marginTop: 12 }}>
             Each plan is paid by manual USDT transfer and activated after admin
-            verification. {yearlyReturnCopy}
+            verification.
           </p>
         </div>
         <div className="grid-2">
@@ -36,7 +36,6 @@ export default function PlansPage() {
                   {formatUsd(plan.amountUsd)}
                 </p>
                 <p style={{ marginTop: 10 }}>{plan.summary}</p>
-                <p style={{ marginTop: 16 }}>{yearlyReturnCopy}</p>
                 <ul className="stack" style={{ marginTop: 16, paddingLeft: 18 }}>
                   <li>Referral eligible</li>
                   <li>USDT payment</li>
@@ -48,13 +47,13 @@ export default function PlansPage() {
             );
           })}
         </div>
+        <p className="lead">{yearlyReturnCopy}</p>
         <div className="table-wrap">
           <table>
             <thead>
               <tr>
                 <th>Plan</th>
                 <th>Amount</th>
-                <th>Return</th>
               </tr>
             </thead>
             <tbody>
@@ -62,7 +61,6 @@ export default function PlansPage() {
                 <tr key={plan.id}>
                   <td>{plan.name}</td>
                   <td>{formatUsd(plan.amountUsd)}</td>
-                  <td>{yearlyReturnCopy}</td>
                 </tr>
               ))}
             </tbody>

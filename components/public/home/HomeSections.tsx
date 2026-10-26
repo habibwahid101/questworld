@@ -23,7 +23,6 @@ function PlanCard({ plan }: { plan: InvestmentPlan }) {
       </div>
       <p className={styles.planAmount}>{formatUsd(plan.amountUsd)}</p>
       <div className={styles.planMeta}>
-        <p>{yearlyReturnCopy}</p>
         <p>Referral eligible</p>
         <p>USDT payment</p>
       </div>
@@ -68,7 +67,6 @@ export function HeroSection() {
               <div className={styles.metricValue}>Double in a year</div>
             </div>
           </div>
-          <p className={styles.heroNote}>{yearlyReturnCopy}</p>
         </div>
       </div>
     </section>
@@ -129,15 +127,13 @@ export function PlansSection() {
         <div>
           <p className="eyebrow">Investment plans</p>
           <h2>Four listed allocations.</h2>
-          <p className="lead">
-            {yearlyReturnCopy}
-          </p>
         </div>
         <div className={styles.planGrid}>
           {investmentPlans.map((plan) => (
             <PlanCard key={plan.id} plan={plan} />
           ))}
         </div>
+        <p className="lead">{yearlyReturnCopy}</p>
       </div>
     </section>
   );
@@ -154,7 +150,7 @@ export function EarningsExampleSection() {
             <p className="eyebrow">Return</p>
             <h2>Double in a year.</h2>
             <p className="lead" style={{ marginTop: 12 }}>
-              {yearlyReturnCopy}
+              A simple period example for a listed allocation. This is not a payout.
             </p>
           </div>
           <Card>

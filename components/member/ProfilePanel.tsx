@@ -339,7 +339,7 @@ export function ProfilePanel() {
           <Field label="Name" htmlFor="profile-name" error={profileFieldError}>
             <Input id="profile-name" value={name} onChange={(event) => setName(event.target.value)} required maxLength={80} />
           </Field>
-          <Field label="Phone" htmlFor="profile-phone" hint="Optional">
+          <Field label="Mobile number" htmlFor="profile-phone" hint="Optional">
             <Input id="profile-phone" value={phone} onChange={(event) => setPhone(event.target.value)} maxLength={32} />
           </Field>
           <Field label="Country" htmlFor="profile-country" hint="Optional">

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { Card } from "@/components/ui/Card";
 import {
   InvestmentClientError,
@@ -14,7 +14,9 @@ import {
   INVESTMENT_SCALE,
   availableWithdrawalMinor,
   formatUsdtAmount,
+  type CommissionEntry,
   type InvestmentRecord,
+  type WithdrawalRequest,
 } from "@/lib/investments/service";
 import { readCurrentMember, readCurrentProfilePhoto, uploadCurrentProfilePhoto } from "@/lib/members/client";
 import { isMemberApiConfigured } from "@/lib/members/config";
@@ -31,12 +33,19 @@ type Figures = {
   activeDate: string | null;
 };
 
+type HistoryLists = {
+  investments: InvestmentRecord[] | null;
+  withdrawals: WithdrawalRequest[] | null;
+  commissions: CommissionEntry[] | null;
+};
+
 export function DashboardPanel() {
   const [profile, setProfile] = useState<MemberProfile | null>(null);
   const [photoUrl, setPhotoUrl] = useState<string | null>(null);
   const [photoError, setPhotoError] = useState<string | null>(null);
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const [figures, setFigures] = useState<Figures | null>(null);
+  const [history, setHistory] = useState<HistoryLists>({ investments: null, withdrawals: null, commissions: null });
   const [message, setMessage] = useState<string | null>(null);
 
   useEffect(() => {
@@ -62,6 +71,11 @@ export function DashboardPanel() {
       const profitRows = profits.status === "fulfilled" ? profits.value : null;
       const commissionRows = commissions.status === "fulfilled" ? commissions.value : null;
       const withdrawalRows = withdrawals.status === "fulfilled" ? withdrawals.value.withdrawals : null;
+      setHistory({
+        investments: investmentRows,
+        withdrawals: withdrawalRows,
+        commissions: commissionRows,
+      });
       setFigures({
         received: profitRows ? totalMinor(profitRows, (entry) => entry.profitMinor) : null,
         remaining: profitRows && withdrawalRows ? availableWithdrawalMinor(profitRows, withdrawalRows) : null,
@@ -159,24 +173,122 @@ export function DashboardPanel() {
           </p>
         ) : null}
       </Card>
-      <AmountCard label="Available to withdraw" amountMinor={figures?.available} />
-      <AmountCard label="Investment wallet" amountMinor={figures?.activeInvested} />
-      <Card className={styles.wallet}>
-        <p className="eyebrow">Return wallet</p>
-        <h2 className={styles.amount}>{amountText(figures?.received)}</h2>
-        <p className={styles.line}>Received: {amountText(figures?.received)}</p>
-        <p className={styles.line}>Remaining: {amountText(figures?.remaining)}</p>
-      </Card>
-      <AmountCard label="Commission wallet" amountMinor={figures?.generationReceived} />
+      <ExpandableAmountCard
+        label="Available to withdraw"
+        amountMinor={figures?.available}
+        historyLabel="Withdraw history"
+        empty="No withdrawal requests yet."
+      >
+        {history.withdrawals?.map((request) => (
+          <p key={request.withdrawalId} className={styles.historyLine}>
+            {formatUsdtAmount(request.amountMinor, request.scale)} · {request.status} · {formatWhen(request.createdAt)}
+          </p>
+        ))}
+      </ExpandableAmountCard>
+      <ExpandableAmountCard
+        label="Investment wallet"
+        amountMinor={figures?.activeInvested}
+        historyLabel="Investment history"
+        empty="No investments yet."
+      >
+        {history.investments?.map((investment) => (
+          <p key={investment.investmentId} className={styles.historyLine}>
+            {investment.planName} · {formatUsdtAmount(investment.amountMinor, investment.scale)} · {investment.status} · {formatWhen(investment.createdAt)}
+          </p>
+        ))}
+      </ExpandableAmountCard>
+      <ExpandableCard
+        label="Return wallet"
+        summary={
+          <>
+            <h2 className={styles.amount}>{amountText(figures?.received)}</h2>
+            <p className={styles.line}>Received: {amountText(figures?.received)}</p>
+            <p className={styles.line}>Remaining: {amountText(figures?.remaining)}</p>
+          </>
+        }
+        historyLabel="Withdraw history"
+        empty="No withdrawal requests yet."
+      >
+        {history.withdrawals?.map((request) => (
+          <p key={`return-${request.withdrawalId}`} className={styles.historyLine}>
+            {formatUsdtAmount(request.amountMinor, request.scale)} · {request.status} · {formatWhen(request.createdAt)}
+          </p>
+        ))}
+      </ExpandableCard>
+      <ExpandableAmountCard
+        label="Commission wallet"
+        amountMinor={figures?.generationReceived}
+        historyLabel="Referral / Commission history"
+        empty="No commission entries yet."
+      >
+        {history.commissions?.map((entry) => (
+          <p key={`${entry.investmentId}-${entry.period}-${entry.generation}`} className={styles.historyLine}>
+            Generation {entry.generation} · {formatUsdtAmount(entry.commissionMinor, entry.scale)} · {entry.planName} · {entry.period}
+          </p>
+        ))}
+      </ExpandableAmountCard>
     </div>
   );
 }
 
-function AmountCard({ label, amountMinor }: { label: string; amountMinor: number | null | undefined }) {
+function ExpandableAmountCard({
+  label,
+  amountMinor,
+  historyLabel,
+  empty,
+  children,
+}: {
+  label: string;
+  amountMinor: number | null | undefined;
+  historyLabel: string;
+  empty: string;
+  children?: ReactNode;
+}) {
+  return (
+    <ExpandableCard
+      label={label}
+      summary={<h2 className={styles.amount}>{amountText(amountMinor)}</h2>}
+      historyLabel={historyLabel}
+      empty={empty}
+    >
+      {children}
+    </ExpandableCard>
+  );
+}
+
+function ExpandableCard({
+  label,
+  summary,
+  historyLabel,
+  empty,
+  children,
+}: {
+  label: string;
+  summary: ReactNode;
+  historyLabel: string;
+  empty: string;
+  children?: ReactNode;
+}) {
+  const [open, setOpen] = useState(false);
+  const items = Array.isArray(children) ? children.filter(Boolean) : children ? [children] : [];
+
   return (
     <Card className={styles.wallet}>
-      <p className="eyebrow">{label}</p>
-      <h2 className={styles.amount}>{amountText(amountMinor)}</h2>
+      <button className={styles.expandTrigger} type="button" aria-expanded={open} onClick={() => setOpen((value) => !value)}>
+        <div className={styles.expandCopy}>
+          <p className="eyebrow">{label}</p>
+          {summary}
+        </div>
+        <span className={styles.expandIcon} aria-hidden="true">
+          {open ? "–" : "+"}
+        </span>
+      </button>
+      {open ? (
+        <div className={styles.history}>
+          <p className={styles.historyHeading}>{historyLabel}</p>
+          {items.length === 0 ? <p className={styles.historyLine}>{empty}</p> : items}
+        </div>
+      ) : null}
     </Card>
   );
 }

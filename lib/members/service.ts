@@ -51,7 +51,7 @@ export type MemberIdentity = {
   name: string;
 };
 
-export type CreateResult = "created" | "exists" | "referral-taken";
+export type CreateResult = "created" | "exists" | "referral-taken" | "email-taken" | "phone-taken";
 
 export type ProfilePatch = {
   name?: string;
@@ -64,6 +64,7 @@ export type MemberStore = {
   getByUserId(userId: string): Promise<MemberRecord | null>;
   getUserIdByReferralCode(code: string): Promise<string | null>;
   listMembers(): Promise<MemberRecord[]>;
+  findRegistrationConflict(input: { userId: string; email: string; phone: string | null }): Promise<"email" | "phone" | null>;
   createMember(member: MemberRecord): Promise<CreateResult>;
   updateProfile(userId: string, patch: ProfilePatch): Promise<MemberRecord | null>;
   setTransactionPassword(userId: string, hash: string, updatedAt: string): Promise<MemberRecord | null>;
@@ -175,6 +176,18 @@ export async function initializeMember(input: {
     return existing;
   }
 
+  const conflict = await input.store.findRegistrationConflict({
+    userId: input.identity.userId,
+    email: input.identity.email,
+    phone: input.profile?.phone ?? null,
+  });
+  if (conflict === "email") {
+    throw new MemberRequestError(409, "email_taken", "An account with this email already exists.");
+  }
+  if (conflict === "phone") {
+    throw new MemberRequestError(409, "phone_taken", "An account with this mobile number already exists.");
+  }
+
   const requested = normalizeMemberReferralCode(input.referralCode);
   const sponsor = await resolveSponsor(input.store, input.identity.userId, requested);
   const nextCode = input.newReferralCode ?? createReferralCode;
@@ -211,6 +224,12 @@ export async function initializeMember(input: {
       if (raced) {
         return raced;
       }
+    }
+    if (result === "email-taken") {
+      throw new MemberRequestError(409, "email_taken", "An account with this email already exists.");
+    }
+    if (result === "phone-taken") {
+      throw new MemberRequestError(409, "phone_taken", "An account with this mobile number already exists.");
     }
   }
 
@@ -532,6 +551,14 @@ function mobileNumber(value: unknown): string {
     throw new MemberRequestError(400, "invalid_body", "Enter a mobile number.");
   }
   return value.trim();
+}
+
+export function registrationPhoneKey(phone: string | null | undefined): string {
+  if (!phone) {
+    return "";
+  }
+  const digits = phone.replace(/\D/g, "");
+  return digits.length >= 6 ? digits : "";
 }
 
 function referralFromBody(body: unknown): string {

@@ -1,4 +1,4 @@
-import type { CreateResult, MemberRecord, MemberStore, ProfilePatch } from "./service.ts";
+import { registrationPhoneKey, type CreateResult, type MemberRecord, type MemberStore, type ProfilePatch } from "./service.ts";
 
 export function createMemoryMemberStore(): MemberStore {
   const members = new Map<string, MemberRecord>();
@@ -15,9 +15,19 @@ export function createMemoryMemberStore(): MemberStore {
     async listMembers() {
       return [...members.values()].map((member) => structuredClone(member));
     },
+    async findRegistrationConflict({ userId, email, phone }) {
+      return registrationConflict([...members.values()], userId, email, phone);
+    },
     async createMember(member): Promise<CreateResult> {
       if (members.has(member.userId)) {
         return "exists";
+      }
+      const conflict = registrationConflict([...members.values()], member.userId, member.email, member.phone);
+      if (conflict === "email") {
+        return "email-taken";
+      }
+      if (conflict === "phone") {
+        return "phone-taken";
       }
       if (codes.has(member.referralCode)) {
         return "referral-taken";
@@ -68,4 +78,26 @@ export function createMemoryMemberStore(): MemberStore {
       return structuredClone(next);
     },
   };
+}
+
+function registrationConflict(
+  records: readonly MemberRecord[],
+  userId: string,
+  email: string,
+  phone: string | null,
+): "email" | "phone" | null {
+  const emailKey = email.trim().toLowerCase();
+  const phoneKey = registrationPhoneKey(phone);
+  for (const current of records) {
+    if (current.userId === userId) {
+      continue;
+    }
+    if (current.email.trim().toLowerCase() === emailKey) {
+      return "email";
+    }
+    if (phoneKey && registrationPhoneKey(current.phone) === phoneKey) {
+      return "phone";
+    }
+  }
+  return null;
 }

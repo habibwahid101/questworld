@@ -65,6 +65,7 @@ export function AppShell({ title, pageLabel, homeHref, items, children }: AppShe
             {pageLabel ? <span className="sr-only">{pageLabel}</span> : null}
           </div>
           <div className={styles.topActions}>
+            <ThemeToggle />
             <HeaderAvatar />
             <button className={classNames(styles.logoutButton, styles.topLogout)} type="button" onClick={() => void onLogout()} disabled={signingOut} aria-busy={signingOut}>
               {signingOut ? "Please wait…" : "Log out"}
@@ -102,6 +103,47 @@ export function AppShell({ title, pageLabel, homeHref, items, children }: AppShe
         <div className={styles.content}>{children}</div>
       </div>
     </div>
+  );
+}
+
+function ThemeToggle() {
+  const [theme, setTheme] = useState<"light" | "dark">("light");
+
+  useEffect(() => {
+    const stored = window.localStorage.getItem("qw-theme");
+    const next = stored === "dark" ? "dark" : "light";
+    setTheme(next);
+    document.documentElement.dataset.theme = next;
+  }, []);
+
+  function toggle() {
+    const next = theme === "dark" ? "light" : "dark";
+    setTheme(next);
+    document.documentElement.dataset.theme = next;
+    window.localStorage.setItem("qw-theme", next);
+  }
+
+  return (
+    <button className={styles.menuButton} type="button" aria-label={theme === "dark" ? "Switch to day mode" : "Switch to night mode"} onClick={toggle}>
+      {theme === "dark" ? <SunIcon /> : <MoonIcon />}
+    </button>
+  );
+}
+
+function MoonIcon() {
+  return (
+    <svg className={styles.menuIcon} viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M16 3.2A8.5 8.5 0 1 0 20.8 14 7 7 0 0 1 16 3.2z" fill="none" stroke="currentColor" strokeWidth="1.8" />
+    </svg>
+  );
+}
+
+function SunIcon() {
+  return (
+    <svg className={styles.menuIcon} viewBox="0 0 24 24" aria-hidden="true">
+      <circle cx="12" cy="12" r="3.2" fill="none" stroke="currentColor" strokeWidth="1.8" />
+      <path d="M12 3.5v2.2M12 18.3v2.2M3.5 12h2.2M18.3 12h2.2M6 6l1.6 1.6M16.4 16.4 18 18M18 6l-1.6 1.6M7.6 16.4 6 18" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+    </svg>
   );
 }
 

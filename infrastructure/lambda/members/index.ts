@@ -11,6 +11,7 @@ import { CognitoIdentityProviderClient, ListUsersInGroupCommand } from "@aws-sdk
 import {
   handleMemberApi,
   profilePhotoKey,
+  registrationPhoneKey,
   type CreateResult,
   type MemberRecord,
   type MemberStore,
@@ -19,6 +20,7 @@ import {
 
 const PROFILE_SK = "PROFILE";
 const OWNER_SK = "OWNER";
+const UNIQUE_SK = "UNIQUE";
 
 type ApiGatewayEvent = {
   rawPath?: string;
@@ -118,6 +120,35 @@ export function createDynamoMemberStore(tableName: string): MemberStore {
       } while (startKey && read < 200 && matches.length < 200);
       return matches.map((item) => itemToMember(item));
     },
+    async findRegistrationConflict({ userId, email, phone }) {
+      const emailKey = email.trim().toLowerCase();
+      const phoneKey = registrationPhoneKey(phone);
+      let startKey: Record<string, unknown> | undefined;
+      do {
+        const response = await document.send(
+          new ScanCommand({
+            TableName: tableName,
+            FilterExpression: "sk = :profile",
+            ExpressionAttributeValues: { ":profile": PROFILE_SK },
+            ExclusiveStartKey: startKey,
+          }),
+        );
+        for (const item of response.Items ?? []) {
+          const member = itemToMember(item);
+          if (member.userId === userId) {
+            continue;
+          }
+          if (member.email.trim().toLowerCase() === emailKey) {
+            return "email";
+          }
+          if (phoneKey && registrationPhoneKey(member.phone) === phoneKey) {
+            return "phone";
+          }
+        }
+        startKey = response.LastEvaluatedKey;
+      } while (startKey);
+      return null;
+    },
     async createMember(member) {
       try {
         await document.send(
@@ -141,6 +172,32 @@ export function createDynamoMemberStore(tableName: string): MemberStore {
                   ConditionExpression: "attribute_not_exists(pk)",
                 },
               },
+              {
+                Put: {
+                  TableName: tableName,
+                  Item: {
+                    pk: emailKey(member.email),
+                    sk: UNIQUE_SK,
+                    userId: member.userId,
+                  },
+                  ConditionExpression: "attribute_not_exists(pk)",
+                },
+              },
+              ...(registrationPhoneKey(member.phone)
+                ? [
+                    {
+                      Put: {
+                        TableName: tableName,
+                        Item: {
+                          pk: phoneKey(member.phone),
+                          sk: UNIQUE_SK,
+                          userId: member.userId,
+                        },
+                        ConditionExpression: "attribute_not_exists(pk)",
+                      },
+                    },
+                  ]
+                : []),
             ],
           }),
         );
@@ -256,6 +313,12 @@ function cancellationResult(caught: unknown): CreateResult {
     if (referralFailed) {
       return "referral-taken";
     }
+    if (reasons[2] === "ConditionalCheckFailed" || reasons[2] === "TransactionConflict") {
+      return "email-taken";
+    }
+    if (reasons[3] === "ConditionalCheckFailed" || reasons[3] === "TransactionConflict") {
+      return "phone-taken";
+    }
   }
   throw caught;
 }
@@ -315,6 +378,14 @@ async function listAdminIdentifiers(userPoolId: string): Promise<string[]> {
 
 function referralKey(code: string): string {
   return `REFERRAL#${code}`;
+}
+
+function emailKey(email: string): string {
+  return `EMAIL#${email.trim().toLowerCase()}`;
+}
+
+function phoneKey(phone: string | null): string {
+  return `PHONE#${registrationPhoneKey(phone)}`;
 }
 
 function memberToItem(member: MemberRecord): Record<string, unknown> {

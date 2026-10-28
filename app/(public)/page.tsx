@@ -4,7 +4,6 @@ import {
   HowSection,
   PlansSection,
   ReferralSection,
-  RiskSection,
 } from "@/components/public/home/HomeSections";
 
 export default function HomePage() {
@@ -15,7 +14,6 @@ export default function HomePage() {
       <HowSection />
       <PlansSection />
       <ReferralSection />
-      <RiskSection />
     </>
   );
 }

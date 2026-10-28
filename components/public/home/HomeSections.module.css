@@ -6,20 +6,7 @@
 
 .heroInner {
   display: grid;
-  gap: 28px;
   justify-items: center;
-}
-
-.logo {
-  display: block;
-  width: min(280px, 78vw);
-  height: auto;
-  background: transparent;
-  mix-blend-mode: multiply;
-}
-
-:global(html[data-theme="dark"]) .logo {
-  mix-blend-mode: normal;
 }
 
 .heroCopy {
@@ -30,7 +17,7 @@
 }
 
 .heroCopy h1 {
-  max-width: 16ch;
+  max-width: 18em;
 }
 
 .sectionHead {
@@ -122,24 +109,6 @@
   margin-inline: auto;
   text-align: center;
   color: var(--color-text-muted);
-}
-
-.riskWrap {
-  max-width: 760px;
-}
-
-.risk {
-  text-align: left;
-  border-color: var(--color-accent);
-  background: var(--color-accent-soft);
-}
-
-.risk h2 {
-  margin-top: 4px;
-}
-
-.risk p:last-child {
-  margin-top: 12px;
 }
 
 @media (min-width: 720px) {

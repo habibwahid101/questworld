@@ -201,7 +201,8 @@ export function ProfilePanel() {
     setUploadingPhoto(true);
     try {
       const dataBase64 = await fileToBase64(file);
-      await uploadCurrentProfilePhoto({ contentType: file.type, dataBase64 });
+      const saved = await uploadCurrentProfilePhoto({ contentType: file.type, dataBase64 });
+      setReadMember(saved);
       setPhotoUrl(`data:${file.type};base64,${dataBase64}`);
     } catch (caught) {
       setPhotoError(caught instanceof Error ? caught.message : "Could not save that profile photo.");

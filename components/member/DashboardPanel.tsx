@@ -114,7 +114,8 @@ export function DashboardPanel() {
     setUploadingPhoto(true);
     try {
       const dataBase64 = await fileToBase64(file);
-      await uploadCurrentProfilePhoto({ contentType: file.type, dataBase64 });
+      const saved = await uploadCurrentProfilePhoto({ contentType: file.type, dataBase64 });
+      setProfile(saved);
       setPhotoUrl(`data:${file.type};base64,${dataBase64}`);
     } catch (caught) {
       setPhotoError(caught instanceof Error ? caught.message : "Could not save that profile photo.");
@@ -159,22 +160,22 @@ export function DashboardPanel() {
           </p>
         ) : null}
       </Card>
-      <AmountCard label="Available to withdraw" amountMinor={figures?.available} />
-      <AmountCard label="Investment wallet" amountMinor={figures?.activeInvested} />
-      <Card className={styles.wallet}>
+      <AmountCard label="Available to withdraw" amountMinor={figures?.available} tone="available" />
+      <AmountCard label="Investment wallet" amountMinor={figures?.activeInvested} tone="investment" />
+      <Card className={`${styles.wallet} ${styles.return}`}>
         <p className="eyebrow">Return wallet</p>
         <h2 className={styles.amount}>{amountText(figures?.received)}</h2>
         <p className={styles.line}>Received: {amountText(figures?.received)}</p>
         <p className={styles.line}>Remaining: {amountText(figures?.remaining)}</p>
       </Card>
-      <AmountCard label="Commission wallet" amountMinor={figures?.generationReceived} />
+      <AmountCard label="Commission wallet" amountMinor={figures?.generationReceived} tone="commission" />
     </div>
   );
 }
 
-function AmountCard({ label, amountMinor }: { label: string; amountMinor: number | null | undefined }) {
+function AmountCard({ label, amountMinor, tone }: { label: string; amountMinor: number | null | undefined; tone: "available" | "investment" | "commission" }) {
   return (
-    <Card className={styles.wallet}>
+    <Card className={`${styles.wallet} ${styles[tone]}`}>
       <p className="eyebrow">{label}</p>
       <h2 className={styles.amount}>{amountText(amountMinor)}</h2>
     </Card>

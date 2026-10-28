@@ -8,22 +8,32 @@ const advantages = [
   {
     title: "Manual deposit verification",
     body: "A deposit stays pending until it is checked. Sending USDT does not activate a plan by itself.",
+    icon: "/landing/advantage-verification.png",
+    iconAlt: "Verification",
   },
   {
     title: "BEP20 and TRC20 wallets",
     body: "Members deposit with the BEP20 and TRC20 wallet addresses shown in the account.",
+    icon: "/landing/advantage-wallet.png",
+    iconAlt: "Wallet",
   },
   {
     title: "Admin review",
     body: "An admin reviews the deposit before an investment can become active.",
+    icon: "/landing/advantage-review.png",
+    iconAlt: "Review",
   },
   {
     title: "Monthly return",
     body: "After activation, the return is posted once a month. Twelve posts are a total return of 2× the investment.",
+    icon: "/landing/advantage-return.png",
+    iconAlt: "Monthly return",
   },
   {
     title: `${referralRates.directSponsorPercent}% + ${referralRates.secondGenerationPercent}% commission`,
     body: `Generation 1 is ${referralRates.directSponsorPercent}% and Generation 2 is ${referralRates.secondGenerationPercent}%. There is no higher level.`,
+    icon: "",
+    iconAlt: "",
   },
 ] as const;
 
@@ -75,6 +85,9 @@ export function AdvantageSection() {
         <div className={styles.advantageGrid}>
           {advantages.map((item) => (
             <Card key={item.title} className={styles.panel}>
+              {item.icon ? (
+                <Image className={styles.icon} src={item.icon} alt={item.iconAlt} width={512} height={512} unoptimized />
+              ) : null}
               <h3>{item.title}</h3>
               <p>{item.body}</p>
             </Card>
@@ -93,6 +106,14 @@ export function HowSection() {
           <p className="eyebrow">How it works</p>
           <h2>From registration to a monthly return</h2>
         </div>
+        <Image
+          className={styles.visual}
+          src="/landing/how-it-works.png"
+          alt="Register, then plan, then deposit, then active"
+          width={1600}
+          height={900}
+          unoptimized
+        />
         <ol className={styles.steps}>
           {steps.map((step) => (
             <li key={step.number}>
@@ -118,6 +139,14 @@ export function PlansSection() {
           <h2>Four listed plans</h2>
           <p className="lead">Total return of 2× over 12 months. {yearlyReturnCopy}</p>
         </div>
+        <Image
+          className={styles.visual}
+          src="/landing/plans.png"
+          alt="Starter 100 USDT, Growth 1,000 USDT, Professional 10,000 USDT, and Premium 100,000 USDT"
+          width={1600}
+          height={900}
+          unoptimized
+        />
         <div className={styles.planGrid}>
           {investmentPlans.map((plan) => (
             <Card key={plan.id} className={styles.panel}>
@@ -143,6 +172,14 @@ export function ReferralSection() {
           <p className="eyebrow">Referral</p>
           <h2>Two generations only</h2>
         </div>
+        <Image
+          className={styles.visual}
+          src="/landing/referral.png"
+          alt="Generation 1 is 3 percent and Generation 2 is 1 percent"
+          width={1600}
+          height={900}
+          unoptimized
+        />
         <div className={styles.referralGrid}>
           <Card className={styles.panel}>
             <h3>Generation 1</h3>

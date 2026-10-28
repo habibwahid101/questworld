@@ -1382,3 +1382,47 @@ test("admin trace lists are read-only and a member cannot read them", async () =
   assert.match(withdrawalsPanel, /reviewAdminWithdrawal/);
   assert.doesNotMatch(withdrawalsPanel, /Pay out/);
 });
+
+test("the public landing page uses only the current plan, return, and referral facts", () => {
+  const home = readFileSync(new URL("../components/public/home/HomeSections.tsx", import.meta.url), "utf8");
+  const page = readFileSync(new URL("../app/(public)/page.tsx", import.meta.url), "utf8");
+  const footer = readFileSync(new URL("../components/public/PublicFooter.tsx", import.meta.url), "utf8");
+  assert.match(home, /\/brand\/logo\.png/);
+  assert.match(home, /Our Advantage/);
+  assert.match(home, /How it works/);
+  assert.match(home, /Investment plans/);
+  assert.match(home, /Referral/);
+  assert.match(home, /Risk note/);
+  assert.match(home, /BEP20/);
+  assert.match(home, /TRC20/);
+  assert.match(home, /2× over 12 months/);
+  assert.match(home, /yearlyReturnCopy/);
+  assert.match(home, /Generation 1/);
+  assert.match(home, /Generation 2/);
+  const site = readFileSync(new URL("../constants/site.ts", import.meta.url), "utf8");
+  assert.match(home, /investmentPlans\.map/);
+  assert.match(home, /USDT/);
+  assert.match(site, /name: "Starter"/);
+  assert.match(site, /amountUsd: 100,/);
+  assert.match(site, /name: "Growth"/);
+  assert.match(site, /amountUsd: 1000,/);
+  assert.match(site, /name: "Professional"/);
+  assert.match(site, /amountUsd: 10000,/);
+  assert.match(site, /name: "Premium"/);
+  assert.match(site, /amountUsd: 100000,/);
+  assert.match(home, /not guaranteed/);
+  assert.match(home, /Register/);
+  assert.match(home, /Choose plan/);
+  assert.match(home, /Deposit to wallet/);
+  assert.match(home, /Admin verifies/);
+  assert.match(home, /Monthly return/);
+  assert.doesNotMatch(home, /4-6%|weekly|interest-free|career level|TACV|AGAM|Atlantic|IPO|\bloans?\b/i);
+  assert.match(page, /AdvantageSection/);
+  assert.match(page, /RiskSection/);
+  assert.match(footer, /footerAccountNav/);
+  assert.match(footer, /footerExploreNav/);
+  assert.match(site, /label: "Terms & Conditions"/);
+  assert.match(site, /label: "Privacy Policy"/);
+  assert.doesNotMatch(page, /AGAM|Atlantic/);
+});
+

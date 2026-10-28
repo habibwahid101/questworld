@@ -549,12 +549,12 @@ test("a profile photo is private to the signed-in member", async () => {
   const saved = new Map<string, { bytes: Uint8Array; contentType: "image/jpeg" | "image/png" | "image/webp" }>();
   const photos = {
     async put(input: { userId: string; bytes: Uint8Array; contentType: "image/jpeg" | "image/png" | "image/webp" }) {
-      const key = `profile/${input.userId}/photo`;
+      const key = `profile-photos/${input.userId}/photo`;
       saved.set(key, { bytes: input.bytes, contentType: input.contentType });
       return key;
     },
     async get(input: { userId: string }) {
-      return saved.get(`profile/${input.userId}/photo`) ?? null;
+      return saved.get(`profile-photos/${input.userId}/photo`) ?? null;
     },
   };
   await initialize(store, "member-a", { firstName: "Ada", lastName: "Lovelace", phone: "+1 555 0100" });
@@ -582,7 +582,7 @@ test("a profile photo is private to the signed-in member", async () => {
   });
   assert.equal(uploaded.statusCode, 200);
   assert.equal((uploaded.body.member as { hasProfilePhoto: boolean }).hasProfilePhoto, true);
-  assert.equal((await store.getByUserId("member-a"))?.profilePhotoKey, "profile/member-a/photo");
+  assert.equal((await store.getByUserId("member-a"))?.profilePhotoKey, "profile-photos/member-a/photo");
   assert.equal((await store.getByUserId("member-b"))?.profilePhotoKey, null);
   const own = await handleMemberApi({ method: "GET", path: "/me/photo", claims: claims("member-a"), store, photos });
   assert.equal(own.statusCode, 200);
@@ -612,5 +612,13 @@ test("a profile photo is private to the signed-in member", async () => {
     adminUserIds: async () => ["member-a"],
   });
   assert.equal(listed.statusCode, 200);
-  assert.equal(JSON.stringify(listed.body).includes("profile/"), false);
+  assert.equal(JSON.stringify(listed.body).includes("profile-photos/"), false);
+  const stack = readFileSync(new URL("../infrastructure/lib/api-stack.ts", import.meta.url), "utf8");
+  const membersPolicy = stack.slice(stack.indexOf("membersFn.addEnvironment(\"PROFILE_PHOTO_BUCKET\""), stack.indexOf("investmentsFn.addToRolePolicy", stack.indexOf("PROFILE_PHOTO_BUCKET")));
+  assert.match(membersPolicy, /profile-photos\/\*/);
+  assert.doesNotMatch(membersPolicy, /arnForObjects\("\*"\)|profile\/\*/);
+  const dashboardCss = readFileSync(new URL("../components/member/DashboardPanel.module.css", import.meta.url), "utf8");
+  assert.match(dashboardCss, /text-align: center/);
+  assert.match(dashboardCss, /--color-accent-soft/);
+  assert.match(dashboardCss, /--color-accent/);
 });

@@ -187,7 +187,7 @@ export class ApiStack extends cdk.Stack {
     membersFn.addToRolePolicy(
       new iam.PolicyStatement({
         actions: ["s3:PutObject", "s3:GetObject"],
-        resources: [depositProofs.arnForObjects("profile/*")],
+        resources: [depositProofs.arnForObjects("profile-photos/*")],
       }),
     );
     investmentsFn.addToRolePolicy(

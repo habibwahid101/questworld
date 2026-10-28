@@ -1,10 +1,30 @@
 .wallet {
   display: grid;
   gap: 8px;
+  justify-items: center;
+  text-align: center;
+}
+
+.available {
+  background: var(--color-accent-soft);
+  border-color: var(--color-accent);
+}
+
+.investment {
+  background: var(--color-info-soft);
+}
+
+.return {
+  background: var(--color-success-soft);
+}
+
+.commission {
+  background: var(--color-warning-soft);
 }
 
 .amount {
   margin: 0;
+  color: var(--color-accent);
   font-size: 2rem;
   line-height: 1.1;
 }

@@ -10,6 +10,7 @@ import { GetObjectCommand, PutObjectCommand, S3Client } from "@aws-sdk/client-s3
 import { CognitoIdentityProviderClient, ListUsersInGroupCommand } from "@aws-sdk/client-cognito-identity-provider";
 import {
   handleMemberApi,
+  MemberRequestError,
   profilePhotoKey,
   registrationPhoneKey,
   type CreateResult,
@@ -433,15 +434,19 @@ function createProfilePhotoStore(bucket: string): ProfilePhotoStore {
   return {
     async put(input) {
       const key = profilePhotoKey(input.userId);
-      await photos.send(
-        new PutObjectCommand({
-          Bucket: bucket,
-          Key: key,
-          Body: input.bytes,
-          ContentType: input.contentType,
-          ServerSideEncryption: "AES256",
-        }),
-      );
+      try {
+        await photos.send(
+          new PutObjectCommand({
+            Bucket: bucket,
+            Key: key,
+            Body: input.bytes,
+            ContentType: input.contentType,
+            ServerSideEncryption: "AES256",
+          }),
+        );
+      } catch {
+        throw new MemberRequestError(500, "photo_failed", "Could not save that profile photo.");
+      }
       return key;
     },
     async get(input) {

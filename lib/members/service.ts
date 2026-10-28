@@ -596,7 +596,7 @@ export function profilePhotoKey(userId: string): string {
   if (!/^[A-Za-z0-9_-]{1,128}$/.test(userId)) {
     throw new MemberRequestError(400, "invalid_photo", "That profile photo could not be stored.");
   }
-  return `profile/${userId}/photo`;
+  return `profile-photos/${userId}/photo`;
 }
 
 function ownsProfilePhoto(record: MemberRecord): boolean {

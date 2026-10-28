@@ -1,28 +1,20 @@
 import {
-  EarningsExampleSection,
+  AboutSection,
+  BusinessSection,
   FinalCtaSection,
-  FaqPreviewSection,
   HeroSection,
-  HighlightsSection,
-  HowItWorksSection,
-  PaymentSection,
-  PlansSection,
-  ReferralSection,
-  WhySection,
+  HowToStartSection,
+  NotesSection,
 } from "@/components/public/home/HomeSections";
 
 export default function HomePage() {
   return (
     <>
       <HeroSection />
-      <HighlightsSection />
-      <HowItWorksSection />
-      <PlansSection />
-      <EarningsExampleSection />
-      <ReferralSection />
-      <WhySection />
-      <PaymentSection />
-      <FaqPreviewSection />
+      <AboutSection />
+      <BusinessSection />
+      <HowToStartSection />
+      <NotesSection />
       <FinalCtaSection />
     </>
   );

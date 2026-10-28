@@ -1,7 +1,7 @@
 import Image from "next/image";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
-import { brand, investmentPlans, referralRates, yearlyReturnCopy } from "@/constants/site";
+import { investmentPlans, referralRates, yearlyReturnCopy } from "@/constants/site";
 import styles from "./HomeSections.module.css";
 
 const advantages = [
@@ -50,24 +50,9 @@ export function HeroSection() {
   return (
     <section className={styles.hero}>
       <div className={`container ${styles.heroInner}`}>
-        <Image
-          className={styles.logo}
-          src="/brand/logo.png"
-          alt={brand.name}
-          width={1000}
-          height={300}
-          priority
-          unoptimized
-        />
         <div className={styles.heroCopy}>
-          <h1>{brand.name}</h1>
-          <p className="lead">On an active investment, the scheduled return is a total of 2× over 12 months.</p>
-          <div className={`cluster ${styles.actions}`}>
-            <Button href="/register">Create account</Button>
-            <Button href="/login" variant="ghost">
-              Login
-            </Button>
-          </div>
+          <h1>Grow with a scheduled return</h1>
+          <p className="lead">An active investment is scheduled for a total return of 2× over 12 months.</p>
         </div>
       </div>
     </section>
@@ -198,20 +183,6 @@ export function ReferralSection() {
             Referral program
           </Button>
         </div>
-      </div>
-    </section>
-  );
-}
-
-export function RiskSection() {
-  return (
-    <section className="section">
-      <div className={`container ${styles.riskWrap}`}>
-        <Card className={styles.risk}>
-          <p className="eyebrow">Risk note</p>
-          <h2>Returns are not guaranteed</h2>
-          <p>Returns are not guaranteed and depend on activation. A monthly return is recorded only after an admin activates the investment.</p>
-        </Card>
       </div>
     </section>
   );

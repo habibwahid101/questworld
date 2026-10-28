@@ -1387,9 +1387,11 @@ test("the public landing page uses only the current plan, return, and referral f
   const home = readFileSync(new URL("../components/public/home/HomeSections.tsx", import.meta.url), "utf8");
   const page = readFileSync(new URL("../app/(public)/page.tsx", import.meta.url), "utf8");
   const footer = readFileSync(new URL("../components/public/PublicFooter.tsx", import.meta.url), "utf8");
-  assert.match(home, /\/brand\/logo\.png/);
+  assert.match(readFileSync(new URL("../components/ui/BrandMark.tsx", import.meta.url), "utf8"), /\/brand\/logo\.png/);
   const hero = home.slice(home.indexOf("function HeroSection"), home.indexOf("function AdvantageSection"));
-  assert.doesNotMatch(hero, /\/landing\//);
+  assert.match(hero, /Grow with a scheduled return/);
+  assert.match(hero, /An active investment is scheduled for a total return of 2× over 12 months\./);
+  assert.doesNotMatch(hero, /\/brand\/logo\.png|\/landing\/|Create account|Login/);
   assert.match(home, /\/landing\/advantage-verification\.png/);
   assert.match(home, /\/landing\/advantage-wallet\.png/);
   assert.match(home, /\/landing\/advantage-review\.png/);
@@ -1401,7 +1403,7 @@ test("the public landing page uses only the current plan, return, and referral f
   assert.match(home, /How it works/);
   assert.match(home, /Investment plans/);
   assert.match(home, /Referral/);
-  assert.match(home, /Risk note/);
+  assert.doesNotMatch(home, /Risk note|RiskSection|not guaranteed/);
   assert.match(home, /BEP20/);
   assert.match(home, /TRC20/);
   assert.match(home, /2× over 12 months/);
@@ -1419,7 +1421,6 @@ test("the public landing page uses only the current plan, return, and referral f
   assert.match(site, /amountUsd: 10000,/);
   assert.match(site, /name: "Premium"/);
   assert.match(site, /amountUsd: 100000,/);
-  assert.match(home, /not guaranteed/);
   assert.match(home, /Register/);
   assert.match(home, /Choose plan/);
   assert.match(home, /Deposit to wallet/);
@@ -1427,7 +1428,7 @@ test("the public landing page uses only the current plan, return, and referral f
   assert.match(home, /Monthly return/);
   assert.doesNotMatch(home, /4-6%|weekly|interest-free|career level|TACV|AGAM|Atlantic|IPO|\bloans?\b/i);
   assert.match(page, /AdvantageSection/);
-  assert.match(page, /RiskSection/);
+  assert.doesNotMatch(page, /RiskSection/);
   assert.match(footer, /footerAccountNav/);
   assert.match(footer, /footerExploreNav/);
   assert.match(site, /label: "Terms & Conditions"/);

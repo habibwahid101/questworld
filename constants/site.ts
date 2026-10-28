@@ -77,7 +77,6 @@ export const footerAccountNav: readonly NavItem[] = [
 export const memberNav: readonly NavItem[] = [
   { href: "/dashboard", label: "Dashboard" },
   { href: "/investments", label: "Investments" },
-  { href: "/profit-history", label: "Profit History" },
   { href: "/referrals/dashboard", label: "Referrals" },
   { href: "/wallet", label: "Wallet" },
   { href: "/withdraw", label: "Withdraw" },

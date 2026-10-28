@@ -15,6 +15,7 @@ import {
   postDueReturns,
   postProfitForInvestment,
   returnPaymentMinor,
+  monthlyProfitMinor,
   addReturnCycle,
   previousUtcMonth,
   type InvestmentRecord,
@@ -708,6 +709,7 @@ test("a due return posts once, keeps the principal, and completes on the 12th pa
   const sponsors: SponsorDirectory = { async sponsorOf() { return null; } };
   assert.equal(previousUtcMonth("2026-11-01T01:00:00.000Z"), "2026-10");
   assert.equal(returnPaymentMinor(100_000_000, 1), 16_666_666);
+  assert.equal(monthlyProfitMinor(100_000_000), 16_666_666);
   assert.equal(returnPaymentMinor(100_000_000, 12), 16_666_674);
   assert.equal(returnPaymentMinor(100_000_000, 1) * 11 + returnPaymentMinor(100_000_000, 12), 200_000_000);
 
@@ -1258,9 +1260,14 @@ test("dashboard cards read existing totals and do not write records", () => {
   assert.match(dashboard, /availableWithdrawalMinor/);
   assert.doesNotMatch(dashboard, /Copy Referral ID|Copy Referral Link/);
   assert.match(dashboard, /uploadCurrentProfilePhoto/);
-  assert.ok(dashboard.indexOf("Available to withdraw") < dashboard.indexOf("Investment wallet"));
+  assert.match(dashboard, /View history/);
+  assert.match(dashboard, /\/transactions#investment-history/);
+  assert.match(dashboard, /\/transactions#return-history/);
+  assert.match(dashboard, /\/transactions#commission-history/);
+  assert.match(dashboard, /\/transactions#withdrawal-history/);
   assert.ok(dashboard.indexOf("Investment wallet") < dashboard.indexOf("Return wallet"));
   assert.ok(dashboard.indexOf("Return wallet") < dashboard.indexOf("Commission wallet"));
+  assert.ok(dashboard.indexOf("Commission wallet") < dashboard.indexOf("Available to withdraw"));
   assert.doesNotMatch(dashboard, /grid-2/);
   const onPhoto = dashboard.slice(dashboard.indexOf("async function onPhoto"), dashboard.indexOf("function amountText"));
   assert.ok(onPhoto.indexOf("uploadCurrentProfilePhoto") < onPhoto.indexOf("setPhotoUrl"));

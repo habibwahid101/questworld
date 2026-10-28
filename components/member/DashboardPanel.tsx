@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { Card } from "@/components/ui/Card";
 import {
   InvestmentClientError,
@@ -160,25 +161,45 @@ export function DashboardPanel() {
           </p>
         ) : null}
       </Card>
-      <AmountCard label="Available to withdraw" amountMinor={figures?.available} tone="available" />
-      <AmountCard label="Investment wallet" amountMinor={figures?.activeInvested} tone="investment" />
+      <AmountCard label="Investment wallet" amountMinor={figures?.activeInvested} tone="investment" href="/transactions#investment-history" />
       <Card className={`${styles.wallet} ${styles.return}`}>
         <p className="eyebrow">Return wallet</p>
         <h2 className={styles.amount}>{amountText(figures?.received)}</h2>
         <p className={styles.line}>Received: {amountText(figures?.received)}</p>
         <p className={styles.line}>Remaining: {amountText(figures?.remaining)}</p>
+        <HistoryLink href="/transactions#return-history" />
       </Card>
-      <AmountCard label="Commission wallet" amountMinor={figures?.generationReceived} tone="commission" />
+      <AmountCard label="Commission wallet" amountMinor={figures?.generationReceived} tone="commission" href="/transactions#commission-history" />
+      <AmountCard label="Available to withdraw" amountMinor={figures?.available} tone="available" href="/transactions#withdrawal-history" />
     </div>
   );
 }
 
-function AmountCard({ label, amountMinor, tone }: { label: string; amountMinor: number | null | undefined; tone: "available" | "investment" | "commission" }) {
+function AmountCard({
+  label,
+  amountMinor,
+  tone,
+  href,
+}: {
+  label: string;
+  amountMinor: number | null | undefined;
+  tone: "available" | "investment" | "commission";
+  href: string;
+}) {
   return (
     <Card className={`${styles.wallet} ${styles[tone]}`}>
       <p className="eyebrow">{label}</p>
       <h2 className={styles.amount}>{amountText(amountMinor)}</h2>
+      <HistoryLink href={href} />
     </Card>
+  );
+}
+
+function HistoryLink({ href }: { href: string }) {
+  return (
+    <p className={styles.line}>
+      <Link href={href}>View history</Link>
+    </p>
   );
 }
 

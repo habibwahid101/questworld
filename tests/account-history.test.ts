@@ -42,6 +42,24 @@ test("deposit and transaction history use stored records only", () => {
     "2026-10-06T11:42:38.368Z",
   ]);
 
+  const historyPage = readFileSync(new URL("../components/member/AccountHistory.tsx", import.meta.url), "utf8");
+  assert.match(historyPage, /Investment history/);
+  assert.match(historyPage, /Return history/);
+  assert.match(historyPage, /Commission history/);
+  assert.match(historyPage, /Withdrawal history/);
+  assert.doesNotMatch(historyPage, /Deposit history|Profit history|Transaction history/);
+  assert.ok(historyPage.indexOf("Investment history") < historyPage.indexOf("Return history"));
+  assert.ok(historyPage.indexOf("Return history") < historyPage.indexOf("Commission history"));
+  assert.ok(historyPage.indexOf("Commission history") < historyPage.indexOf("Withdrawal history"));
+  assert.match(historyPage, /id="investment-history"/);
+  assert.match(historyPage, /id="return-history"/);
+  assert.match(historyPage, /id="commission-history"/);
+  assert.match(historyPage, /id="withdrawal-history"/);
+  const nav = readFileSync(new URL("../constants/site.ts", import.meta.url), "utf8");
+  const memberNav = nav.slice(nav.indexOf("export const memberNav"), nav.indexOf("export const adminNav"));
+  assert.doesNotMatch(memberNav, /Profit History|\/profit-history/);
+  assert.match(memberNav, /Transactions/);
+
   const history = transactionHistory({
     investments: [active],
     profits: [],

@@ -389,14 +389,7 @@ export function formatUsdtAmount(amountMinor: number, scale = INVESTMENT_SCALE):
 }
 
 export function monthlyProfitMinor(amountMinor: number): number {
-  if (!Number.isSafeInteger(amountMinor) || amountMinor < 0) {
-    throw new InvestmentRequestError(500, "invalid_profit_amount", "That investment amount cannot earn profit.");
-  }
-  const profitMinor = Math.floor((amountMinor * MONTHLY_PROFIT_RATE_BPS) / 10_000);
-  if (!Number.isSafeInteger(profitMinor) || profitMinor < 0) {
-    throw new InvestmentRequestError(500, "invalid_profit_amount", "That investment amount cannot earn profit.");
-  }
-  return profitMinor;
+  return returnPaymentMinor(amountMinor, 1);
 }
 
 export function previousUtcMonth(isoTime: string): string {
@@ -658,7 +651,8 @@ export function profitFromStoredItem(item: Record<string, unknown>): ProfitEntry
   }
   const principalMinor = Number(item.principalMinor);
   const profitMinor = Number(item.profitMinor);
-  if (profitMinor !== returnPaymentMinor(principalMinor, paymentNumber)) {
+  const legacyMinor = Math.floor((principalMinor * MONTHLY_PROFIT_RATE_BPS) / 10_000);
+  if (profitMinor !== legacyMinor && profitMinor !== returnPaymentMinor(principalMinor, paymentNumber)) {
     throw new InvestmentRequestError(500, "invalid_stored_profit", "That profit record is not valid.");
   }
   const planId = item.planId as PlanId;

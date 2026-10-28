@@ -77,15 +77,18 @@ export function WalletPanel() {
         {message ? <p style={{ marginTop: 16 }}>{message}</p> : null}
       </Card>
       <div className="stack">
-        <AmountCard label="Available to withdraw" amountMinor={figures?.available} />
-        <AmountCard label="Investment wallet" amountMinor={figures?.activeInvested} />
+        <AmountCard label="Available to withdraw" amountMinor={figures?.available} href="/transactions#withdrawal-history" />
+        <AmountCard label="Investment wallet" amountMinor={figures?.activeInvested} href="/transactions#investment-history" />
         <Card>
           <p className="eyebrow">Return wallet</p>
           <h2>{amountText(figures?.profit)}</h2>
           <p>Received: {amountText(figures?.profit)}</p>
           <p>Remaining: {amountText(figures?.remaining)}</p>
+          <p>
+            <Link href="/transactions#return-history">View history</Link>
+          </p>
         </Card>
-        <AmountCard label="Commission wallet" amountMinor={figures?.commissions} />
+        <AmountCard label="Commission wallet" amountMinor={figures?.commissions} href="/transactions#commission-history" />
         <p>
           <Link href="/withdraw">Withdraw</Link>
         </p>
@@ -94,11 +97,14 @@ export function WalletPanel() {
   );
 }
 
-function AmountCard({ label, amountMinor }: { label: string; amountMinor: number | null | undefined }) {
+function AmountCard({ label, amountMinor, href }: { label: string; amountMinor: number | null | undefined; href: string }) {
   return (
     <Card>
       <p className="eyebrow">{label}</p>
       <h2>{amountText(amountMinor)}</h2>
+      <p>
+        <Link href={href}>View history</Link>
+      </p>
     </Card>
   );
 }

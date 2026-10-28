@@ -30,7 +30,7 @@ type HistoryData = {
 const empty: HistoryData = { investments: [], profits: [], commissions: [], withdrawals: [] };
 
 export function MemberAccountHistory() {
-  return <AccountHistory title="History" audience="member" />;
+  return <AccountHistory title="Transactions" audience="member" />;
 }
 
 export function AdminAccountHistory() {
@@ -130,7 +130,7 @@ function AccountHistory({ title, audience }: { title: string; audience: "member"
         </p>
         {message ? <p style={{ marginTop: 16 }}>{message}</p> : null}
       </Card>
-      <HistorySection heading="Deposit history" empty="No stored deposits." loading={data === null}>
+      <HistorySection id="investment-history" heading="Investment history" empty="No stored investments." loading={data === null}>
         {data?.investments.map((investment) => (
           <Card key={investment.investmentId}>
             <p className="eyebrow">{investment.planName}</p>
@@ -140,16 +140,27 @@ function AccountHistory({ title, audience }: { title: string; audience: "member"
           </Card>
         ))}
       </HistorySection>
-      <HistorySection heading="Transaction history" empty="No stored transactions." loading={data === null}>
-        {transactions.map((item) => (
-          <Card key={item.id}>
-            <p className="eyebrow">{item.flow}</p>
-            <h2>{item.title}</h2>
-            <p style={{ marginTop: 10 }}>Date and time {formatRecordedAt(item.at)}</p>
+      <HistorySection id="return-history" heading="Return history" empty="No stored returns." loading={data === null}>
+        {data?.profits.map((entry) => (
+          <Card key={`${entry.investmentId}-${entry.paymentNumber}`}>
+            <p className="eyebrow">{entry.planName}</p>
+            <h2>{formatUsdtAmount(entry.profitMinor, entry.scale)}</h2>
+            <p style={{ marginTop: 10 }}>Payment {entry.paymentNumber} of 12</p>
+            <p>Posted {formatRecordedAt(entry.postedAt)}</p>
           </Card>
         ))}
       </HistorySection>
-      <HistorySection heading="Withdrawal history" empty="No stored withdrawal requests." loading={data === null}>
+      <HistorySection id="commission-history" heading="Commission history" empty="No stored commissions." loading={data === null}>
+        {data?.commissions.map((entry) => (
+          <Card key={`${entry.investmentId}-${entry.period}-${entry.generation}`}>
+            <p className="eyebrow">{entry.generation === 1 ? "Direct sponsor" : "Second generation"}</p>
+            <h2>{formatUsdtAmount(entry.commissionMinor, entry.scale)}</h2>
+            <p style={{ marginTop: 10 }}>{entry.planName}</p>
+            <p>Posted {formatRecordedAt(entry.postedAt)}</p>
+          </Card>
+        ))}
+      </HistorySection>
+      <HistorySection id="withdrawal-history" heading="Withdrawal history" empty="No stored withdrawal requests." loading={data === null}>
         {data?.withdrawals.map((request) => (
           <Card key={request.withdrawalId}>
             <p className="eyebrow">{request.status}</p>
@@ -163,11 +174,13 @@ function AccountHistory({ title, audience }: { title: string; audience: "member"
 }
 
 function HistorySection({
+  id,
   heading,
   empty,
   loading,
   children,
 }: {
+  id?: string;
   heading: string;
   empty: string;
   loading: boolean;
@@ -177,7 +190,7 @@ function HistorySection({
   return (
     <>
       <Card>
-        <h2>{heading}</h2>
+        <h2 id={id}>{heading}</h2>
       </Card>
       {loading ? (
         <Card>

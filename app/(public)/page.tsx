@@ -1,21 +1,21 @@
 import {
-  AboutSection,
-  BusinessSection,
-  FinalCtaSection,
+  AdvantageSection,
   HeroSection,
-  HowToStartSection,
-  NotesSection,
+  HowSection,
+  PlansSection,
+  ReferralSection,
+  RiskSection,
 } from "@/components/public/home/HomeSections";
 
 export default function HomePage() {
   return (
     <>
       <HeroSection />
-      <AboutSection />
-      <BusinessSection />
-      <HowToStartSection />
-      <NotesSection />
-      <FinalCtaSection />
+      <AdvantageSection />
+      <HowSection />
+      <PlansSection />
+      <ReferralSection />
+      <RiskSection />
     </>
   );
 }

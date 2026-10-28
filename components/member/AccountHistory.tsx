@@ -15,10 +15,19 @@ import {
   listCurrentProfits,
   listCurrentWithdrawals,
 } from "@/lib/investments/client";
-import { depositFlow, formatRecordedAt, transactionHistory, type HistoryLine } from "@/lib/investments/history";
+import { formatRecordedAt, transactionHistory } from "@/lib/investments/history";
 import { adminTableRow, investmentColumns } from "@/lib/admin/table";
-import { formatUsdtAmount, type CommissionEntry, type InvestmentRecord, type ProfitEntry, type WithdrawalRequest } from "@/lib/investments/service";
+import {
+  formatUsdtAmount,
+  type CommissionEntry,
+  type InvestmentRecord,
+  type InvestmentStatus,
+  type ProfitEntry,
+  type WithdrawalRequest,
+  type WithdrawalStatus,
+} from "@/lib/investments/service";
 import { isMemberApiConfigured } from "@/lib/members/config";
+import styles from "./AccountHistory.module.css";
 
 type HistoryData = {
   investments: InvestmentRecord[];
@@ -28,6 +37,21 @@ type HistoryData = {
 };
 
 const empty: HistoryData = { investments: [], profits: [], commissions: [], withdrawals: [] };
+
+const investmentStatusLabel: Record<InvestmentStatus, string> = {
+  awaiting_deposit: "Awaiting deposit",
+  pending_verification: "Deposit submitted",
+  deposit_verified: "Deposit verified",
+  active: "Active",
+  rejected: "Rejected",
+  completed: "Completed",
+};
+
+const withdrawalStatusLabel: Record<WithdrawalStatus, string> = {
+  pending_review: "Pending review",
+  approved: "Approved",
+  rejected: "Rejected",
+};
 
 export function MemberAccountHistory() {
   return <AccountHistory title="Transactions" audience="member" />;
@@ -121,6 +145,8 @@ function AccountHistory({ title, audience }: { title: string; audience: "member"
     );
   }
 
+  const loading = data === null;
+
   return (
     <div className="stack">
       <Card>
@@ -130,91 +156,137 @@ function AccountHistory({ title, audience }: { title: string; audience: "member"
         </p>
         {message ? <p style={{ marginTop: 16 }}>{message}</p> : null}
       </Card>
-      <HistorySection id="investment-history" heading="Investment history" empty="No stored investments." loading={data === null}>
-        {data?.investments.map((investment) => (
-          <Card key={investment.investmentId}>
-            <p className="eyebrow">{investment.planName}</p>
-            <h2>{formatUsdtAmount(investment.amountMinor, investment.scale)}</h2>
-            <p style={{ marginTop: 10 }}>{investment.depositReference ? `Reference ${investment.depositReference}` : "No reference stored"}</p>
-            <FlowLines lines={depositFlow(investment)} />
-          </Card>
-        ))}
-      </HistorySection>
-      <HistorySection id="return-history" heading="Return history" empty="No stored returns." loading={data === null}>
-        {data?.profits.map((entry) => (
-          <Card key={`${entry.investmentId}-${entry.paymentNumber}`}>
-            <p className="eyebrow">{entry.planName}</p>
-            <h2>{formatUsdtAmount(entry.profitMinor, entry.scale)}</h2>
-            <p style={{ marginTop: 10 }}>Payment {entry.paymentNumber} of 12</p>
-            <p>Posted {formatRecordedAt(entry.postedAt)}</p>
-          </Card>
-        ))}
-      </HistorySection>
-      <HistorySection id="commission-history" heading="Commission history" empty="No stored commissions." loading={data === null}>
-        {data?.commissions.map((entry) => (
-          <Card key={`${entry.investmentId}-${entry.period}-${entry.generation}`}>
-            <p className="eyebrow">{entry.generation === 1 ? "Direct sponsor" : "Second generation"}</p>
-            <h2>{formatUsdtAmount(entry.commissionMinor, entry.scale)}</h2>
-            <p style={{ marginTop: 10 }}>{entry.planName}</p>
-            <p>Posted {formatRecordedAt(entry.postedAt)}</p>
-          </Card>
-        ))}
-      </HistorySection>
-      <HistorySection id="withdrawal-history" heading="Withdrawal history" empty="No stored withdrawal requests." loading={data === null}>
-        {data?.withdrawals.map((request) => (
-          <Card key={request.withdrawalId}>
-            <p className="eyebrow">{request.status}</p>
-            <h2>{formatUsdtAmount(request.amountMinor, request.scale)}</h2>
-            <FlowLines lines={[{ at: request.createdAt, flow: `Requested as ${request.status}` }]} />
-          </Card>
-        ))}
-      </HistorySection>
+      <HistoryTable
+        id="investment-history"
+        heading="Investment history"
+        columns={["Date & Time", "Plan", "Amount", "Status", "Reference"]}
+        empty="No stored investments."
+        loading={loading}
+        rows={(data?.investments ?? []).map((investment) => ({
+          key: investment.investmentId,
+          cells: [
+            formatRecordedAt(investmentRecordedAt(investment)),
+            investment.planName,
+            formatUsdtAmount(investment.amountMinor, investment.scale),
+            investmentStatusLabel[investment.status],
+            investment.depositReference?.trim() || "—",
+          ],
+        }))}
+      />
+      <HistoryTable
+        id="return-history"
+        heading="Return history"
+        columns={["Date & Time", "Period", "Amount", "Status"]}
+        empty="No stored returns."
+        loading={loading}
+        rows={(data?.profits ?? []).map((entry) => ({
+          key: `${entry.investmentId}-${entry.paymentNumber}`,
+          cells: [
+            formatRecordedAt(entry.postedAt),
+            formatRecordedAt(entry.period),
+            formatUsdtAmount(entry.profitMinor, entry.scale),
+            "Posted",
+          ],
+        }))}
+      />
+      <HistoryTable
+        id="commission-history"
+        heading="Commission history"
+        columns={["Date & Time", "Generation", "Amount", "From investment"]}
+        empty="No stored commissions."
+        loading={loading}
+        rows={(data?.commissions ?? []).map((entry) => ({
+          key: `${entry.investmentId}-${entry.period}-${entry.generation}`,
+          cells: [
+            formatRecordedAt(entry.postedAt),
+            entry.generation === 1 ? "Direct sponsor" : "Second generation",
+            formatUsdtAmount(entry.commissionMinor, entry.scale),
+            entry.planName,
+          ],
+        }))}
+      />
+      <HistoryTable
+        id="withdrawal-history"
+        heading="Withdrawal history"
+        columns={["Date & Time", "Amount", "Status"]}
+        empty="No stored withdrawal requests."
+        loading={loading}
+        rows={(data?.withdrawals ?? []).map((request) => ({
+          key: request.withdrawalId,
+          cells: [
+            formatRecordedAt(request.createdAt),
+            formatUsdtAmount(request.amountMinor, request.scale),
+            withdrawalStatusLabel[request.status],
+          ],
+        }))}
+      />
     </div>
   );
 }
 
-function HistorySection({
+function investmentRecordedAt(record: InvestmentRecord): string {
+  if (record.status === "pending_verification") {
+    return record.submittedAt || record.statusChangedAt || record.createdAt;
+  }
+  if (record.status === "deposit_verified" || record.status === "rejected") {
+    return record.reviewedAt || record.statusChangedAt || record.createdAt;
+  }
+  if (record.status === "active") {
+    return record.activatedAt || record.statusChangedAt || record.createdAt;
+  }
+  return record.statusChangedAt || record.createdAt;
+}
+
+function HistoryTable({
   id,
   heading,
+  columns,
   empty,
   loading,
-  children,
+  rows,
 }: {
-  id?: string;
+  id: string;
   heading: string;
+  columns: readonly string[];
   empty: string;
   loading: boolean;
-  children: React.ReactNode;
+  rows: readonly { key: string; cells: readonly string[] }[];
 }) {
-  const items = Array.isArray(children) ? children : children ? [children] : [];
   return (
-    <>
-      <Card>
-        <h2 id={id}>{heading}</h2>
-      </Card>
-      {loading ? (
-        <Card>
-          <p>Loading stored records…</p>
-        </Card>
-      ) : items.length === 0 ? (
-        <Card>
-          <p>{empty}</p>
-        </Card>
-      ) : (
-        items
-      )}
-    </>
-  );
-}
-
-function FlowLines({ lines }: { lines: HistoryLine[] }) {
-  return (
-    <div style={{ marginTop: 10 }}>
-      {lines.map((line) => (
-        <p key={`${line.at}:${line.flow}`}>
-          {line.flow}. Date and time {formatRecordedAt(line.at)}
-        </p>
-      ))}
-    </div>
+    <section className={styles.section} aria-labelledby={id}>
+      <h2 id={id}>{heading}</h2>
+      <div className={styles.scroll}>
+        <table>
+          <thead>
+            <tr>
+              {columns.map((column) => (
+                <th key={column} scope="col">
+                  {column}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {loading ? (
+              <tr>
+                <td colSpan={columns.length}>Loading stored records…</td>
+              </tr>
+            ) : rows.length === 0 ? (
+              <tr>
+                <td colSpan={columns.length}>{empty}</td>
+              </tr>
+            ) : (
+              rows.map((row) => (
+                <tr key={row.key}>
+                  {row.cells.map((cell, index) => (
+                    <td key={columns[index]}>{cell}</td>
+                  ))}
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      </div>
+    </section>
   );
 }

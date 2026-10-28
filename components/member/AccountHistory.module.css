@@ -1,0 +1,74 @@
+.section {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.scroll {
+  width: 100%;
+  overflow-x: auto;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+}
+
+.scroll table {
+  display: table;
+  width: 100%;
+  min-width: 720px;
+  border-collapse: collapse;
+}
+
+.scroll thead {
+  display: table-header-group;
+}
+
+.scroll tbody {
+  display: table-row-group;
+}
+
+.scroll tr {
+  display: table-row;
+}
+
+.scroll th,
+.scroll td {
+  display: table-cell;
+  white-space: nowrap;
+}
+
+@media (max-width: 719px) {
+  .scroll {
+    overflow-x: auto;
+  }
+
+  .scroll table {
+    display: table;
+  }
+
+  .scroll thead {
+    display: table-header-group;
+    position: static;
+    width: auto;
+    height: auto;
+    overflow: visible;
+    clip: auto;
+  }
+
+  .scroll tbody {
+    display: table-row-group;
+  }
+
+  .scroll tr {
+    display: table-row;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+  }
+
+  .scroll th,
+  .scroll td {
+    display: table-cell;
+  }
+}

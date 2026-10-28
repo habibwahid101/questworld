@@ -1388,6 +1388,15 @@ test("the public landing page uses only the current plan, return, and referral f
   const page = readFileSync(new URL("../app/(public)/page.tsx", import.meta.url), "utf8");
   const footer = readFileSync(new URL("../components/public/PublicFooter.tsx", import.meta.url), "utf8");
   assert.match(home, /\/brand\/logo\.png/);
+  const hero = home.slice(home.indexOf("function HeroSection"), home.indexOf("function AdvantageSection"));
+  assert.doesNotMatch(hero, /\/landing\//);
+  assert.match(home, /\/landing\/advantage-verification\.png/);
+  assert.match(home, /\/landing\/advantage-wallet\.png/);
+  assert.match(home, /\/landing\/advantage-review\.png/);
+  assert.match(home, /\/landing\/advantage-return\.png/);
+  assert.match(home, /\/landing\/how-it-works\.png/);
+  assert.match(home, /\/landing\/plans\.png/);
+  assert.match(home, /\/landing\/referral\.png/);
   assert.match(home, /Our Advantage/);
   assert.match(home, /How it works/);
   assert.match(home, /Investment plans/);

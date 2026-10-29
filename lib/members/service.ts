@@ -1,5 +1,4 @@
 import { passwordIssue, TRANSACTION_PASSWORD_MIN } from "../auth/password.ts";
-import { normalizeReferralCode } from "../auth/referral.ts";
 import { isAdminClaims } from "../investments/service.ts";
 import { hashTransactionPassword, verifyTransactionPassword } from "./transaction-password.ts";
 
@@ -330,7 +329,7 @@ export async function checkReferralCode(
   store: Pick<MemberStore, "getUserIdByReferralCode">,
   raw: unknown,
 ): Promise<{ valid: boolean; code: string }> {
-  const code = typeof raw === "string" ? normalizeReferralCode(raw) : "";
+  const code = normalizeMemberReferralCode(raw);
   if (!code || !CODE_PATTERN.test(code)) {
     return { valid: false, code };
   }

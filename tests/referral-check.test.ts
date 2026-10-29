@@ -16,7 +16,7 @@ function store(owners: Record<string, string>) {
 
 test("referral check reports a known code as valid without the owner id", async () => {
   const { fake, lookups } = store({ ABCD1234: "user-secret-id" });
-  const result = await checkReferralCode(fake, "  ABCD1234 ");
+  const result = await checkReferralCode(fake, "  abcd1234 ");
   assert.deepEqual(result, { valid: true, code: "ABCD1234" });
   assert.deepEqual(Object.keys(result).sort(), ["code", "valid"]);
   assert.doesNotMatch(JSON.stringify(result), /user-secret-id/);

@@ -52,6 +52,10 @@ test("api stack adds the referral route without an authorizer and throttles it",
   const route = source.slice(start, source.indexOf("});", start));
   assert.doesNotMatch(route, /authorizer/);
   assert.match(source, /"GET \/members\/referral-check": \{ ThrottlingRateLimit: 5, ThrottlingBurstLimit: 10 \}/);
+  const routeAt = source.indexOf('path: "/members/referral-check"');
+  const throttleAt = source.indexOf("defaultStage.addResourceDependency");
+  assert.ok(routeAt > 0 && throttleAt > routeAt);
+  assert.match(source, /defaultStage\.addResourceDependency\(referralRoute\.node\.defaultChild as apigwv2\.CfnRoute\)/);
 });
 
 test("register form checks the referral code before creating the Cognito account", () => {

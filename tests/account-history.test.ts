@@ -136,8 +136,17 @@ test("deposit and transaction history use stored records only", () => {
     assert.doesNotMatch(source, /Unknown member|name: "Member"/);
   }
   const table = readFileSync(new URL("../components/admin/AdminRecordTable.tsx", import.meta.url), "utf8");
+  const tableCss = readFileSync(new URL("../components/admin/AdminRecordTable.module.css", import.meta.url), "utf8");
+  const users = readFileSync(new URL("../components/admin/AdminUsersPanel.tsx", import.meta.url), "utf8");
   assert.match(table, /filterAdminRows/);
   assert.match(table, /Search/);
+  assert.match(tableCss, /overflow-x:\s*auto/);
+  assert.match(tableCss, /min-width:\s*720px/);
+  assert.doesNotMatch(tableCss, /display:\s*block/);
+  assert.match(users, /<table>/);
+  assert.match(users, /Grant admin/);
+  assert.match(users, /Remove admin/);
+  assert.doesNotMatch(users, /<Card key=/);
   const profits = readFileSync(new URL("../components/admin/AdminProfitsPanel.tsx", import.meta.url), "utf8");
   assert.doesNotMatch(profits, /reviewAdminWithdrawal|activateVerifiedInvestment|reviewPendingDeposit/);
 });

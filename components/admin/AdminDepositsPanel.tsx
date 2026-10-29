@@ -155,7 +155,7 @@ export function AdminDepositsPanel() {
       <Card>
         <h1>Deposits</h1>
         <p className="lead" style={{ marginTop: 12 }}>
-          Review a pending deposit, then activate a verified one. This does not post profit or move money.
+          Review a pending deposit. Confirming it activates the investment. This does not post profit or move money.
         </p>
         <form
           className={styles.form}
@@ -229,15 +229,21 @@ export function AdminDepositsPanel() {
                   {saving?.id === investment.investmentId && saving.kind === "screenshot" ? "Please wait" : "Open screenshot"}
                 </Button>
               ) : null}
+              {investment.status === "pending_verification" || investment.status === "deposit_verified" ? (
+                <Button
+                  disabled={saving !== null}
+                  aria-busy={saving?.id === investment.investmentId && (saving.kind === "verify" || saving.kind === "activate")}
+                  onClick={() =>
+                    void (investment.status === "pending_verification"
+                      ? decide(investment.investmentId, "deposit_verified")
+                      : activate(investment.investmentId))
+                  }
+                >
+                  {saving?.id === investment.investmentId && (saving.kind === "verify" || saving.kind === "activate") ? "Saving…" : "Confirm"}
+                </Button>
+              ) : null}
               {investment.status === "pending_verification" ? (
                 <>
-                  <Button
-                    disabled={saving !== null}
-                    aria-busy={saving?.id === investment.investmentId && saving.kind === "verify"}
-                    onClick={() => void decide(investment.investmentId, "deposit_verified")}
-                  >
-                    {saving?.id === investment.investmentId && saving.kind === "verify" ? "Saving…" : "Verify deposit"}
-                  </Button>
                   <label htmlFor={`reject-reason-${investment.investmentId}`}>Rejection reason</label>
                   <textarea
                     id={`reject-reason-${investment.investmentId}`}
@@ -254,15 +260,6 @@ export function AdminDepositsPanel() {
                     {saving?.id === investment.investmentId && saving.kind === "reject" ? "Saving…" : "Reject"}
                   </Button>
                 </>
-              ) : null}
-              {investment.status === "deposit_verified" ? (
-                <Button
-                  disabled={saving !== null}
-                  aria-busy={saving?.id === investment.investmentId && saving.kind === "activate"}
-                  onClick={() => void activate(investment.investmentId)}
-                >
-                  {saving?.id === investment.investmentId && saving.kind === "activate" ? "Saving…" : "Activate investment"}
-                </Button>
               ) : null}
             </div>
           );

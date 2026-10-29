@@ -317,8 +317,8 @@ test("a second registration with the same email or mobile number is rejected", a
   assert.doesNotMatch(stack, /addGlobalSecondaryIndex/);
   const payment = readFileSync(new URL("../components/member/InvestmentPaymentPanel.tsx", import.meta.url), "utf8");
   assert.match(payment, /Selected screenshot preview/);
-  assert.match(payment, /Reference and screenshot received/);
-  assert.match(payment, /pending verification/);
+  assert.match(payment, /Submitted successfully/);
+  assert.match(payment, /Screenshot, optional/);
   const shell = readFileSync(new URL("../components/layouts/AppShell.tsx", import.meta.url), "utf8");
   const css = readFileSync(new URL("../app/globals.css", import.meta.url), "utf8");
   assert.match(shell, /Switch to night mode/);

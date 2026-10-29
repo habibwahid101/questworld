@@ -1,61 +1,70 @@
 .wrap {
   width: 100%;
+  overflow-x: auto;
 }
 
 .wrap table {
+  display: table;
   width: 100%;
-  min-width: 0;
+  min-width: 720px;
+  border-collapse: collapse;
 }
 
-.cell {
+.wrap thead {
+  display: table-header-group;
+}
+
+.wrap tbody {
+  display: table-row-group;
+}
+
+.wrap tr {
+  display: table-row;
+}
+
+.cell,
+.wrap th,
+.wrap td {
+  display: table-cell;
   vertical-align: top;
+  white-space: nowrap;
 }
 
 @media (max-width: 719px) {
   .wrap {
-    overflow: visible;
-    border: 0;
-    background: transparent;
+    overflow-x: auto;
   }
 
-  .wrap table,
-  .wrap thead,
-  .wrap tbody,
-  .wrap tr,
-  .wrap td {
-    display: block;
-    min-width: 0;
+  .wrap table {
+    display: table;
+    min-width: 720px;
   }
 
   .wrap thead {
-    position: absolute;
-    width: 1px;
-    height: 1px;
-    overflow: hidden;
-    clip: rect(0 0 0 0);
+    display: table-header-group;
+    position: static;
+    width: auto;
+    height: auto;
+    overflow: visible;
+    clip: auto;
+  }
+
+  .wrap tbody {
+    display: table-row-group;
   }
 
   .wrap tr {
-    margin: 0 0 12px;
-    padding: 8px 12px;
-    border: 1px solid var(--color-border);
-    border-radius: 8px;
-    background: var(--color-surface);
-  }
-
-  .wrap td {
-    display: grid;
-    gap: 2px;
-    padding: 8px 0;
+    display: table-row;
+    margin: 0;
+    padding: 0;
     border: 0;
+    border-radius: 0;
+    background: transparent;
   }
 
-  .wrap td::before {
-    content: attr(data-label);
-    color: var(--color-text-soft);
-    font-size: 0.75rem;
-    font-weight: 650;
-    letter-spacing: 0.04em;
-    text-transform: uppercase;
+  .wrap th,
+  .wrap td,
+  .cell {
+    display: table-cell;
   }
 }

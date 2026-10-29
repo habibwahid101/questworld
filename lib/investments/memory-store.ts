@@ -105,14 +105,21 @@ export function createMemoryInvestmentStore(seed: readonly InvestmentRecord[] = 
       if (current.status !== "pending_verification") {
         return { result: "rejected" };
       }
+      const confirming = review.decision === "deposit_verified";
       const record: InvestmentRecord = {
         ...current,
-        status: review.decision,
+        status: confirming ? "active" : review.decision,
         reviewedAt: review.reviewedAt,
         reviewedBy: review.reviewedBy,
         updatedAt: review.reviewedAt,
         statusChangedAt: review.reviewedAt,
       };
+      if (confirming) {
+        record.activatedAt = review.reviewedAt;
+        record.activatedBy = review.reviewedBy;
+        record.nextDueAt = addReturnCycle(review.reviewedAt);
+        record.paymentsPosted = 0;
+      }
       if (review.decision === "rejected" && review.rejectionReason) {
         record.rejectionReason = review.rejectionReason;
       } else {

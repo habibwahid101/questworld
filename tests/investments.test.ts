@@ -425,13 +425,21 @@ test("only an admin can list and review a pending deposit", async () => {
     status: string;
     reviewedBy: string;
     reviewedAt: string;
+    activatedBy: string;
+    activatedAt: string;
+    nextDueAt: string;
+    paymentsPosted: number;
     amountMinor: number;
     planId: string;
     ownerSub: string;
   };
-  assert.equal(saved.status, "deposit_verified");
+  assert.equal(saved.status, "active");
   assert.equal(saved.reviewedBy, "admin-1");
   assert.equal(saved.reviewedAt, REVIEWED_AT);
+  assert.equal(saved.activatedBy, "admin-1");
+  assert.equal(saved.activatedAt, REVIEWED_AT);
+  assert.equal(saved.nextDueAt, addReturnCycle(REVIEWED_AT));
+  assert.equal(saved.paymentsPosted, 0);
   assert.equal(saved.amountMinor, 100_000_000);
   assert.equal(saved.planId, "starter");
   assert.equal(saved.ownerSub, "member-1");
@@ -439,7 +447,7 @@ test("only an admin can list and review a pending deposit", async () => {
   const second = await review(store, "admin-1", PENDING_ID, { decision: "rejected" }, ["Admins"]);
   assert.equal(second.statusCode, 409);
   assert.equal(second.body.error, "review_not_allowed");
-  assert.equal((await store.getById("member-1", PENDING_ID))?.status, "deposit_verified");
+  assert.equal((await store.getById("member-1", PENDING_ID))?.status, "active");
 });
 
 test("a deposit that is not pending cannot be reviewed", async () => {
@@ -509,7 +517,8 @@ test("an admin can open a stored screenshot and a rejection can store a reason",
     ["Admins"],
   );
   assert.equal(verifiedWithReason.statusCode, 200);
-  assert.equal((await store.getById("member-2", ACTIVE_ID))?.status, "deposit_verified");
+  assert.equal((await store.getById("member-2", ACTIVE_ID))?.status, "active");
+  assert.equal((await store.getById("member-2", ACTIVE_ID))?.activatedBy, "admin-1");
   assert.equal((await store.getById("member-2", ACTIVE_ID))?.rejectionReason, undefined);
 
   const rejected = await review(store, "admin-1", PENDING_ID, { decision: "rejected", reason: "  Reference does not match.  " }, ["Admins"]);
@@ -528,6 +537,8 @@ test("an admin can open a stored screenshot and a rejection can store a reason",
   assert.match(panel, /Open screenshot/);
   assert.match(panel, /window\.confirm\("Reject this deposit\?"\)/);
   assert.match(panel, /Rejection reason/);
+  assert.match(panel, /"Confirm"/);
+  assert.doesNotMatch(panel, /Activate investment|Verify deposit/);
   assert.match(payment, /investment\.status === "rejected" && investment\.rejectionReason/);
   assert.match(stack, /s3:GetObject/);
   assert.match(stack, /s3:PutObject/);
@@ -1235,6 +1246,8 @@ test("plan cards use the catalog amounts, the given descriptions, and mark 8 per
   assert.doesNotMatch(wallet, /Pending requests/);
   assert.doesNotMatch(wallet, /requestCurrentWithdrawal|createCurrentInvestment|submitCurrentDeposit|Available balance/);
   assert.match(payment, /Transaction reference/);
+  assert.match(payment, /transaction hash or reference/);
+  assert.match(payment, /Submitted successfully/);
   assert.match(payment, /Screenshot, optional/);
   assert.match(payment, /submitCurrentDeposit/);
   assert.match(payment, /does not move money/);

@@ -733,24 +733,34 @@ async function reviewStoredDeposit(tableName: string, review: DepositReview): Pr
   if (!item || items.length !== 1) {
     return { result: "not-found" };
   }
+  const confirming = review.decision === "deposit_verified";
   try {
     const response = await document.send(
       new UpdateCommand({
         TableName: tableName,
         Key: { pk: item.pk, sk: item.sk },
-        UpdateExpression:
-          "SET #status = :decision, reviewedAt = :reviewedAt, reviewedBy = :reviewedBy, updatedAt = :reviewedAt, statusChangedAt = :reviewedAt" +
-          (review.decision === "rejected" && review.rejectionReason ? ", rejectionReason = :reason" : "") +
-          (review.decision === "rejected" && review.rejectionReason ? "" : " REMOVE rejectionReason"),
+        UpdateExpression: confirming
+          ? "SET #status = :active, reviewedAt = :reviewedAt, reviewedBy = :reviewedBy, activatedAt = :reviewedAt, activatedBy = :reviewedBy, nextDueAt = :nextDueAt, paymentsPosted = :paymentsPosted, updatedAt = :reviewedAt, statusChangedAt = :reviewedAt REMOVE rejectionReason"
+          : "SET #status = :decision, reviewedAt = :reviewedAt, reviewedBy = :reviewedBy, updatedAt = :reviewedAt, statusChangedAt = :reviewedAt" +
+            (review.rejectionReason ? ", rejectionReason = :reason" : " REMOVE rejectionReason"),
         ConditionExpression: "#status = :pending",
         ExpressionAttributeNames: { "#status": "status" },
-        ExpressionAttributeValues: {
-          ":decision": review.decision,
-          ":pending": "pending_verification",
-          ":reviewedAt": review.reviewedAt,
-          ":reviewedBy": review.reviewedBy,
-          ...(review.decision === "rejected" && review.rejectionReason ? { ":reason": review.rejectionReason } : {}),
-        },
+        ExpressionAttributeValues: confirming
+          ? {
+              ":active": "active",
+              ":pending": "pending_verification",
+              ":reviewedAt": review.reviewedAt,
+              ":reviewedBy": review.reviewedBy,
+              ":nextDueAt": addReturnCycle(review.reviewedAt),
+              ":paymentsPosted": 0,
+            }
+          : {
+              ":decision": review.decision,
+              ":pending": "pending_verification",
+              ":reviewedAt": review.reviewedAt,
+              ":reviewedBy": review.reviewedBy,
+              ...(review.rejectionReason ? { ":reason": review.rejectionReason } : {}),
+            },
         ReturnValues: "ALL_NEW",
       }),
     );

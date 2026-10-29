@@ -1021,7 +1021,21 @@ async function reviewDeposit(input: {
     throw new InvestmentRequestError(409, "review_not_allowed", "Only a pending deposit can be reviewed.");
   }
   const saved = outcome.record;
-  if (saved.status !== decision.decision || saved.reviewedBy !== input.reviewedBy || saved.ownerSub.length === 0) {
+  if (saved.reviewedBy !== input.reviewedBy || saved.ownerSub.length === 0) {
+    throw new InvestmentRequestError(500, "review_failed", "Could not save that review.");
+  }
+  if (decision.decision === "deposit_verified") {
+    if (
+      saved.status !== "active" ||
+      saved.activatedBy !== input.reviewedBy ||
+      saved.activatedAt === undefined ||
+      saved.activatedAt !== saved.reviewedAt ||
+      saved.nextDueAt !== addReturnCycle(saved.activatedAt) ||
+      saved.paymentsPosted !== 0
+    ) {
+      throw new InvestmentRequestError(500, "review_failed", "Could not save that review.");
+    }
+  } else if (saved.status !== decision.decision) {
     throw new InvestmentRequestError(500, "review_failed", "Could not save that review.");
   }
   if (decision.decision === "rejected" && decision.rejectionReason && saved.rejectionReason !== decision.rejectionReason) {

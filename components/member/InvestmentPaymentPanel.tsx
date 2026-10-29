@@ -92,11 +92,7 @@ export function InvestmentPaymentPanel({ investmentId }: { investmentId: string 
       depositKey.current = null;
       setInvestment(saved);
       setScreenshot(null);
-      setSubmittedNote(
-        proof
-          ? "Reference and screenshot received. They are pending verification. This does not move money."
-          : "Reference received. It is pending verification. This does not move money.",
-      );
+      setSubmittedNote("Submitted successfully");
     } catch (caught) {
       const error = caught instanceof InvestmentClientError ? caught : new InvestmentClientError("investment_request_failed", "Could not save that deposit reference.");
       setMessage(error.message);
@@ -208,9 +204,14 @@ function DepositReferenceForm({
         <DepositAddressRow network="TRC20" address={wallets.trc20} copied={copiedNetwork === "TRC20"} onCopy={onCopy} />
       </div>
       <label htmlFor={`deposit-${investmentId}`}>Transaction reference</label>
+      <p id={`deposit-help-${investmentId}`} style={{ marginTop: 8 }}>
+        Enter the transaction hash or reference from the transfer you sent to the BEP20 or TRC20 wallet above.
+      </p>
       <input
         id={`deposit-${investmentId}`}
         value={reference}
+        aria-describedby={`deposit-help-${investmentId}`}
+        placeholder="Transaction hash or reference"
         onChange={(event) => onReference(event.target.value)}
         autoComplete="off"
         style={{ display: "block", width: "100%", marginTop: 8 }}

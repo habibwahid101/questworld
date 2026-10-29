@@ -71,17 +71,31 @@ export function AdminUsersPanel() {
         ) : members.length === 0 ? (
           <p style={{ marginTop: 16 }}>No stored members.</p>
         ) : (
-          <div className="stack" style={{ marginTop: 16 }}>
-            {members.map((member) => (
-              <Card key={`${member.email}:${member.referralCode}`}>
-                <p className="eyebrow">{member.role}</p>
-                <h2>{member.name}</h2>
-                <p style={{ marginTop: 10 }}>{member.email}</p>
-                <p>Referral code {member.referralCode}</p>
-                <p>Joined {new Date(member.createdAt).toLocaleString()}</p>
-                {member.sponsorReferralCode ? <p>Sponsor {member.sponsorReferralCode}</p> : null}
-              </Card>
-            ))}
+          <div className="table-wrap" style={{ marginTop: 16 }}>
+            <table>
+              <thead>
+                <tr>
+                  <th>Name</th>
+                  <th>Email</th>
+                  <th>Role</th>
+                  <th>Referral code</th>
+                  <th>Joined</th>
+                  <th>Sponsor</th>
+                </tr>
+              </thead>
+              <tbody>
+                {members.map((member) => (
+                  <tr key={`${member.email}:${member.referralCode}`}>
+                    <td>{member.name}</td>
+                    <td>{member.email}</td>
+                    <td>{member.role}</td>
+                    <td>{member.referralCode}</td>
+                    <td>{new Date(member.createdAt).toLocaleString()}</td>
+                    <td>{member.sponsorReferralCode ?? "—"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         )}
         <label htmlFor="member-email" style={{ display: "block", marginTop: 16 }}>Member email</label>

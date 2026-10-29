@@ -153,3 +153,25 @@ function isListedMember(value: unknown): value is ListedMember {
     record.createdAt.length > 0
   );
 }
+
+/**
+ * Public referral check. Runs before any Cognito account exists, so it sends no token.
+ * Throws MemberClientError when the request itself fails.
+ */
+export async function checkReferralCode(code: string): Promise<{ valid: boolean; code: string }> {
+  const base = readMemberApiUrl();
+  if (!isMemberApiConfigured(base)) {
+    throw new MemberClientError("not_configured", "Member profiles are not connected in this build.");
+  }
+  let response: Response;
+  try {
+    response = await fetch(`${base}/members/referral-check?code=${encodeURIComponent(code)}`, { method: "GET" });
+  } catch {
+    throw new MemberClientError("referral_check_failed", "We could not check your referral code. Check your connection and try again.");
+  }
+  const payload = (await response.json().catch(() => null)) as { valid?: unknown; code?: unknown } | null;
+  if (!response.ok || !payload || typeof payload.valid !== "boolean") {
+    throw new MemberClientError("referral_check_failed", "We could not check your referral code. Please try again.");
+  }
+  return { valid: payload.valid, code: typeof payload.code === "string" ? payload.code : code };
+}

@@ -9,6 +9,7 @@ import {
 import { GetObjectCommand, PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import { CognitoIdentityProviderClient, ListUsersInGroupCommand } from "@aws-sdk/client-cognito-identity-provider";
 import {
+  checkReferralCode,
   handleMemberApi,
   MemberRequestError,
   profilePhotoKey,
@@ -25,6 +26,7 @@ const UNIQUE_SK = "UNIQUE";
 
 type ApiGatewayEvent = {
   rawPath?: string;
+  queryStringParameters?: Record<string, string | undefined> | null;
   body?: string | null;
   isBase64Encoded?: boolean;
   requestContext?: {
@@ -47,6 +49,12 @@ export async function handler(event: ApiGatewayEvent): Promise<{
   const tableName = process.env.MEMBERS_TABLE_NAME;
   if (!tableName) {
     return json(500, { error: "configuration", message: "Member storage is not configured." });
+  }
+
+  const method = (event.requestContext?.http?.method ?? "GET").toUpperCase();
+  if (method === "GET" && (event.rawPath ?? "").replace(/\/+$/, "") === "/members/referral-check") {
+    const result = await checkReferralCode(createDynamoMemberStore(tableName), event.queryStringParameters?.code);
+    return json(200, result);
   }
 
   let body: unknown;

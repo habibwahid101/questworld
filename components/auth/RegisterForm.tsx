@@ -13,7 +13,7 @@ import { PASSWORD_HINT, passwordIssue, TRANSACTION_PASSWORD_MIN } from "@/lib/au
 import { normalizeReferralCode, rememberPendingReferral } from "@/lib/auth/referral";
 import { rememberPendingSignupProfile } from "@/lib/auth/signup-profile";
 import { countryNames } from "@/constants/countries";
-import { initializeCurrentMember, MemberClientError } from "@/lib/members/client";
+import { checkReferralCode, initializeCurrentMember, MemberClientError } from "@/lib/members/client";
 import fieldStyles from "./AuthFields.module.css";
 import styles from "./RegisterForm.module.css";
 
@@ -101,12 +101,30 @@ export function RegisterForm() {
 
     setSubmitting(true);
     setErrors({});
+    // Referral is optional. When given, confirm it exists before creating any Cognito account.
+    const referral = normalizeReferralCode(referralCode);
+    if (referral) {
+      try {
+        const check = await checkReferralCode(referral);
+        if (!check.valid) {
+          setErrors({ referralCode: "That referral code is not valid." });
+          setSubmitting(false);
+          return;
+        }
+      } catch (caught) {
+        const message =
+          caught instanceof MemberClientError ? caught.message : "We could not check your referral code. Please try again.";
+        setErrors({ referralCode: message });
+        setSubmitting(false);
+        return;
+      }
+    }
     try {
       await registerAccount({ name: `${firstName} ${lastName}`, email, password });
-      rememberPendingReferral(window.localStorage, referralCode);
+      rememberPendingReferral(window.localStorage, referral);
       rememberPendingSignupProfile(window.sessionStorage, { firstName, lastName, phone, country });
       await loginAccount({ email, password, remember: true });
-      await initializeCurrentMember(referralCode, { firstName, lastName, phone, country, transactionPassword });
+      await initializeCurrentMember(referral, { firstName, lastName, phone, country, transactionPassword });
       await refresh();
       router.replace("/dashboard");
     } catch (caught) {
@@ -191,6 +209,7 @@ export function RegisterForm() {
       <Field
         label="Referral Code — Optional"
         htmlFor="referralCode"
+        error={errors.referralCode}
         hint={linkedReferral ? "Referral code filled from the link you used." : undefined}
       >
         <Input

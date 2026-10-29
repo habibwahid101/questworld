@@ -1,4 +1,5 @@
 import { passwordIssue, TRANSACTION_PASSWORD_MIN } from "../auth/password.ts";
+import { normalizeReferralCode } from "../auth/referral.ts";
 import { isAdminClaims } from "../investments/service.ts";
 import { hashTransactionPassword, verifyTransactionPassword } from "./transaction-password.ts";
 
@@ -319,6 +320,22 @@ function currentTransactionPasswordFromBody(body: unknown): string {
     throw new MemberRequestError(400, "invalid_body", "Enter the current transaction password.");
   }
   return source.currentTransactionPassword;
+}
+
+/**
+ * Public, read-only referral lookup used before a Cognito account is created.
+ * Returns only whether the code exists. Never returns the owner's user id.
+ */
+export async function checkReferralCode(
+  store: Pick<MemberStore, "getUserIdByReferralCode">,
+  raw: unknown,
+): Promise<{ valid: boolean; code: string }> {
+  const code = typeof raw === "string" ? normalizeReferralCode(raw) : "";
+  if (!code || !CODE_PATTERN.test(code)) {
+    return { valid: false, code };
+  }
+  const owner = await store.getUserIdByReferralCode(code);
+  return { valid: typeof owner === "string" && owner.length > 0, code };
 }
 
 export async function handleMemberApi(input: {

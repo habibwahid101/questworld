@@ -120,6 +120,19 @@ export class ApiStack extends cdk.Stack {
       integration,
       authorizer,
     });
+    // Public, read-only referral check used before sign-up. No authorizer.
+    httpApi.addRoutes({
+      path: "/members/referral-check",
+      methods: [apigwv2.HttpMethod.GET],
+      integration,
+    });
+    const defaultStage = httpApi.defaultStage?.node.defaultChild as apigwv2.CfnStage | undefined;
+    if (!defaultStage) {
+      throw new Error("Members HttpApi must have a default stage for referral-check throttling.");
+    }
+    defaultStage.addPropertyOverride("RouteSettings", {
+      "GET /members/referral-check": { ThrottlingRateLimit: 5, ThrottlingBurstLimit: 10 },
+    });
     httpApi.addRoutes({
       path: "/admin/members",
       methods: [apigwv2.HttpMethod.GET],

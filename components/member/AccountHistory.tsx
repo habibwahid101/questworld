@@ -279,7 +279,9 @@ function HistoryTable({
               rows.map((row) => (
                 <tr key={row.key}>
                   {row.cells.map((cell, index) => (
-                    <td key={columns[index]}>{cell}</td>
+                    <td key={columns[index]} data-label={columns[index]}>
+                      {cell}
+                    </td>
                   ))}
                 </tr>
               ))

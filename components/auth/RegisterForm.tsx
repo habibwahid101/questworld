@@ -40,13 +40,7 @@ export function RegisterForm() {
     }
   }, [errors]);
 
-  async function onSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (submitting) {
-      return;
-    }
-
-    const form = new FormData(event.currentTarget);
+  function collectValidationErrors(form: FormData): Record<string, string> {
     const firstName = String(form.get("firstName") ?? "").trim();
     const lastName = String(form.get("lastName") ?? "").trim();
     const email = String(form.get("email") ?? "").trim();
@@ -94,6 +88,19 @@ export function RegisterForm() {
     if (!accepted) {
       nextErrors.terms = "Accept the Terms & Conditions and Privacy Policy to continue.";
     }
+    return nextErrors;
+  }
+
+  async function onSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (submitting) {
+      return;
+    }
+
+    const form = new FormData(event.currentTarget);
+    const nextErrors = collectValidationErrors(form);
+
+    // Any red message means the form is not ready. Do not create a Cognito user or a member record.
     if (Object.keys(nextErrors).length > 0) {
       setErrors(nextErrors);
       return;
@@ -101,6 +108,15 @@ export function RegisterForm() {
 
     setSubmitting(true);
     setErrors({});
+
+    const firstName = String(form.get("firstName") ?? "").trim();
+    const lastName = String(form.get("lastName") ?? "").trim();
+    const email = String(form.get("email") ?? "").trim();
+    const phone = String(form.get("phone") ?? "").trim();
+    const country = String(form.get("country") ?? "").trim();
+    const password = String(form.get("password") ?? "");
+    const transactionPassword = String(form.get("transactionPassword") ?? "");
+
     // Referral is optional. When given, confirm it exists before creating any Cognito account.
     const referral = normalizeReferralCode(referralCode);
     if (referral) {
@@ -119,6 +135,7 @@ export function RegisterForm() {
         return;
       }
     }
+
     try {
       await registerAccount({ name: `${firstName} ${lastName}`, email, password });
       rememberPendingReferral(window.localStorage, referral);

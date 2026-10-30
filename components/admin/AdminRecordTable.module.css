@@ -32,39 +32,63 @@
 
 @media (max-width: 719px) {
   .wrap {
-    overflow-x: auto;
+    overflow-x: visible;
   }
 
   .wrap table {
-    display: table;
-    min-width: 720px;
+    display: block;
+    min-width: 0;
   }
 
   .wrap thead {
-    display: table-header-group;
-    position: static;
-    width: auto;
-    height: auto;
-    overflow: visible;
-    clip: auto;
+    display: none;
   }
 
   .wrap tbody {
-    display: table-row-group;
+    display: block;
   }
 
   .wrap tr {
-    display: table-row;
-    margin: 0;
-    padding: 0;
-    border: 0;
-    border-radius: 0;
-    background: transparent;
+    display: block;
+    margin: 0 0 var(--space-4);
+    padding: var(--space-3);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    background: var(--color-surface);
+  }
+
+  .wrap tr:last-child {
+    margin-bottom: 0;
   }
 
   .wrap th,
   .wrap td,
   .cell {
-    display: table-cell;
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: var(--space-3);
+    width: 100%;
+    padding: 8px 0;
+    border: 0;
+    white-space: normal;
+    text-align: right;
+  }
+
+  .wrap td::before,
+  .cell::before {
+    content: attr(data-label);
+    flex: 0 0 auto;
+    font-weight: 650;
+    font-size: 0.75rem;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--color-text-soft);
+    text-align: left;
+  }
+
+  .wrap td:empty::before,
+  .cell:empty::before {
+    content: none;
   }
 }

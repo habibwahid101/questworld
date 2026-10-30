@@ -220,7 +220,6 @@ p {
 table {
   width: 100%;
   border-collapse: collapse;
-  min-width: 560px;
 }
 
 th,
@@ -265,6 +264,10 @@ tr:last-child td {
   .grid-2,
   .grid-4 {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  table {
+    min-width: 560px;
   }
 }
 

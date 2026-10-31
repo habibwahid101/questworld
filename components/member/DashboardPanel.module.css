@@ -1,13 +1,36 @@
 .wallet {
-  display: grid;
-  gap: 8px;
-  justify-items: center;
-  text-align: center;
+  display: block;
   color: var(--color-text);
+}
+
+.row {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+}
+
+.icon {
+  flex: 0 0 auto;
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  background: #f8d0d8;
+  color: #c81e4a;
+  display: grid;
+  place-items: center;
+}
+
+.content {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+  text-align: left;
 }
 
 .wallet .eyebrow {
   color: var(--color-text);
+  margin-bottom: 0;
 }
 
 .available {
@@ -30,7 +53,7 @@
 .amount {
   margin: 0;
   color: var(--color-text);
-  font-size: 2rem;
+  font-size: 1.75rem;
   line-height: 1.1;
   font-weight: 650;
 }
@@ -38,11 +61,13 @@
 .line {
   margin: 0;
   color: var(--color-text);
+  font-size: 0.92rem;
 }
 
 .line a {
   color: var(--color-accent);
-  text-decoration: underline;
+  text-decoration: none;
+  font-weight: 550;
 }
 
 html[data-theme="dark"] .available {
@@ -60,6 +85,11 @@ html[data-theme="dark"] .return {
 
 html[data-theme="dark"] .commission {
   background: #3d3218;
+}
+
+html[data-theme="dark"] .icon {
+  background: #5a2a3a;
+  color: #f8d0d8;
 }
 
 html[data-theme="dark"] .wallet,

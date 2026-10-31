@@ -80,6 +80,7 @@ export function InvestmentsPanel() {
   const activePlan = selectedPlan ?? matched?.planId ?? null;
   const activeAmountMinor = activePlan ? investmentCatalog[activePlan].amountMinor : null;
   const totalReturn = activeAmountMinor !== null ? totalReturnMinor(activeAmountMinor) : null;
+  const monthlyPayment = totalReturn !== null ? Math.floor(totalReturn / 12) : null;
 
   function selectAmount(planId: PlanId) {
     const entry = LISTED_AMOUNTS.find((item) => item.planId === planId);
@@ -167,13 +168,13 @@ export function InvestmentsPanel() {
             <strong>12 months</strong>
           </div>
           <div className={styles.resultRow}>
-            <span>Monthly rate</span>
-            <strong>8%</strong>
+            <span>Monthly payment</span>
+            <strong>{monthlyPayment !== null ? formatUsdtAmount(monthlyPayment) : "—"}</strong>
           </div>
         </div>
 
         <p className={styles.note}>
-          Note: Twelve monthly payments return double the investment. Not a payout until verified and active.
+          Note: Total return is double the investment, paid in 12 equal monthly payments. Not a payout until verified and active.
         </p>
 
         <Button type="button" disabled={!activePlan || saving} aria-busy={saving} onClick={() => void submit()}>

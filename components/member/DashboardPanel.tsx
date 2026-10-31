@@ -15,6 +15,7 @@ import {
   INVESTMENT_SCALE,
   availableWithdrawalMinor,
   formatUsdtAmount,
+  totalReturnMinor,
   type InvestmentRecord,
 } from "@/lib/investments/service";
 import { readCurrentMember, readCurrentProfilePhoto, uploadCurrentProfilePhoto } from "@/lib/members/client";
@@ -29,6 +30,7 @@ type Figures = {
   generationReceived: number | null;
   available: number | null;
   activeInvested: number | null;
+  totalReturn: number | null;
   activeDate: string | null;
 };
 
@@ -63,12 +65,14 @@ export function DashboardPanel() {
       const profitRows = profits.status === "fulfilled" ? profits.value : null;
       const commissionRows = commissions.status === "fulfilled" ? commissions.value : null;
       const withdrawalRows = withdrawals.status === "fulfilled" ? withdrawals.value.withdrawals : null;
+      const activeInvested = investmentRows ? totalMinor(investmentRows.filter((record) => record.status === "active"), (record) => record.amountMinor) : null;
       setFigures({
         received: profitRows ? totalMinor(profitRows, (entry) => entry.profitMinor) : null,
         remaining: profitRows && withdrawalRows ? availableWithdrawalMinor(profitRows, withdrawalRows) : null,
         generationReceived: commissionRows ? totalMinor(commissionRows, (entry) => entry.commissionMinor) : null,
         available: withdrawals.status === "fulfilled" ? withdrawals.value.availableMinor : null,
-        activeInvested: investmentRows ? totalMinor(investmentRows.filter((record) => record.status === "active"), (record) => record.amountMinor) : null,
+        activeInvested,
+        totalReturn: typeof activeInvested === "number" ? totalReturnMinor(activeInvested) : null,
         activeDate: investmentRows ? earliestActivation(investmentRows) : null,
       });
     });
@@ -191,7 +195,8 @@ export function DashboardPanel() {
           </div>
           <div className={styles.content}>
             <p className="eyebrow">Return wallet</p>
-            <h2 className={styles.amount}>{amountText(figures?.received)}</h2>
+            <h2 className={styles.amount}>{amountText(figures?.totalReturn)}</h2>
+            <p className={styles.line}>Total return: {amountText(figures?.totalReturn)}</p>
             <p className={styles.line}>Received: {amountText(figures?.received)}</p>
             <p className={styles.line}>Remaining: {amountText(figures?.remaining)}</p>
             <HistoryLink href="/transactions#return-history" />

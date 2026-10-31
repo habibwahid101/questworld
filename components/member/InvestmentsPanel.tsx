@@ -1,13 +1,19 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { createCurrentInvestment, InvestmentClientError, listCurrentInvestments } from "@/lib/investments/client";
-import { formatUsdtAmount, investmentCatalog, type InvestmentRecord, type InvestmentStatus, type PlanId } from "@/lib/investments/service";
-import { PLAN_DESCRIPTIONS, planMonthlyRateLabel } from "@/lib/investments/plan-copy";
+import {
+  formatUsdtAmount,
+  investmentCatalog,
+  totalReturnMinor,
+  type InvestmentRecord,
+  type InvestmentStatus,
+  type PlanId,
+} from "@/lib/investments/service";
 import { isMemberApiConfigured } from "@/lib/members/config";
 import styles from "./InvestmentsPanel.module.css";
 
@@ -20,13 +26,22 @@ const statusLabel: Record<InvestmentStatus, string> = {
   completed: "Completed",
 };
 
+const MICRO = 1_000_000;
+const LISTED_AMOUNTS = (Object.keys(investmentCatalog) as PlanId[]).map((planId) => ({
+  planId,
+  amount: investmentCatalog[planId].amountMinor / MICRO,
+  name: investmentCatalog[planId].planName,
+}));
+
 export function InvestmentsPanel() {
   const router = useRouter();
   const [message, setMessage] = useState<string | null>(null);
-  const [savingPlan, setSavingPlan] = useState<PlanId | null>(null);
+  const [saving, setSaving] = useState(false);
   const [investments, setInvestments] = useState<InvestmentRecord[]>([]);
   const [loading, setLoading] = useState(isMemberApiConfigured());
-  const pendingKeys = useRef<Partial<Record<PlanId, string>>>({});
+  const [inputAmount, setInputAmount] = useState("");
+  const [selectedPlan, setSelectedPlan] = useState<PlanId | null>(null);
+  const pendingKey = useRef<string | null>(null);
 
   useEffect(() => {
     if (!isMemberApiConfigured()) {
@@ -54,22 +69,50 @@ export function InvestmentsPanel() {
     };
   }, []);
 
-  async function choosePlan(planId: PlanId) {
-    if (savingPlan) {
+  const matched = useMemo(() => {
+    const value = Number(inputAmount.replace(/,/g, ""));
+    if (!Number.isFinite(value) || value <= 0) {
+      return null;
+    }
+    return LISTED_AMOUNTS.find((entry) => entry.amount === value) ?? null;
+  }, [inputAmount]);
+
+  const activePlan = selectedPlan ?? matched?.planId ?? null;
+  const activeAmountMinor = activePlan ? investmentCatalog[activePlan].amountMinor : null;
+  const totalReturn = activeAmountMinor !== null ? totalReturnMinor(activeAmountMinor) : null;
+
+  function selectAmount(planId: PlanId) {
+    const entry = LISTED_AMOUNTS.find((item) => item.planId === planId);
+    if (!entry) {
       return;
     }
-    setSavingPlan(planId);
+    setSelectedPlan(planId);
+    setInputAmount(String(entry.amount));
     setMessage(null);
-    const idempotencyKey = pendingKeys.current[planId] ?? crypto.randomUUID();
-    pendingKeys.current[planId] = idempotencyKey;
+  }
+
+  function onInput(value: string) {
+    setInputAmount(value);
+    setSelectedPlan(null);
+    setMessage(null);
+  }
+
+  async function submit() {
+    if (!activePlan || saving) {
+      return;
+    }
+    setSaving(true);
+    setMessage(null);
+    const idempotencyKey = pendingKey.current ?? crypto.randomUUID();
+    pendingKey.current = idempotencyKey;
     try {
-      const record = await createCurrentInvestment(planId, idempotencyKey);
-      delete pendingKeys.current[planId];
+      const record = await createCurrentInvestment(activePlan, idempotencyKey);
+      pendingKey.current = null;
       router.push(`/investments/${encodeURIComponent(record.investmentId)}`);
     } catch (caught) {
       const error = caught instanceof InvestmentClientError ? caught : new InvestmentClientError("investment_request_failed", "Could not record that investment.");
       setMessage(error.message);
-      setSavingPlan(null);
+      setSaving(false);
     }
   }
 
@@ -87,31 +130,59 @@ export function InvestmentsPanel() {
       <Card>
         <h1>Investments</h1>
         <p className="lead" style={{ marginTop: 12 }}>
-          Choose a listed plan to record an investment. This does not move money.
+          Select or enter one of the listed amounts. Total return and duration appear immediately. This does not move money.
         </p>
-        <div className={styles.plans}>
-          {(Object.keys(investmentCatalog) as PlanId[]).map((planId) => {
-            const plan = investmentCatalog[planId];
-            return (
-              <Card key={planId} className={styles.plan}>
-                <p className="eyebrow">{plan.planName}</p>
-                <h2>{formatUsdtAmount(plan.amountMinor)}</h2>
-                <p className={styles.description}>{PLAN_DESCRIPTIONS[planId]}</p>
-                <p className={styles.rate}>{planMonthlyRateLabel()}</p>
-                <Button
-                  type="button"
-                  disabled={savingPlan !== null}
-                  aria-busy={savingPlan === planId}
-                  onClick={() => void choosePlan(planId)}
-                >
-                  {savingPlan === planId ? "Submitting…" : "Choose"}
-                </Button>
-              </Card>
-            );
-          })}
+
+        <div className={styles.amountRow}>
+          {LISTED_AMOUNTS.map((entry) => (
+            <button
+              key={entry.planId}
+              type="button"
+              className={activePlan === entry.planId ? styles.amountButtonActive : styles.amountButton}
+              onClick={() => selectAmount(entry.planId)}
+            >
+              {entry.amount.toLocaleString()} USDT
+            </button>
+          ))}
         </div>
+
+        <label className={styles.field}>
+          <span className={styles.fieldLabel}>Amount (USDT)</span>
+          <input
+            className={styles.input}
+            inputMode="numeric"
+            placeholder="100, 1,000, 10,000, or 100,000"
+            value={inputAmount}
+            onChange={(event) => onInput(event.target.value)}
+          />
+        </label>
+
+        <div className={styles.result}>
+          <div className={styles.resultRow}>
+            <span>Total return</span>
+            <strong>{totalReturn !== null ? formatUsdtAmount(totalReturn) : "—"}</strong>
+          </div>
+          <div className={styles.resultRow}>
+            <span>Duration</span>
+            <strong>12 months</strong>
+          </div>
+          <div className={styles.resultRow}>
+            <span>Monthly rate</span>
+            <strong>8%</strong>
+          </div>
+        </div>
+
+        <p className={styles.note}>
+          Note: Twelve monthly payments return double the investment. Not a payout until verified and active.
+        </p>
+
+        <Button type="button" disabled={!activePlan || saving} aria-busy={saving} onClick={() => void submit()}>
+          {saving ? "Submitting…" : "Continue"}
+        </Button>
         {message ? <p style={{ marginTop: 16 }}>{message}</p> : null}
+        {!activePlan && inputAmount ? <p className={styles.hint}>Enter 100, 1,000, 10,000, or 100,000.</p> : null}
       </Card>
+
       {loading ? (
         <Card>
           <p>Loading investments…</p>

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { Card } from "@/components/ui/Card";
 import { AdminRecordTable } from "@/components/admin/AdminRecordTable";
 import { useStoredMembers } from "@/components/admin/useStoredMembers";
@@ -150,6 +151,9 @@ function AccountHistory({ title, audience }: { title: string; audience: "member"
   return (
     <div className="stack">
       <Card>
+        <p style={{ marginBottom: 12 }}>
+          <Link href="/dashboard">← Back to dashboard</Link>
+        </p>
         <h1>{title}</h1>
         <p className="lead" style={{ marginTop: 12 }}>
           Date, time, and flow come only from stored records. Nothing here is invented, and nothing is paid out.

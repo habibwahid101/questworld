@@ -1,6 +1,7 @@
 /**
  * Investment records.
- * Cognito `sub` is the owner. The client cannot choose it, the amount, or the status.
+ * Cognito `sub` is the owner. The client cannot choose the owner or the status.
+ * Catalog plans set the amount. A custom plan stores the submitted amountMinor.
  * Creating a record does not take payment. Submitting a deposit reference only marks
  * that owned awaiting-deposit record as pending verification.
  * An admin review can only mark that pending record as deposit verified or rejected.
@@ -34,6 +35,9 @@ export const investmentCatalog = {
 } as const;
 
 export type PlanId = keyof typeof investmentCatalog;
+export type StoredPlanId = PlanId | "custom";
+const MIN_CUSTOM_AMOUNT_MINOR = 1_000_000;
+const MAX_CUSTOM_AMOUNT_MINOR = 100_000_000_000;
 export type InvestmentStatus = "awaiting_deposit" | "pending_verification" | "deposit_verified" | "rejected" | "active" | "completed";
 export const REVIEW_DECISIONS = ["deposit_verified", "rejected"] as const;
 export type ReviewDecision = (typeof REVIEW_DECISIONS)[number];
@@ -41,7 +45,7 @@ export type ReviewDecision = (typeof REVIEW_DECISIONS)[number];
 export type InvestmentRecord = {
   investmentId: string;
   ownerSub: string;
-  planId: PlanId;
+  planId: StoredPlanId;
   planName: string;
   amountMinor: number;
   currency: typeof INVESTMENT_CURRENCY;
@@ -76,7 +80,7 @@ export type ProfitEntry = {
   principalMinor: number;
   currency: typeof INVESTMENT_CURRENCY;
   scale: typeof INVESTMENT_SCALE;
-  planId: PlanId;
+  planId: StoredPlanId;
   planName: string;
   postedAt: string;
 };
@@ -100,7 +104,7 @@ export type CommissionEntry = {
   principalMinor: number;
   currency: typeof INVESTMENT_CURRENCY;
   scale: typeof INVESTMENT_SCALE;
-  planId: PlanId;
+  planId: StoredPlanId;
   planName: string;
   postedAt: string;
 };
@@ -574,8 +578,8 @@ export function commissionFromStoredItem(item: Record<string, unknown>): Commiss
   if (item.rateBps !== rateBps || storedCommission !== commissionMinor(principalMinor, generation)) {
     throw new InvestmentRequestError(500, "invalid_stored_commission", "That commission record is not valid.");
   }
-  const planId = item.planId as PlanId;
-  if (!investmentCatalog[planId] || item.currency !== INVESTMENT_CURRENCY || item.scale !== INVESTMENT_SCALE) {
+  const planId = storedPlanId(item.planId);
+  if (!planId || item.currency !== INVESTMENT_CURRENCY || item.scale !== INVESTMENT_SCALE) {
     throw new InvestmentRequestError(500, "invalid_stored_commission", "That commission record is not valid.");
   }
   if (typeof item.investmentId !== "string" || typeof item.recipientSub !== "string" || typeof item.postedAt !== "string") {
@@ -655,8 +659,8 @@ export function profitFromStoredItem(item: Record<string, unknown>): ProfitEntry
   if (profitMinor !== legacyMinor && profitMinor !== returnPaymentMinor(principalMinor, paymentNumber)) {
     throw new InvestmentRequestError(500, "invalid_stored_profit", "That profit record is not valid.");
   }
-  const planId = item.planId as PlanId;
-  if (!investmentCatalog[planId] || item.currency !== INVESTMENT_CURRENCY || item.scale !== INVESTMENT_SCALE) {
+  const planId = storedPlanId(item.planId);
+  if (!planId || item.currency !== INVESTMENT_CURRENCY || item.scale !== INVESTMENT_SCALE) {
     throw new InvestmentRequestError(500, "invalid_stored_profit", "That profit record is not valid.");
   }
   if (typeof item.investmentId !== "string" || typeof item.ownerSub !== "string" || typeof item.postedAt !== "string") {
@@ -1195,11 +1199,40 @@ function matchesImage(bytes: Uint8Array, contentType: DepositProof["contentType"
   return bytes[0] === 0x52 && bytes[1] === 0x49 && bytes[2] === 0x46 && bytes[3] === 0x46 && bytes[8] === 0x57 && bytes[9] === 0x45 && bytes[10] === 0x42 && bytes[11] === 0x50;
 }
 
-function planFromBody(body: unknown): (typeof investmentCatalog)[PlanId] {
+function storedPlanId(value: unknown): StoredPlanId | null {
+  if (value === "custom") {
+    return value;
+  }
+  if (typeof value === "string" && value in investmentCatalog) {
+    return value as PlanId;
+  }
+  return null;
+}
+
+function planFromBody(body: unknown): { planId: StoredPlanId; planName: string; amountMinor: number } {
   if (!body || typeof body !== "object" || Array.isArray(body)) {
     throw new InvestmentRequestError(400, "invalid_body", "Choose a plan.");
   }
   const source = body as Record<string, unknown>;
+  if (source.planId === "custom") {
+    if (!Object.prototype.hasOwnProperty.call(source, "amountMinor")) {
+      throw new InvestmentRequestError(400, "unknown_plan", "Choose one of the listed plans.");
+    }
+    const extra = Object.keys(source).filter((key) => key !== "planId" && key !== "amountMinor");
+    if (extra.length > 0) {
+      throw new InvestmentRequestError(400, "invalid_body", "A custom investment needs only an amount.");
+    }
+    const amountMinor = source.amountMinor;
+    if (
+      typeof amountMinor !== "number" ||
+      !Number.isSafeInteger(amountMinor) ||
+      amountMinor < MIN_CUSTOM_AMOUNT_MINOR ||
+      amountMinor > MAX_CUSTOM_AMOUNT_MINOR
+    ) {
+      throw new InvestmentRequestError(400, "invalid_amount", "Enter an amount from 1 to 100,000 USDT.");
+    }
+    return { planId: "custom", planName: "Custom", amountMinor };
+  }
   const extra = Object.keys(source).filter((key) => key !== "planId");
   if (extra.length > 0) {
     throw new InvestmentRequestError(400, "invalid_body", "Only a plan can be submitted.");
@@ -1207,7 +1240,8 @@ function planFromBody(body: unknown): (typeof investmentCatalog)[PlanId] {
   if (typeof source.planId !== "string" || !(source.planId in investmentCatalog)) {
     throw new InvestmentRequestError(400, "unknown_plan", "Choose one of the listed plans.");
   }
-  return investmentCatalog[source.planId as PlanId];
+  const plan = investmentCatalog[source.planId as PlanId];
+  return { planId: plan.planId, planName: plan.planName, amountMinor: plan.amountMinor };
 }
 
 function readIdempotencyKey(value: string | undefined): string {

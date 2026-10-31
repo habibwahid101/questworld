@@ -133,6 +133,9 @@ export function DashboardPanel() {
     );
   }
 
+  const statusText = profile?.status ?? "…";
+  const isActive = statusText.toLowerCase() === "active";
+
   return (
     <div className="stack">
       {message ? (
@@ -140,26 +143,39 @@ export function DashboardPanel() {
           {message}
         </p>
       ) : null}
-      <Card>
-        <p className="eyebrow">Profile</p>
-        <ProfilePhoto
-          name={profile?.name ?? "Member"}
-          src={photoUrl}
-          editable
-          uploading={uploadingPhoto}
-          onSelect={(file) => void onPhoto(file)}
-        >
-          <p style={{ marginTop: 0 }}>Name {profile?.name ?? "…"}</p>
-          <p>Referral ID {profile?.referralCode ?? "…"}</p>
-          <p>Status {profile?.status ?? "…"}</p>
-          <p>Joining date {profile ? formatWhen(profile.createdAt) : "…"}</p>
-          <p>Active date {figures?.activeDate === null ? "Could not read" : figures?.activeDate ? formatWhen(figures.activeDate) : figures ? "Not active" : "…"}</p>
-        </ProfilePhoto>
+      <Card className={styles.profileCard}>
+        <div className={styles.profileHeader}>
+          <ProfilePhoto
+            name={profile?.name ?? "Member"}
+            src={photoUrl}
+            editable
+            uploading={uploadingPhoto}
+            onSelect={(file) => void onPhoto(file)}
+          />
+          <h2 className={styles.profileName}>{profile?.name ?? "…"}</h2>
+          {profile ? (
+            <span className={isActive ? styles.statusActive : styles.statusOther}>
+              {isActive ? "Active" : statusText}
+            </span>
+          ) : null}
+        </div>
         {photoError ? (
           <p className="form-error" role="alert">
             {photoError}
           </p>
         ) : null}
+        <p className={styles.sectionLabel}>Account details</p>
+        <div className={styles.detailList}>
+          <DetailRow icon={<UserIcon />} label="Name" value={profile?.name ?? "…"} />
+          <DetailRow icon={<IdIcon />} label="Referral ID" value={profile?.referralCode ?? "…"} />
+          <DetailRow icon={<ShieldIcon />} label="Status" value={statusText} highlight={isActive} />
+          <DetailRow icon={<CalendarIcon />} label="Joining Date" value={profile ? formatWhen(profile.createdAt) : "…"} />
+          <DetailRow
+            icon={<ClockIcon />}
+            label="Active Date"
+            value={figures?.activeDate === null ? "Could not read" : figures?.activeDate ? formatWhen(figures.activeDate) : figures ? "Not active" : "…"}
+          />
+        </div>
       </Card>
       <AmountCard
         label="Investment wallet"
@@ -196,6 +212,28 @@ export function DashboardPanel() {
         href="/transactions#withdrawal-history"
         icon={<BankIcon />}
       />
+    </div>
+  );
+}
+
+function DetailRow({
+  icon,
+  label,
+  value,
+  highlight = false,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  value: string;
+  highlight?: boolean;
+}) {
+  return (
+    <div className={styles.detailRow}>
+      <div className={styles.detailIcon} aria-hidden>
+        {icon}
+      </div>
+      <div className={styles.detailLabel}>{label}</div>
+      <div className={highlight ? styles.detailValueHighlight : styles.detailValue}>{value}</div>
     </div>
   );
 }
@@ -316,6 +354,53 @@ function BankIcon() {
       <line x1="9" y1="21" x2="9" y2="10" />
       <line x1="15" y1="21" x2="15" y2="10" />
       <polyline points="3 10 12 3 21 10" />
+    </svg>
+  );
+}
+
+function UserIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+      <circle cx="12" cy="7" r="4" />
+    </svg>
+  );
+}
+
+function IdIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="3" y="5" width="18" height="14" rx="2" />
+      <line x1="7" y1="10" x2="17" y2="10" />
+      <line x1="7" y1="14" x2="13" y2="14" />
+    </svg>
+  );
+}
+
+function ShieldIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+    </svg>
+  );
+}
+
+function CalendarIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="3" y="4" width="18" height="18" rx="2" />
+      <line x1="16" y1="2" x2="16" y2="6" />
+      <line x1="8" y1="2" x2="8" y2="6" />
+      <line x1="3" y1="10" x2="21" y2="10" />
+    </svg>
+  );
+}
+
+function ClockIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="12" cy="12" r="10" />
+      <polyline points="12 6 12 12 16 14" />
     </svg>
   );
 }

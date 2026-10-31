@@ -70,6 +70,97 @@
   font-weight: 550;
 }
 
+.profileCard {
+  text-align: center;
+}
+
+.profileHeader {
+  display: grid;
+  justify-items: center;
+  gap: 8px;
+  margin-bottom: 20px;
+}
+
+.profileName {
+  margin: 0;
+  font-size: 1.5rem;
+  font-weight: 650;
+  color: var(--color-text);
+}
+
+.statusActive {
+  display: inline-block;
+  padding: 4px 12px;
+  border-radius: 999px;
+  background: #d4eedd;
+  color: #1f6b45;
+  font-size: 0.85rem;
+  font-weight: 550;
+}
+
+.statusOther {
+  display: inline-block;
+  padding: 4px 12px;
+  border-radius: 999px;
+  background: var(--color-bg-muted);
+  color: var(--color-text-muted);
+  font-size: 0.85rem;
+  font-weight: 550;
+}
+
+.sectionLabel {
+  margin: 0 0 12px;
+  text-align: left;
+  color: var(--color-accent);
+  font-size: 0.78rem;
+  font-weight: 650;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.detailList {
+  display: grid;
+  gap: 0;
+  text-align: left;
+  border-top: 1px solid var(--color-border);
+}
+
+.detailRow {
+  display: grid;
+  grid-template-columns: 40px 1fr 1fr;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.detailIcon {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: #f8d0d8;
+  color: #c81e4a;
+  display: grid;
+  place-items: center;
+}
+
+.detailLabel {
+  font-weight: 550;
+  color: var(--color-text);
+}
+
+.detailValue {
+  text-align: right;
+  color: var(--color-text);
+  word-break: break-all;
+}
+
+.detailValueHighlight {
+  text-align: right;
+  color: #1f6b45;
+  font-weight: 550;
+}
+
 html[data-theme="dark"] .available {
   background: #4a2230;
   border-color: #c81e4a;
@@ -87,7 +178,8 @@ html[data-theme="dark"] .commission {
   background: #3d3218;
 }
 
-html[data-theme="dark"] .icon {
+html[data-theme="dark"] .icon,
+html[data-theme="dark"] .detailIcon {
   background: #5a2a3a;
   color: #f8d0d8;
 }
@@ -95,6 +187,18 @@ html[data-theme="dark"] .icon {
 html[data-theme="dark"] .wallet,
 html[data-theme="dark"] .wallet .eyebrow,
 html[data-theme="dark"] .amount,
-html[data-theme="dark"] .line {
+html[data-theme="dark"] .line,
+html[data-theme="dark"] .profileName,
+html[data-theme="dark"] .detailLabel,
+html[data-theme="dark"] .detailValue {
   color: #f6f3ee;
+}
+
+html[data-theme="dark"] .statusActive {
+  background: #1a3d2c;
+  color: #8dceb0;
+}
+
+html[data-theme="dark"] .detailValueHighlight {
+  color: #8dceb0;
 }

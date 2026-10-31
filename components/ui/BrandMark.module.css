@@ -1,15 +1,17 @@
 .mark {
   display: inline-flex;
   align-items: center;
-  background: transparent;
+  background: #ffffff;
+  border-radius: 6px;
+  padding: 4px 6px;
 }
 
 .logo {
   display: block;
-  height: 44px;
+  height: 40px;
   width: auto;
-  background: transparent;
-  mix-blend-mode: multiply;
+  background: #ffffff;
+  mix-blend-mode: normal;
 }
 
 .inverse .logo {

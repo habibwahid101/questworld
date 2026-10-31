@@ -183,8 +183,9 @@ export async function reviewPendingDeposit(
   return payload.investment;
 }
 
-export async function createCurrentInvestment(planId: string, idempotencyKey: string): Promise<InvestmentRecord> {
-  const payload = await investmentRequest<{ investment?: InvestmentRecord }>("POST", "/investments", { planId }, idempotencyKey);
+export async function createCurrentInvestment(planId: string, idempotencyKey: string, amountMinor?: number): Promise<InvestmentRecord> {
+  const body = amountMinor !== undefined ? { planId, amountMinor } : { planId };
+  const payload = await investmentRequest<{ investment?: InvestmentRecord }>("POST", "/investments", body, idempotencyKey);
   if (!payload.investment) {
     throw new InvestmentClientError("investment_request_failed", "Could not record that investment.");
   }

@@ -61,7 +61,7 @@ export function AppShell({ title, pageLabel, homeHref, items, children }: AppShe
       <div className={styles.main}>
         <div className={styles.topbar}>
           <div className={styles.brandLockup}>
-            <BrandMark href={homeHref} />
+            <BrandMark href="/" />
             {pageLabel ? <span className="sr-only">{pageLabel}</span> : null}
           </div>
           <div className={styles.topActions}>

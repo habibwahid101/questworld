@@ -69,18 +69,27 @@ export function InvestmentsPanel() {
     };
   }, []);
 
-  const matched = useMemo(() => {
+  const parsed = useMemo(() => {
     const value = Number(inputAmount.replace(/,/g, ""));
     if (!Number.isFinite(value) || value <= 0) {
       return null;
     }
-    return LISTED_AMOUNTS.find((entry) => entry.amount === value) ?? null;
+    return value;
   }, [inputAmount]);
 
+  const matched = useMemo(() => {
+    if (parsed === null) {
+      return null;
+    }
+    return LISTED_AMOUNTS.find((entry) => entry.amount === parsed) ?? null;
+  }, [parsed]);
+
   const activePlan = selectedPlan ?? matched?.planId ?? null;
-  const activeAmountMinor = activePlan ? investmentCatalog[activePlan].amountMinor : null;
-  const totalReturn = activeAmountMinor !== null ? totalReturnMinor(activeAmountMinor) : null;
+  const amountUsdt = parsed;
+  const amountMinor = amountUsdt !== null ? Math.round(amountUsdt * MICRO) : null;
+  const totalReturn = amountMinor !== null ? totalReturnMinor(amountMinor) : null;
   const monthlyPayment = totalReturn !== null ? Math.floor(totalReturn / 12) : null;
+  const canSubmit = amountMinor !== null && amountMinor >= MICRO;
 
   function selectAmount(planId: PlanId) {
     const entry = LISTED_AMOUNTS.find((item) => item.planId === planId);
@@ -99,7 +108,7 @@ export function InvestmentsPanel() {
   }
 
   async function submit() {
-    if (!activePlan || saving) {
+    if (!canSubmit || saving || amountMinor === null) {
       return;
     }
     setSaving(true);
@@ -107,7 +116,9 @@ export function InvestmentsPanel() {
     const idempotencyKey = pendingKey.current ?? crypto.randomUUID();
     pendingKey.current = idempotencyKey;
     try {
-      const record = await createCurrentInvestment(activePlan, idempotencyKey);
+      const record = activePlan
+        ? await createCurrentInvestment(activePlan, idempotencyKey)
+        : await createCurrentInvestment("custom", idempotencyKey, amountMinor);
       pendingKey.current = null;
       router.push(`/investments/${encodeURIComponent(record.investmentId)}`);
     } catch (caught) {
@@ -131,7 +142,7 @@ export function InvestmentsPanel() {
       <Card>
         <h1>Investments</h1>
         <p className="lead" style={{ marginTop: 12 }}>
-          Select or enter one of the listed amounts. Total return and duration appear immediately. This does not move money.
+          Select a listed amount or enter any positive amount. Total return and monthly payment appear immediately. This does not move money.
         </p>
 
         <div className={styles.amountRow}>
@@ -151,8 +162,8 @@ export function InvestmentsPanel() {
           <span className={styles.fieldLabel}>Amount (USDT)</span>
           <input
             className={styles.input}
-            inputMode="numeric"
-            placeholder="100, 1,000, 10,000, or 100,000"
+            inputMode="decimal"
+            placeholder="Any positive amount"
             value={inputAmount}
             onChange={(event) => onInput(event.target.value)}
           />
@@ -177,11 +188,11 @@ export function InvestmentsPanel() {
           Note: Total return is double the investment, paid in 12 equal monthly payments. Not a payout until verified and active.
         </p>
 
-        <Button type="button" disabled={!activePlan || saving} aria-busy={saving} onClick={() => void submit()}>
+        <Button type="button" disabled={!canSubmit || saving} aria-busy={saving} onClick={() => void submit()}>
           {saving ? "Submitting…" : "Continue"}
         </Button>
         {message ? <p style={{ marginTop: 16 }}>{message}</p> : null}
-        {!activePlan && inputAmount ? <p className={styles.hint}>Enter 100, 1,000, 10,000, or 100,000.</p> : null}
+        {!canSubmit && inputAmount ? <p className={styles.hint}>Enter a positive amount.</p> : null}
       </Card>
 
       {loading ? (

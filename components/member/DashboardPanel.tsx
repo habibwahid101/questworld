@@ -161,16 +161,41 @@ export function DashboardPanel() {
           </p>
         ) : null}
       </Card>
-      <AmountCard label="Investment wallet" amountMinor={figures?.activeInvested} tone="investment" href="/transactions#investment-history" />
+      <AmountCard
+        label="Investment wallet"
+        amountMinor={figures?.activeInvested}
+        tone="investment"
+        href="/transactions#investment-history"
+        icon={<WalletIcon />}
+      />
       <Card className={`${styles.wallet} ${styles.return}`}>
-        <p className="eyebrow">Return wallet</p>
-        <h2 className={styles.amount}>{amountText(figures?.received)}</h2>
-        <p className={styles.line}>Received: {amountText(figures?.received)}</p>
-        <p className={styles.line}>Remaining: {amountText(figures?.remaining)}</p>
-        <HistoryLink href="/transactions#return-history" />
+        <div className={styles.row}>
+          <div className={styles.icon} aria-hidden>
+            <TrendIcon />
+          </div>
+          <div className={styles.content}>
+            <p className="eyebrow">Return wallet</p>
+            <h2 className={styles.amount}>{amountText(figures?.received)}</h2>
+            <p className={styles.line}>Received: {amountText(figures?.received)}</p>
+            <p className={styles.line}>Remaining: {amountText(figures?.remaining)}</p>
+            <HistoryLink href="/transactions#return-history" />
+          </div>
+        </div>
       </Card>
-      <AmountCard label="Commission wallet" amountMinor={figures?.generationReceived} tone="commission" href="/transactions#commission-history" />
-      <AmountCard label="Available to withdraw" amountMinor={figures?.available} tone="available" href="/transactions#withdrawal-history" />
+      <AmountCard
+        label="Commission wallet"
+        amountMinor={figures?.generationReceived}
+        tone="commission"
+        href="/transactions#commission-history"
+        icon={<PeopleIcon />}
+      />
+      <AmountCard
+        label="Available to withdraw"
+        amountMinor={figures?.available}
+        tone="available"
+        href="/transactions#withdrawal-history"
+        icon={<BankIcon />}
+      />
     </div>
   );
 }
@@ -180,17 +205,26 @@ function AmountCard({
   amountMinor,
   tone,
   href,
+  icon,
 }: {
   label: string;
   amountMinor: number | null | undefined;
   tone: "available" | "investment" | "commission";
   href: string;
+  icon: React.ReactNode;
 }) {
   return (
     <Card className={`${styles.wallet} ${styles[tone]}`}>
-      <p className="eyebrow">{label}</p>
-      <h2 className={styles.amount}>{amountText(amountMinor)}</h2>
-      <HistoryLink href={href} />
+      <div className={styles.row}>
+        <div className={styles.icon} aria-hidden>
+          {icon}
+        </div>
+        <div className={styles.content}>
+          <p className="eyebrow">{label}</p>
+          <h2 className={styles.amount}>{amountText(amountMinor)}</h2>
+          <HistoryLink href={href} />
+        </div>
+      </div>
     </Card>
   );
 }
@@ -198,7 +232,7 @@ function AmountCard({
 function HistoryLink({ href }: { href: string }) {
   return (
     <p className={styles.line}>
-      <Link href={href}>View history</Link>
+      <Link href={href}>View history →</Link>
     </p>
   );
 }
@@ -241,4 +275,47 @@ async function fileToBase64(file: File): Promise<string> {
     binary += String.fromCharCode(byte);
   }
   return btoa(binary);
+}
+
+function WalletIcon() {
+  return (
+    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="2" y="6" width="20" height="14" rx="2" />
+      <path d="M2 10h20" />
+      <path d="M6 6V4a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v2" />
+    </svg>
+  );
+}
+
+function TrendIcon() {
+  return (
+    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <polyline points="22 7 13.5 15.5 8.5 10.5 2 17" />
+      <polyline points="16 7 22 7 22 13" />
+    </svg>
+  );
+}
+
+function PeopleIcon() {
+  return (
+    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
+      <circle cx="9" cy="7" r="4" />
+      <path d="M22 21v-2a4 4 0 0 0-3-3.87" />
+      <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+    </svg>
+  );
+}
+
+function BankIcon() {
+  return (
+    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <line x1="3" y1="21" x2="21" y2="21" />
+      <line x1="5" y1="21" x2="5" y2="10" />
+      <line x1="19" y1="21" x2="19" y2="10" />
+      <line x1="9" y1="21" x2="9" y2="10" />
+      <line x1="15" y1="21" x2="15" y2="10" />
+      <polyline points="3 10 12 3 21 10" />
+    </svg>
+  );
 }

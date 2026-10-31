@@ -3,33 +3,68 @@
   gap: 8px;
   justify-items: center;
   text-align: center;
+  color: var(--color-text);
+}
+
+.wallet .eyebrow {
+  color: var(--color-text);
 }
 
 .available {
-  background: var(--color-accent-soft);
-  border-color: var(--color-accent);
+  background: #f3d5de;
+  border-color: #c81e4a;
 }
 
 .investment {
-  background: var(--color-info-soft);
+  background: #d6e8f5;
 }
 
 .return {
-  background: var(--color-success-soft);
+  background: #d4eedd;
 }
 
 .commission {
-  background: var(--color-warning-soft);
+  background: #f5e6c4;
 }
 
 .amount {
   margin: 0;
-  color: var(--color-accent);
+  color: var(--color-text);
   font-size: 2rem;
   line-height: 1.1;
+  font-weight: 650;
 }
 
 .line {
   margin: 0;
-  color: var(--color-text-soft);
+  color: var(--color-text);
+}
+
+.line a {
+  color: var(--color-accent);
+  text-decoration: underline;
+}
+
+html[data-theme="dark"] .available {
+  background: #4a2230;
+  border-color: #c81e4a;
+}
+
+html[data-theme="dark"] .investment {
+  background: #1a3348;
+}
+
+html[data-theme="dark"] .return {
+  background: #1a3d2c;
+}
+
+html[data-theme="dark"] .commission {
+  background: #3d3218;
+}
+
+html[data-theme="dark"] .wallet,
+html[data-theme="dark"] .wallet .eyebrow,
+html[data-theme="dark"] .amount,
+html[data-theme="dark"] .line {
+  color: #f6f3ee;
 }

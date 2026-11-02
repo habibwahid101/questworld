@@ -1495,10 +1495,13 @@ function depositIdFromPath(path: string): string | null {
 function storedDepositFields(item: Record<string, unknown>): Pick<InvestmentRecord, "depositReference" | "submittedAt" | "depositProofKey"> {
   const fields: Pick<InvestmentRecord, "depositReference" | "submittedAt" | "depositProofKey"> = {};
   if (item.depositReference !== undefined) {
-    if (typeof item.depositReference !== "string" || item.depositReference.trim() === "") {
+    if (typeof item.depositReference !== "string") {
       throw new InvestmentRequestError(500, "invalid_stored_deposit", "That investment record is not valid.");
     }
-    fields.depositReference = item.depositReference;
+    const reference = item.depositReference.trim();
+    if (reference !== "") {
+      fields.depositReference = reference;
+    }
   }
   if (item.submittedAt !== undefined) {
     if (typeof item.submittedAt !== "string" || item.submittedAt.trim() === "") {

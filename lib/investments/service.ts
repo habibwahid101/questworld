@@ -1150,17 +1150,19 @@ function depositAddressesFromBody(body: unknown, current: { bep20: string; trc20
 
 function depositFromBody(body: unknown): { reference: string; proof: DepositProof | null } {
   if (!body || typeof body !== "object" || Array.isArray(body)) {
-    throw new InvestmentRequestError(400, "invalid_body", "Enter the deposit reference.");
+    // Empty body is allowed: reference is optional.
+    return { reference: "", proof: null };
   }
   const source = body as Record<string, unknown>;
   const extra = Object.keys(source).filter((key) => key !== "reference" && key !== "screenshot");
   if (extra.length > 0) {
     throw new InvestmentRequestError(400, "invalid_body", "Only the deposit reference and an optional screenshot can be submitted.");
   }
-  if (typeof source.reference !== "string" || !DEPOSIT_REFERENCE_PATTERN.test(source.reference.trim())) {
-    throw new InvestmentRequestError(400, "invalid_reference", "Enter the deposit reference from your transfer.");
+  const raw = typeof source.reference === "string" ? source.reference.trim() : "";
+  if (raw !== "" && !DEPOSIT_REFERENCE_PATTERN.test(raw)) {
+    throw new InvestmentRequestError(400, "invalid_reference", "Enter a valid transaction hash or reference, or leave it empty.");
   }
-  return { reference: source.reference.trim(), proof: screenshotFromBody(source.screenshot) };
+  return { reference: raw, proof: screenshotFromBody(source.screenshot) };
 }
 
 function screenshotFromBody(value: unknown): DepositProof | null {

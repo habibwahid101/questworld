@@ -92,7 +92,7 @@ export function InvestmentPaymentPanel({ investmentId }: { investmentId: string 
       depositKey.current = null;
       setInvestment(saved);
       setScreenshot(null);
-      setSubmittedNote("Submitted successfully");
+      setSubmittedNote("Submitted successfully. Your deposit is now pending verification.");
     } catch (caught) {
       const error = caught instanceof InvestmentClientError ? caught : new InvestmentClientError("investment_request_failed", "Could not save that deposit reference.");
       setMessage(error.message);
@@ -117,7 +117,7 @@ export function InvestmentPaymentPanel({ investmentId }: { investmentId: string 
         <h1>{investment ? investment.planName : "Investment"}</h1>
         {investment ? <h2 style={{ marginTop: 8 }}>{formatUsdtAmount(investment.amountMinor, investment.scale)}</h2> : null}
         <p className="lead" style={{ marginTop: 12 }}>
-          Submit the transaction reference for this investment. This does not move money.
+          Submit this investment. Transaction reference is optional. This does not move money.
         </p>
         <p style={{ marginTop: 12 }}>
           <Link href="/investments">Back to investments</Link>
@@ -205,13 +205,13 @@ function DepositReferenceForm({
       </div>
       <label htmlFor={`deposit-${investmentId}`}>Transaction reference</label>
       <p id={`deposit-help-${investmentId}`} style={{ marginTop: 8 }}>
-        Enter the transaction hash or reference from the transfer you sent to the BEP20 or TRC20 wallet above.
+        Optional. Enter the transaction hash or reference if you have one. You can submit without it.
       </p>
       <input
         id={`deposit-${investmentId}`}
         value={reference}
         aria-describedby={`deposit-help-${investmentId}`}
-        placeholder="Transaction hash or reference"
+        placeholder="Transaction hash or reference (optional)"
         onChange={(event) => onReference(event.target.value)}
         autoComplete="off"
         style={{ display: "block", width: "100%", marginTop: 8 }}
@@ -232,7 +232,7 @@ function DepositReferenceForm({
         <img className={styles.preview} src={previewUrl} alt="Selected screenshot preview" />
       ) : null}
       <Button type="submit" disabled={submitting} aria-busy={submitting} style={{ marginTop: 12 }}>
-        {submitting ? "Submitting…" : "Submit reference"}
+        {submitting ? "Submitting…" : "Submit"}
       </Button>
     </form>
   );

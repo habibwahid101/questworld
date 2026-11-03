@@ -208,6 +208,29 @@ export type DepositAddress = {
   updatedBy: string;
 };
 
+export type ProfileOffer = {
+  title: string;
+  subtitle: string;
+  imageKey: string;
+  imageContentType: string;
+  startsAt: string;
+  endsAt: string;
+  updatedAt: string;
+  updatedBy: string;
+};
+
+export type OfferImage = {
+  contentType: "image/jpeg" | "image/png" | "image/webp";
+  dataBase64: string;
+};
+
+export type OfferImageStore = {
+  put(image: OfferImage): Promise<{ imageKey: string; imageContentType: string }>;
+  get(imageKey: string): Promise<{ contentType: string; dataBase64: string } | null>;
+};
+
+export const OFFER_IMAGE_MAX_BYTES = 400_000;
+
 export type InvestmentStore = {
   create(record: InvestmentRecord, idempotencyKey: string): Promise<CreateInvestmentResult>;
   submitDeposit(submission: DepositSubmission): Promise<DepositSubmissionResult>;
@@ -233,6 +256,8 @@ export type InvestmentStore = {
   listByOwner(ownerSub: string): Promise<InvestmentRecord[]>;
   getDepositAddress(): Promise<DepositAddress | null>;
   saveDepositAddress(record: DepositAddress): Promise<void>;
+  getProfileOffer(): Promise<ProfileOffer | null>;
+  saveProfileOffer(offer: ProfileOffer): Promise<void>;
 };
 
 export class InvestmentRequestError extends Error {
@@ -696,6 +721,7 @@ export async function handleInvestmentApi(input: {
   proofUrls?: {
     signGet(key: string): Promise<string>;
   };
+  offerImages?: OfferImageStore;
   adminGroups?: AdminGroupDirectory;
   transactionPasswords?: {
     verify(userId: string, password: string): Promise<"ok" | "missing" | "mismatch">;
@@ -781,6 +807,57 @@ export async function handleInvestmentApi(input: {
         updatedBy: identity.userId,
       });
       return { statusCode: 200, body: addresses };
+    }
+    if (method === "GET" && path === "/profile-offer") {
+      const offer = await input.store.getProfileOffer();
+      if (!offer || !isOfferActive(offer, now())) {
+        return { statusCode: 200, body: { offer: null } };
+      }
+      const image = offer.imageKey && input.offerImages ? await input.offerImages.get(offer.imageKey) : null;
+      return {
+        statusCode: 200,
+        body: {
+          offer: {
+            title: offer.title,
+            subtitle: offer.subtitle,
+            startsAt: offer.startsAt,
+            endsAt: offer.endsAt,
+            image: image ? { contentType: image.contentType, dataBase64: image.dataBase64 } : null,
+          },
+        },
+      };
+    }
+    if (method === "PUT" && path === "/admin/profile-offer") {
+      if (!isAdminClaims(input.claims)) {
+        return errorBody(403, "forbidden", "Admin access is required.");
+      }
+      const existing = await input.store.getProfileOffer();
+      const parsed = profileOfferFromBody(input.body, existing);
+      let imageKey = existing?.imageKey ?? "";
+      let imageContentType = existing?.imageContentType ?? "";
+      if (parsed.image) {
+        if (!input.offerImages) {
+          throw new InvestmentRequestError(500, "configuration", "Offer images are not configured.");
+        }
+        const savedImage = await input.offerImages.put(parsed.image);
+        imageKey = savedImage.imageKey;
+        imageContentType = savedImage.imageContentType;
+      }
+      if (!imageKey) {
+        throw new InvestmentRequestError(400, "offer_image_required", "An offer image is required.");
+      }
+      const offer: ProfileOffer = {
+        title: parsed.title,
+        subtitle: parsed.subtitle,
+        imageKey,
+        imageContentType,
+        startsAt: parsed.startsAt,
+        endsAt: parsed.endsAt,
+        updatedAt: now(),
+        updatedBy: identity.userId,
+      };
+      await input.store.saveProfileOffer(offer);
+      return { statusCode: 200, body: { offer: { title: offer.title, subtitle: offer.subtitle, startsAt: offer.startsAt, endsAt: offer.endsAt } } };
     }
     if (method === "GET" && path === "/admin/investments") {
       if (!isAdminClaims(input.claims)) {
@@ -1537,4 +1614,53 @@ function errorBody(statusCode: number, code: string, message: string): {
   body: Record<string, unknown>;
 } {
   return { statusCode, body: { error: code, message } };
+}
+
+function isOfferActive(offer: ProfileOffer, nowIso: string): boolean {
+  return offer.startsAt <= nowIso && nowIso <= offer.endsAt;
+}
+
+function profileOfferFromBody(
+  body: unknown,
+  existing: ProfileOffer | null,
+): { title: string; subtitle: string; startsAt: string; endsAt: string; image?: OfferImage } {
+  if (!body || typeof body !== "object") {
+    throw new InvestmentRequestError(400, "invalid_body", "Request body must be an object.");
+  }
+  const record = body as Record<string, unknown>;
+  const title = typeof record.title === "string" ? record.title.trim() : "";
+  const subtitle = typeof record.subtitle === "string" ? record.subtitle.trim() : "";
+  const startsAt = typeof record.startsAt === "string" ? record.startsAt.trim() : "";
+  const endsAt = typeof record.endsAt === "string" ? record.endsAt.trim() : "";
+  if (!title || title.length > 80) {
+    throw new InvestmentRequestError(400, "invalid_offer_title", "Title must be 1 to 80 characters.");
+  }
+  if (!subtitle || subtitle.length > 160) {
+    throw new InvestmentRequestError(400, "invalid_offer_subtitle", "Subtitle must be 1 to 160 characters.");
+  }
+  const start = Date.parse(startsAt);
+  const end = Date.parse(endsAt);
+  if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) {
+    throw new InvestmentRequestError(400, "invalid_offer_window", "End must be after start.");
+  }
+  let image: OfferImage | undefined;
+  if (record.image && typeof record.image === "object") {
+    const imageRecord = record.image as Record<string, unknown>;
+    const contentType = imageRecord.contentType;
+    const dataBase64 = imageRecord.dataBase64;
+    if (contentType !== "image/jpeg" && contentType !== "image/png" && contentType !== "image/webp") {
+      throw new InvestmentRequestError(400, "invalid_offer_image", "Image must be JPEG, PNG, or WebP.");
+    }
+    if (typeof dataBase64 !== "string" || !dataBase64) {
+      throw new InvestmentRequestError(400, "invalid_offer_image", "Image data is required.");
+    }
+    const bytes = Buffer.from(dataBase64, "base64").byteLength;
+    if (bytes <= 0 || bytes > OFFER_IMAGE_MAX_BYTES) {
+      throw new InvestmentRequestError(400, "invalid_offer_image", "Image must be under 400 KB.");
+    }
+    image = { contentType, dataBase64 };
+  } else if (!existing?.imageKey) {
+    throw new InvestmentRequestError(400, "offer_image_required", "An offer image is required.");
+  }
+  return { title, subtitle, startsAt, endsAt, image };
 }

@@ -107,6 +107,7 @@ export async function handler(event: ApiGatewayEvent): Promise<{
     store: createDynamoInvestmentStore(tableName),
     proofStore: process.env.DEPOSIT_PROOF_BUCKET ? createProofStore(process.env.DEPOSIT_PROOF_BUCKET) : undefined,
     proofUrls: process.env.DEPOSIT_PROOF_BUCKET ? createProofUrls(process.env.DEPOSIT_PROOF_BUCKET) : undefined,
+    offerImages: process.env.DEPOSIT_PROOF_BUCKET ? createOfferImageStore(process.env.DEPOSIT_PROOF_BUCKET) : undefined,
     adminGroups: process.env.USER_POOL_ID ? createAdminDirectory(process.env.USER_POOL_ID) : undefined,
     transactionPasswords: {
       verify: (userId, password) => readTransactionPassword(membersTableName, userId, password),
@@ -135,6 +136,41 @@ function createProofStore(bucket: string) {
 }
 
 const PROOF_URL_SECONDS = 120;
+
+
+const OFFER_IMAGE_KEY = "offers/profile-offer";
+
+function createOfferImageStore(bucket: string) {
+  return {
+    async put(image: { contentType: string; dataBase64: string }) {
+      const extension = image.contentType === "image/png" ? "png" : image.contentType === "image/webp" ? "webp" : "jpg";
+      const key = `${OFFER_IMAGE_KEY}.${extension}`;
+      await proofStorage.send(
+        new PutObjectCommand({
+          Bucket: bucket,
+          Key: key,
+          Body: Buffer.from(image.dataBase64, "base64"),
+          ContentType: image.contentType,
+        }),
+      );
+      return { imageKey: key, imageContentType: image.contentType };
+    },
+    async get(imageKey: string) {
+      if (!imageKey.startsWith("offers/")) {
+        return null;
+      }
+      const response = await proofStorage.send(new GetObjectCommand({ Bucket: bucket, Key: imageKey }));
+      const bytes = await response.Body?.transformToByteArray();
+      if (!bytes) {
+        return null;
+      }
+      return {
+        contentType: response.ContentType ?? "image/jpeg",
+        dataBase64: Buffer.from(bytes).toString("base64"),
+      };
+    },
+  };
+}
 
 function createProofUrls(bucket: string) {
   return {
@@ -608,6 +644,47 @@ export function createDynamoInvestmentStore(tableName: string): InvestmentStore 
             trc20: record.trc20,
             updatedAt: record.updatedAt,
             updatedBy: record.updatedBy,
+          },
+        }),
+      );
+    },
+    async getProfileOffer() {
+      const response = await document.send(
+        new GetCommand({
+          TableName: tableName,
+          Key: { pk: "SETTINGS", sk: "PROFILE_OFFER" },
+        }),
+      );
+      const item = response.Item;
+      if (!item || typeof item.title !== "string" || typeof item.subtitle !== "string") {
+        return null;
+      }
+      return {
+        title: item.title,
+        subtitle: item.subtitle,
+        imageKey: typeof item.imageKey === "string" ? item.imageKey : "",
+        imageContentType: typeof item.imageContentType === "string" ? item.imageContentType : "",
+        startsAt: typeof item.startsAt === "string" ? item.startsAt : "",
+        endsAt: typeof item.endsAt === "string" ? item.endsAt : "",
+        updatedAt: typeof item.updatedAt === "string" ? item.updatedAt : "",
+        updatedBy: typeof item.updatedBy === "string" ? item.updatedBy : "",
+      };
+    },
+    async saveProfileOffer(offer) {
+      await document.send(
+        new PutCommand({
+          TableName: tableName,
+          Item: {
+            pk: "SETTINGS",
+            sk: "PROFILE_OFFER",
+            title: offer.title,
+            subtitle: offer.subtitle,
+            imageKey: offer.imageKey,
+            imageContentType: offer.imageContentType,
+            startsAt: offer.startsAt,
+            endsAt: offer.endsAt,
+            updatedAt: offer.updatedAt,
+            updatedBy: offer.updatedBy,
           },
         }),
       );

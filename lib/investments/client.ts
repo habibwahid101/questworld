@@ -219,3 +219,26 @@ async function investmentRequest<T>(method: string, path: string, body?: unknown
   }
   return payload;
 }
+
+export type ProfileOfferCard = {
+  title: string;
+  subtitle: string;
+  startsAt: string;
+  endsAt: string;
+  image: { contentType: string; dataBase64: string } | null;
+};
+
+export async function readCurrentProfileOffer(): Promise<ProfileOfferCard | null> {
+  const payload = await investmentRequest<{ offer?: ProfileOfferCard | null }>("GET", "/profile-offer");
+  return payload.offer ?? null;
+}
+
+export async function saveProfileOffer(input: {
+  title: string;
+  subtitle: string;
+  startsAt: string;
+  endsAt: string;
+  image?: { contentType: string; dataBase64: string };
+}): Promise<void> {
+  await investmentRequest("PUT", "/admin/profile-offer", input);
+}

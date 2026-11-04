@@ -42,7 +42,7 @@ export function ProfilePanel() {
   const [readMember, setReadMember] = useState<MemberProfile | null>(null);
   const [copied, setCopied] = useState<"code" | "link" | null>(null);
   const [photoUrl, setPhotoUrl] = useState<string | null>(null);
-  const [offer, setOffer] = useState<{ title: string; subtitle: string; imageSrc: string | null } | null>(null);
+  const [offer, setOffer] = useState<{ title: string; subtitle: string; imageSrc: string | null; startsAt: string; endsAt: string } | null>(null);
   const [photoError, setPhotoError] = useState<string | null>(null);
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const copyTimer = useRef<number | null>(null);
@@ -97,7 +97,7 @@ export function ProfilePanel() {
         const imageSrc = current.image
           ? `data:${current.image.contentType};base64,${current.image.dataBase64}`
           : null;
-        setOffer({ title: current.title, subtitle: current.subtitle, imageSrc });
+        setOffer({ title: current.title, subtitle: current.subtitle, imageSrc, startsAt: current.startsAt, endsAt: current.endsAt });
       })
       .catch(() => undefined);
     return () => {
@@ -284,7 +284,7 @@ export function ProfilePanel() {
 
   return (
     <div className="stack">
-      {offer ? <OfferCard title={offer.title} subtitle={offer.subtitle} imageSrc={offer.imageSrc} /> : null}
+      {offer ? <OfferCard title={offer.title} subtitle={offer.subtitle} imageSrc={offer.imageSrc} startsAt={offer.startsAt} endsAt={offer.endsAt} /> : null}
       <Card>
       <div className="stack">
         <div>

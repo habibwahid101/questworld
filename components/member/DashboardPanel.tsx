@@ -9,6 +9,7 @@ import {
   listCurrentInvestments,
   listCurrentProfits,
   listCurrentWithdrawals,
+  readCurrentProfileOffer,
 } from "@/lib/investments/client";
 import {
   INVESTMENT_CURRENCY,
@@ -21,6 +22,7 @@ import {
 import { readCurrentMember, readCurrentProfilePhoto, uploadCurrentProfilePhoto } from "@/lib/members/client";
 import { isMemberApiConfigured } from "@/lib/members/config";
 import type { MemberProfile } from "@/lib/members/service";
+import { OfferCard } from "@/components/member/OfferCard";
 import { ProfilePhoto } from "@/components/member/ProfilePhoto";
 import styles from "./DashboardPanel.module.css";
 
@@ -41,6 +43,28 @@ export function DashboardPanel() {
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const [figures, setFigures] = useState<Figures | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+  const [offer, setOffer] = useState<{ title: string; subtitle: string; imageSrc: string | null } | null>(null);
+
+  useEffect(() => {
+    if (!isMemberApiConfigured()) {
+      return;
+    }
+    let active = true;
+    void readCurrentProfileOffer()
+      .then((current) => {
+        if (!active || !current) {
+          return;
+        }
+        const imageSrc = current.image
+          ? `data:${current.image.contentType};base64,${current.image.dataBase64}`
+          : null;
+        setOffer({ title: current.title, subtitle: current.subtitle, imageSrc });
+      })
+      .catch(() => undefined);
+    return () => {
+      active = false;
+    };
+  }, []);
 
   useEffect(() => {
     if (!isMemberApiConfigured()) {
@@ -147,6 +171,7 @@ export function DashboardPanel() {
           {message}
         </p>
       ) : null}
+      {offer ? <OfferCard title={offer.title} subtitle={offer.subtitle} imageSrc={offer.imageSrc} /> : null}
       <Card className={styles.profileCard}>
         <div className={styles.profileHeader}>
           <ProfilePhoto

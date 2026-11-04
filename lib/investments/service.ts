@@ -211,6 +211,7 @@ export type DepositAddress = {
 export type ProfileOffer = {
   title: string;
   subtitle: string;
+  requirement: string;
   imageKey: string;
   imageContentType: string;
   startsAt: string;
@@ -820,6 +821,7 @@ export async function handleInvestmentApi(input: {
           offer: {
             title: offer.title,
             subtitle: offer.subtitle,
+            requirement: offer.requirement,
             startsAt: offer.startsAt,
             endsAt: offer.endsAt,
             image: image ? { contentType: image.contentType, dataBase64: image.dataBase64 } : null,
@@ -849,6 +851,7 @@ export async function handleInvestmentApi(input: {
       const offer: ProfileOffer = {
         title: parsed.title,
         subtitle: parsed.subtitle,
+        requirement: parsed.requirement,
         imageKey,
         imageContentType,
         startsAt: parsed.startsAt,
@@ -857,7 +860,7 @@ export async function handleInvestmentApi(input: {
         updatedBy: identity.userId,
       };
       await input.store.saveProfileOffer(offer);
-      return { statusCode: 200, body: { offer: { title: offer.title, subtitle: offer.subtitle, startsAt: offer.startsAt, endsAt: offer.endsAt } } };
+      return { statusCode: 200, body: { offer: { title: offer.title, subtitle: offer.subtitle, requirement: offer.requirement, startsAt: offer.startsAt, endsAt: offer.endsAt } } };
     }
     if (method === "GET" && path === "/admin/investments") {
       if (!isAdminClaims(input.claims)) {
@@ -1623,15 +1626,19 @@ function isOfferActive(offer: ProfileOffer, nowIso: string): boolean {
 function profileOfferFromBody(
   body: unknown,
   existing: ProfileOffer | null,
-): { title: string; subtitle: string; startsAt: string; endsAt: string; image?: OfferImage } {
+): { title: string; subtitle: string; requirement: string; startsAt: string; endsAt: string; image?: OfferImage } {
   if (!body || typeof body !== "object") {
     throw new InvestmentRequestError(400, "invalid_body", "Request body must be an object.");
   }
   const record = body as Record<string, unknown>;
   const title = typeof record.title === "string" ? record.title.trim() : "";
   const subtitle = typeof record.subtitle === "string" ? record.subtitle.trim() : "";
+  const requirement = typeof record.requirement === "string" ? record.requirement.trim() : "";
   const startsAt = typeof record.startsAt === "string" ? record.startsAt.trim() : "";
   const endsAt = typeof record.endsAt === "string" ? record.endsAt.trim() : "";
+  if (requirement.length > 160) {
+    throw new InvestmentRequestError(400, "invalid_offer_requirement", "Requirement must be 160 characters or fewer.");
+  }
   if (!title || title.length > 80) {
     throw new InvestmentRequestError(400, "invalid_offer_title", "Title must be 1 to 80 characters.");
   }
@@ -1662,5 +1669,5 @@ function profileOfferFromBody(
   } else if (!existing?.imageKey) {
     throw new InvestmentRequestError(400, "offer_image_required", "An offer image is required.");
   }
-  return { title, subtitle, startsAt, endsAt, image };
+  return { title, subtitle, requirement, startsAt, endsAt, image };
 }

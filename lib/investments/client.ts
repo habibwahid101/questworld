@@ -223,6 +223,7 @@ async function investmentRequest<T>(method: string, path: string, body?: unknown
 export type ProfileOfferCard = {
   title: string;
   subtitle: string;
+  requirement: string;
   startsAt: string;
   endsAt: string;
   image: { contentType: string; dataBase64: string } | null;
@@ -236,6 +237,7 @@ export async function readCurrentProfileOffer(): Promise<ProfileOfferCard | null
 export async function saveProfileOffer(input: {
   title: string;
   subtitle: string;
+  requirement?: string;
   startsAt: string;
   endsAt: string;
   image?: { contentType: string; dataBase64: string };

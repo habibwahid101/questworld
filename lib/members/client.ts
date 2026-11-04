@@ -109,6 +109,7 @@ async function memberRequest(method: string, path: string, body?: unknown): Prom
 async function memberJson(method: string, path: string, body?: unknown): Promise<{
   member?: MemberProfile;
   members?: unknown;
+  referrals?: unknown;
   contentType?: string;
   dataBase64?: string;
   error?: string;
@@ -130,6 +131,7 @@ async function memberJson(method: string, path: string, body?: unknown): Promise
   const payload = ((await response.json().catch(() => null)) ?? {}) as {
     member?: MemberProfile;
     members?: unknown;
+    referrals?: unknown;
     contentType?: string;
     dataBase64?: string;
     error?: string;

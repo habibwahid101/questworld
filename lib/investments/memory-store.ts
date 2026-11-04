@@ -13,6 +13,7 @@ import type {
   CycleAdvance,
   CycleAdvanceResult,
   DepositAddress,
+  ProfileOffer,
   WithdrawalRequest,
   WithdrawalReview,
   WithdrawalReviewResult,
@@ -26,6 +27,7 @@ export function createMemoryInvestmentStore(seed: readonly InvestmentRecord[] = 
   const withdrawals = new Map<string, WithdrawalRequest>();
   const idempotency = new Map<string, string>();
   let depositAddress: DepositAddress | null = null;
+  let profileOffer: ProfileOffer | null = null;
   for (const record of seed) {
     investments.set(`${record.ownerSub}#${record.investmentId}`, structuredClone(record));
   }
@@ -294,6 +296,12 @@ export function createMemoryInvestmentStore(seed: readonly InvestmentRecord[] = 
     },
     async saveDepositAddress(record) {
       depositAddress = structuredClone(record);
+    },
+    async getProfileOffer() {
+      return profileOffer ? structuredClone(profileOffer) : null;
+    },
+    async saveProfileOffer(offer) {
+      profileOffer = structuredClone(offer);
     },
   };
 }

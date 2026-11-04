@@ -11,7 +11,9 @@ import { PASSWORD_HINT, passwordIssue, TRANSACTION_PASSWORD_MIN } from "@/lib/au
 import { setCurrentTransactionPassword as saveTransactionPassword, readCurrentMember, readCurrentProfilePhoto, uploadCurrentProfilePhoto } from "@/lib/members/client";
 import { memberReferralUrl } from "@/lib/members/referral-url";
 import { useMemberData } from "@/components/member/MemberData";
+import { OfferCard } from "@/components/member/OfferCard";
 import { ProfilePhoto } from "@/components/member/ProfilePhoto";
+import { readCurrentProfileOffer } from "@/lib/investments/client";
 import type { MemberProfile } from "@/lib/members/service";
 import styles from "./ProfilePanel.module.css";
 
@@ -40,6 +42,7 @@ export function ProfilePanel() {
   const [readMember, setReadMember] = useState<MemberProfile | null>(null);
   const [copied, setCopied] = useState<"code" | "link" | null>(null);
   const [photoUrl, setPhotoUrl] = useState<string | null>(null);
+  const [offer, setOffer] = useState<{ title: string; subtitle: string; imageSrc: string | null } | null>(null);
   const [photoError, setPhotoError] = useState<string | null>(null);
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const copyTimer = useRef<number | null>(null);
@@ -77,6 +80,24 @@ export function ProfilePanel() {
         if (active) {
           setReadMember(profile);
         }
+      })
+      .catch(() => undefined);
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+    void readCurrentProfileOffer()
+      .then((current) => {
+        if (!active || !current) {
+          return;
+        }
+        const imageSrc = current.image
+          ? `data:${current.image.contentType};base64,${current.image.dataBase64}`
+          : null;
+        setOffer({ title: current.title, subtitle: current.subtitle, imageSrc });
       })
       .catch(() => undefined);
     return () => {
@@ -262,7 +283,9 @@ export function ProfilePanel() {
   const shown = readMember ?? member;
 
   return (
-    <Card>
+    <div className="stack">
+      {offer ? <OfferCard title={offer.title} subtitle={offer.subtitle} imageSrc={offer.imageSrc} /> : null}
+      <Card>
       <div className="stack">
         <div>
           <ProfilePhoto
@@ -407,6 +430,7 @@ export function ProfilePanel() {
         </div>
       </div>
     </Card>
+    </div>
   );
 }
 

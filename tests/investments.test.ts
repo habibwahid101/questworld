@@ -1449,3 +1449,53 @@ test("the public landing page uses only the current plan, return, and referral f
   assert.doesNotMatch(page, /AGAM|Atlantic/);
 });
 
+
+test("profile offer is visible only inside its window", async () => {
+  const store = createMemoryInvestmentStore();
+  const images = {
+    async put() {
+      return { imageKey: "offers/profile-offer.jpg", imageContentType: "image/jpeg" };
+    },
+    async get() {
+      return { contentType: "image/jpeg", dataBase64: "aGVsbG8=" };
+    },
+  };
+  const admin = { "cognito:groups": "[Admins]", sub: "admin-1" };
+  const saved = await handleInvestmentApi({
+    method: "PUT",
+    path: "/admin/profile-offer",
+    claims: admin,
+    store,
+    offerImages: images,
+    now: () => "2026-11-03T12:00:00.000Z",
+    body: {
+      title: "Starter bonus",
+      subtitle: "Limited window",
+      startsAt: "2026-11-01T00:00:00.000Z",
+      endsAt: "2026-11-10T00:00:00.000Z",
+      image: { contentType: "image/jpeg", dataBase64: "aGVsbG8=" },
+    },
+  });
+  assert.equal(saved.statusCode, 200);
+
+  const visible = await handleInvestmentApi({
+    method: "GET",
+    path: "/profile-offer",
+    claims: { sub: "member-1" },
+    store,
+    offerImages: images,
+    now: () => "2026-11-03T12:00:00.000Z",
+  });
+  assert.equal(visible.statusCode, 200);
+  assert.equal((visible.body.offer as { title: string }).title, "Starter bonus");
+
+  const hidden = await handleInvestmentApi({
+    method: "GET",
+    path: "/profile-offer",
+    claims: { sub: "member-1" },
+    store,
+    offerImages: images,
+    now: () => "2026-11-11T00:00:00.000Z",
+  });
+  assert.equal(hidden.body.offer, null);
+});

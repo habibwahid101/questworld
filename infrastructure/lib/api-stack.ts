@@ -141,6 +141,12 @@ export class ApiStack extends cdk.Stack {
       integration,
       authorizer,
     });
+    httpApi.addRoutes({
+      path: "/me/referrals",
+      methods: [apigwv2.HttpMethod.GET],
+      integration,
+      authorizer,
+    });
 
     const investmentsTable = new dynamodb.Table(this, "InvestmentsTable", {
       tableName: "questworld-investments",

@@ -1,0 +1,32 @@
+.scroll {
+  width: 100%;
+  overflow-x: auto;
+  margin-top: var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+}
+
+.scroll table {
+  width: 100%;
+  min-width: 520px;
+  border-collapse: collapse;
+}
+
+.scroll th,
+.scroll td {
+  padding: 10px 12px;
+  text-align: left;
+  border-bottom: 1px solid var(--color-border);
+  white-space: nowrap;
+}
+
+.scroll th {
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--color-muted, #6b7280);
+}
+
+.scroll tr:last-child td {
+  border-bottom: none;
+}

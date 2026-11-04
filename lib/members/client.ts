@@ -1,6 +1,6 @@
 import { getIdToken } from "@/lib/auth/cognito";
 import { isMemberApiConfigured, readMemberApiUrl } from "@/lib/members/config";
-import type { ListedMember, MemberProfile, ProfilePhotoContentType } from "@/lib/members/service";
+import type { ListedMember, MemberProfile, ProfilePhotoContentType, ReferralListItem } from "@/lib/members/service";
 
 export class MemberClientError extends Error {
   readonly code: string;
@@ -79,6 +79,15 @@ export async function readCurrentProfilePhoto(): Promise<{ contentType: ProfileP
     }
     throw caught;
   }
+}
+
+
+export async function listMyReferrals(): Promise<ReferralListItem[]> {
+  const payload = await memberJson("GET", "/me/referrals");
+  if (!Array.isArray(payload.referrals)) {
+    throw new MemberClientError("member_request_failed", "Could not load your referrals.");
+  }
+  return payload.referrals as ReferralListItem[];
 }
 
 export async function listStoredMembers(): Promise<ListedMember[]> {

@@ -45,6 +45,13 @@ export type ListedMember = {
   createdAt: string;
 };
 
+export type ReferralListItem = {
+  name: string;
+  email: string;
+  referralCode: string;
+  createdAt: string;
+};
+
 export type MemberIdentity = {
   userId: string;
   email: string;
@@ -383,6 +390,20 @@ export async function handleMemberApi(input: {
       }
       const [records, adminIds] = await Promise.all([input.store.listMembers(), input.adminUserIds()]);
       return { statusCode: 200, body: { members: toListedMembers(records, adminIds) } };
+    }
+
+    if (method === "GET" && path === "/me/referrals") {
+      const records = await input.store.listMembers();
+      const referrals = records
+        .filter((record) => record.sponsorUserId === identity.userId)
+        .map((record): ReferralListItem => ({
+          name: record.name,
+          email: record.email,
+          referralCode: record.referralCode,
+          createdAt: record.createdAt,
+        }))
+        .sort((left, right) => right.createdAt.localeCompare(left.createdAt));
+      return { statusCode: 200, body: { referrals } };
     }
 
     if (method === "GET" && path === "/me") {

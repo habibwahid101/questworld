@@ -77,6 +77,7 @@ export function AdminDepositsPanel() {
     setMessage(null);
     try {
       await reviewPendingDeposit(investmentId, decision, decision === "rejected" ? reasons[investmentId] : undefined);
+      setMessage(decision === "rejected" ? "Deposit rejected." : "Deposit confirmed.");
       await load();
     } catch (caught) {
       const error = caught instanceof InvestmentClientError ? caught : new InvestmentClientError("investment_request_failed", "Could not save that review.");
@@ -188,7 +189,7 @@ export function AdminDepositsPanel() {
             {savingAddress ? "Saving…" : "Save addresses"}
           </Button>
         </form>
-        {message ? <p style={{ marginTop: 16 }}>{message}</p> : null}
+        {message ? <p className="notice notice-success" style={{ marginTop: 16 }}>{message}</p> : null}
       </Card>
       <AdminRecordTable
         columns={investmentColumns}

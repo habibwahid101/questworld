@@ -92,8 +92,8 @@ export default function AdminSettingsPage() {
               }}
             />
           </Field>
-          {error ? <p className="error">{error}</p> : null}
-          {notice ? <p>{notice}</p> : null}
+          {error ? <p className="notice notice-error">{error}</p> : null}
+          {notice ? <p className="notice notice-success">{notice}</p> : null}
           <Button type="submit" disabled={saving}>
             {saving ? "Saving…" : "Save offer"}
           </Button>

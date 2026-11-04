@@ -258,6 +258,25 @@ tr:last-child td {
 .form-error {
   color: var(--color-danger);
   font-size: 0.92rem;
+  background: color-mix(in srgb, var(--color-danger) 12%, transparent);
+  border-radius: var(--radius-md);
+  padding: 10px 12px;
+}
+
+.notice {
+  font-size: 0.92rem;
+  border-radius: var(--radius-md);
+  padding: 10px 12px;
+}
+
+.notice-success {
+  color: #166534;
+  background: #dcfce7;
+}
+
+.notice-error {
+  color: var(--color-danger);
+  background: color-mix(in srgb, var(--color-danger) 12%, transparent);
 }
 
 .sr-only {

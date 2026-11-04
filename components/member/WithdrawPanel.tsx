@@ -170,10 +170,10 @@ export function WithdrawPanel() {
           </Field>
         ) : null}
         {statusNote ? (
-          <p role="status">{statusNote}</p>
+          <p className="notice notice-success" role="status">{statusNote}</p>
         ) : null}
         {message ? (
-          <p className="form-error" role="alert">
+          <p className="notice notice-error" role="alert">
             {message}
           </p>
         ) : null}

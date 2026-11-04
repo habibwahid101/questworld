@@ -123,12 +123,12 @@ export function InvestmentPaymentPanel({ investmentId }: { investmentId: string 
           <Link href="/investments">Back to investments</Link>
         </p>
         {message ? (
-          <p className="form-error" role="alert" style={{ marginTop: 16 }}>
+          <p className="notice notice-error" role="alert" style={{ marginTop: 16 }}>
             {message}
           </p>
         ) : null}
         {submittedNote ? (
-          <p role="status" style={{ marginTop: 16 }}>
+          <p className="notice notice-success" role="status" style={{ marginTop: 16 }}>
             {submittedNote}
           </p>
         ) : null}

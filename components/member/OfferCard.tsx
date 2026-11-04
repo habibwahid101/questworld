@@ -6,6 +6,7 @@ export function OfferCard(props: {
   title: string;
   subtitle: string;
   imageSrc: string | null;
+  requirement?: string | null;
   startsAt?: string | null;
   endsAt?: string | null;
 }) {
@@ -16,6 +17,7 @@ export function OfferCard(props: {
       <div className={styles.copy}>
         <h2 className={styles.title}>{props.title}</h2>
         <p className={styles.subtitle}>{props.subtitle}</p>
+        {props.requirement ? <p className={styles.requirement}>{props.requirement}</p> : null}
         {when ? <p className={styles.when}>{when}</p> : null}
       </div>
     </section>

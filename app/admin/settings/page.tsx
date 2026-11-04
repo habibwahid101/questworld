@@ -9,6 +9,7 @@ import { InvestmentClientError, saveProfileOffer } from "@/lib/investments/clien
 export default function AdminSettingsPage() {
   const [title, setTitle] = useState("");
   const [subtitle, setSubtitle] = useState("");
+  const [requirement, setRequirement] = useState("");
   const [startsAt, setStartsAt] = useState("");
   const [endsAt, setEndsAt] = useState("");
   const [image, setImage] = useState<{ contentType: string; dataBase64: string } | null>(null);
@@ -28,6 +29,7 @@ export default function AdminSettingsPage() {
       await saveProfileOffer({
         title,
         subtitle,
+        requirement,
         startsAt: new Date(startsAt).toISOString(),
         endsAt: new Date(endsAt).toISOString(),
         image: image ?? undefined,
@@ -53,6 +55,15 @@ export default function AdminSettingsPage() {
           </Field>
           <Field label="Subtitle" htmlFor="offer-subtitle">
             <Input id="offer-subtitle" value={subtitle} onChange={(event) => setSubtitle(event.target.value)} maxLength={160} required />
+          </Field>
+          <Field label="Requirement" htmlFor="offer-requirement">
+            <Input
+              id="offer-requirement"
+              value={requirement}
+              onChange={(event) => setRequirement(event.target.value)}
+              maxLength={160}
+              placeholder="2000 USDT investment"
+            />
           </Field>
           <Field label="Starts" htmlFor="offer-starts">
             <Input id="offer-starts" type="datetime-local" value={startsAt} onChange={(event) => setStartsAt(event.target.value)} required />

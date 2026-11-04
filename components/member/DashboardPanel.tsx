@@ -43,7 +43,7 @@ export function DashboardPanel() {
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const [figures, setFigures] = useState<Figures | null>(null);
   const [message, setMessage] = useState<string | null>(null);
-  const [offer, setOffer] = useState<{ title: string; subtitle: string; imageSrc: string | null; startsAt: string; endsAt: string } | null>(null);
+  const [offer, setOffer] = useState<{ title: string; subtitle: string; imageSrc: string | null; requirement: string; startsAt: string; endsAt: string } | null>(null);
 
   useEffect(() => {
     if (!isMemberApiConfigured()) {
@@ -98,7 +98,7 @@ export function DashboardPanel() {
         const imageSrc = current.image
           ? `data:${current.image.contentType};base64,${current.image.dataBase64}`
           : null;
-        setOffer({ title: current.title, subtitle: current.subtitle, imageSrc, startsAt: current.startsAt, endsAt: current.endsAt });
+        setOffer({ title: current.title, subtitle: current.subtitle, imageSrc, requirement: current.requirement, startsAt: current.startsAt, endsAt: current.endsAt });
       })
       .catch(() => undefined);
     return () => {
@@ -172,7 +172,7 @@ export function DashboardPanel() {
           {message}
         </p>
       ) : null}
-      {offer ? <OfferCard title={offer.title} subtitle={offer.subtitle} imageSrc={offer.imageSrc} startsAt={offer.startsAt} endsAt={offer.endsAt} /> : null}
+      {offer ? <OfferCard title={offer.title} subtitle={offer.subtitle} imageSrc={offer.imageSrc} requirement={offer.requirement} startsAt={offer.startsAt} endsAt={offer.endsAt} /> : null}
       <Card className={styles.profileCard}>
         <div className={styles.profileHeader}>
           <ProfilePhoto

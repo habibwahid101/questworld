@@ -663,6 +663,7 @@ export function createDynamoInvestmentStore(tableName: string): InvestmentStore 
       return {
         title: item.title,
         subtitle: item.subtitle,
+        requirement: typeof item.requirement === "string" ? item.requirement : "",
         imageKey: typeof item.imageKey === "string" ? item.imageKey : "",
         imageContentType: typeof item.imageContentType === "string" ? item.imageContentType : "",
         startsAt: typeof item.startsAt === "string" ? item.startsAt : "",
@@ -680,6 +681,7 @@ export function createDynamoInvestmentStore(tableName: string): InvestmentStore 
             sk: "PROFILE_OFFER",
             title: offer.title,
             subtitle: offer.subtitle,
+            requirement: offer.requirement,
             imageKey: offer.imageKey,
             imageContentType: offer.imageContentType,
             startsAt: offer.startsAt,

@@ -151,6 +151,7 @@ function createOfferImageStore(bucket: string) {
           Key: key,
           Body: Buffer.from(image.dataBase64, "base64"),
           ContentType: image.contentType,
+          ServerSideEncryption: "AES256",
         }),
       );
       return { imageKey: key, imageContentType: image.contentType };

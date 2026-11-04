@@ -198,6 +198,12 @@ export class ApiStack extends cdk.Stack {
         resources: [depositProofs.arnForObjects("deposit-proofs/*")],
       }),
     );
+    investmentsFn.addToRolePolicy(
+      new iam.PolicyStatement({
+        actions: ["s3:PutObject", "s3:GetObject"],
+        resources: [depositProofs.arnForObjects("offers/*")],
+      }),
+    );
     membersFn.addEnvironment("PROFILE_PHOTO_BUCKET", depositProofs.bucketName);
     membersFn.addToRolePolicy(
       new iam.PolicyStatement({

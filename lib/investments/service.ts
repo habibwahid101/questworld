@@ -1315,7 +1315,7 @@ function planFromBody(body: unknown): { planId: StoredPlanId; planName: string; 
     if (!Object.prototype.hasOwnProperty.call(source, "amountMinor")) {
       throw new InvestmentRequestError(400, "unknown_plan", "Choose one of the listed plans.");
     }
-    const extra = Object.keys(source).filter((key) => key !== "planId" && key !== "amountMinor");
+    const extra = Object.keys(source).filter((key) => key !== "planId" && key !== "amountMinor" && key !== "ownerSub");
     if (extra.length > 0) {
       throw new InvestmentRequestError(400, "invalid_body", "A custom investment needs only an amount.");
     }

@@ -48,8 +48,14 @@ export type ListedMember = {
 export type ReferralListItem = {
   name: string;
   email: string;
+  phone: string | null;
   referralCode: string;
   createdAt: string;
+};
+
+export type GenerationList = {
+  first: ReferralListItem[];
+  second: ReferralListItem[];
 };
 
 export type MemberIdentity = {
@@ -394,16 +400,23 @@ export async function handleMemberApi(input: {
 
     if (method === "GET" && path === "/me/referrals") {
       const records = await input.store.listMembers();
-      const referrals = records
+      const toItem = (record: MemberRecord): ReferralListItem => ({
+        name: record.name,
+        email: record.email,
+        phone: record.phone,
+        referralCode: record.referralCode,
+        createdAt: record.createdAt,
+      });
+      const first = records
         .filter((record) => record.sponsorUserId === identity.userId)
-        .map((record): ReferralListItem => ({
-          name: record.name,
-          email: record.email,
-          referralCode: record.referralCode,
-          createdAt: record.createdAt,
-        }))
+        .map(toItem)
         .sort((left, right) => right.createdAt.localeCompare(left.createdAt));
-      return { statusCode: 200, body: { referrals } };
+      const firstIds = new Set(records.filter((record) => record.sponsorUserId === identity.userId).map((record) => record.userId));
+      const second = records
+        .filter((record) => record.sponsorUserId !== null && firstIds.has(record.sponsorUserId))
+        .map(toItem)
+        .sort((left, right) => right.createdAt.localeCompare(left.createdAt));
+      return { statusCode: 200, body: { referrals: first, generations: { first, second } } };
     }
 
     if (method === "GET" && path === "/me") {

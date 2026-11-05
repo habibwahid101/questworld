@@ -270,7 +270,7 @@ export class ApiStack extends cdk.Stack {
     });
     httpApi.addRoutes({
       path: "/admin/investments",
-      methods: [apigwv2.HttpMethod.GET],
+      methods: [apigwv2.HttpMethod.GET, apigwv2.HttpMethod.POST],
       integration: investmentIntegration,
       authorizer,
     });

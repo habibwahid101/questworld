@@ -6,7 +6,7 @@ import { Card } from "@/components/ui/Card";
 import { AdminRecordTable } from "@/components/admin/AdminRecordTable";
 import { useStoredMembers } from "@/components/admin/useStoredMembers";
 import { adminTableRow, investmentColumns } from "@/lib/admin/table";
-import { InvestmentClientError, activateVerifiedInvestment, listPendingDeposits, listVerifiedDeposits, readCurrentDepositAddresses, readDepositProofUrl, reviewPendingDeposit, saveDepositAddresses } from "@/lib/investments/client";
+import { InvestmentClientError, activateVerifiedInvestment, createAdminDeposit, listPendingDeposits, listVerifiedDeposits, readCurrentDepositAddresses, readDepositProofUrl, reviewPendingDeposit, saveDepositAddresses } from "@/lib/investments/client";
 import { formatUsdtAmount, type InvestmentRecord, type InvestmentStatus } from "@/lib/investments/service";
 import { isMemberApiConfigured } from "@/lib/members/config";
 import styles from "./AdminDepositsPanel.module.css";
@@ -24,6 +24,9 @@ export function AdminDepositsPanel() {
   const [pending, setPending] = useState<InvestmentRecord[]>([]);
   const [verified, setVerified] = useState<InvestmentRecord[]>([]);
   const [message, setMessage] = useState<string | null>(null);
+  const [depositEmail, setDepositEmail] = useState("");
+  const [depositAmount, setDepositAmount] = useState("");
+  const [depositing, setDepositing] = useState(false);
   const [loading, setLoading] = useState(isMemberApiConfigured());
   const [saving, setSaving] = useState<{ id: string; kind: "verify" | "reject" | "activate" | "screenshot" } | null>(null);
   const [bep20Draft, setBep20Draft] = useState("");
@@ -46,9 +49,6 @@ export function AdminDepositsPanel() {
   }, []);
 
   useEffect(() => {
-    if (!isMemberApiConfigured()) {
-      return;
-    }
     let active = true;
     void load()
       .catch((caught: unknown) => {
@@ -65,6 +65,35 @@ export function AdminDepositsPanel() {
       active = false;
     };
   }, [load]);
+
+  async function adminDeposit() {
+    if (depositing || !depositEmail || !depositAmount) {
+      return;
+    }
+    const member = (members ?? []).find((item) => item.email.toLowerCase() === depositEmail.toLowerCase());
+    if (!member) {
+      setMessage("That member was not found.");
+      return;
+    }
+    const amount = Number(depositAmount);
+    if (!Number.isFinite(amount) || amount <= 0) {
+      setMessage("Enter a valid amount.");
+      return;
+    }
+    setDepositing(true);
+    setMessage(null);
+    try {
+      await createAdminDeposit(member.userId, "custom", Math.round(amount * 1_000_000));
+      setMessage("Deposit created and activated.");
+      setDepositEmail("");
+      setDepositAmount("");
+      await load();
+    } catch (caught) {
+      setMessage(caught instanceof InvestmentClientError ? caught.message : "Could not create that deposit.");
+    } finally {
+      setDepositing(false);
+    }
+  }
 
   async function decide(investmentId: string, decision: "deposit_verified" | "rejected") {
     if (saving || savingAddress) {
@@ -190,6 +219,28 @@ export function AdminDepositsPanel() {
           </Button>
         </form>
         {message ? <p className="notice notice-success" style={{ marginTop: 16 }}>{message}</p> : null}
+      </Card>
+      <Card>
+        <h2>Deposit for a member</h2>
+        <p className="lead" style={{ marginTop: 8 }}>Creates an active investment for the member. This does not move money.</p>
+        <form className="stack" style={{ marginTop: 16 }} onSubmit={(event) => { event.preventDefault(); void adminDeposit(); }}>
+          <div>
+            <label htmlFor="admin-deposit-email">Member email</label>
+            <select id="admin-deposit-email" value={depositEmail} onChange={(event) => setDepositEmail(event.target.value)} style={{ display: "block", width: "100%", marginTop: 8 }}>
+              <option value="">Choose a member</option>
+              {(members ?? []).map((member) => (
+                <option key={member.userId} value={member.email}>{member.name} ({member.email})</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label htmlFor="admin-deposit-amount">Amount (USDT)</label>
+            <input id="admin-deposit-amount" type="number" min="1" value={depositAmount} onChange={(event) => setDepositAmount(event.target.value)} style={{ display: "block", width: "100%", marginTop: 8 }} />
+          </div>
+          <Button type="submit" disabled={depositing || !depositEmail || !depositAmount} aria-busy={depositing}>
+            {depositing ? "Creating…" : "Create deposit"}
+          </Button>
+        </form>
       </Card>
       <AdminRecordTable
         columns={investmentColumns}

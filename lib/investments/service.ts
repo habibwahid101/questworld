@@ -945,6 +945,21 @@ export async function handleInvestmentApi(input: {
       return errorBody(404, "not_found", "That investment request does not exist.");
     }
 
+    if (method === "POST" && path === "/admin/investments") {
+      if (!isAdminClaims(input.claims)) {
+        return errorBody(403, "forbidden", "Admin access is required.");
+      }
+      const record = await createAdminDeposit({
+        body: input.body,
+        idempotencyKey: input.idempotencyKey,
+        store: input.store,
+        now,
+        newInvestmentId,
+        adminSub: identity.userId,
+      });
+      return { statusCode: 200, body: { investment: record } };
+    }
+
     if (method === "POST" && path === "/investments") {
       const record = await createInvestment({
         ownerSub: identity.userId,
@@ -1671,3 +1686,52 @@ function profileOfferFromBody(
   }
   return { title, subtitle, requirement, startsAt, endsAt, image };
 }
+
+async function createAdminDeposit(input: {
+  body: unknown;
+  idempotencyKey: string | undefined;
+  store: InvestmentStore;
+  now: () => string;
+  newInvestmentId: () => string;
+  adminSub: string;
+}): Promise<InvestmentRecord> {
+  if (!input.body || typeof input.body !== "object" || Array.isArray(input.body)) {
+    throw new InvestmentRequestError(400, "invalid_body", "Choose a member and an amount.");
+  }
+  const source = input.body as Record<string, unknown>;
+  const ownerSub = source.ownerSub;
+  if (typeof ownerSub !== "string" || ownerSub.length === 0) {
+    throw new InvestmentRequestError(400, "invalid_body", "Choose a member.");
+  }
+  const plan = planFromBody(input.body);
+  const idempotencyKey = readIdempotencyKey(input.idempotencyKey);
+  const timestamp = input.now();
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const investmentId = input.newInvestmentId();
+    if (!INVESTMENT_ID_PATTERN.test(investmentId)) {
+      throw new InvestmentRequestError(500, "id_generation_failed", "Could not create an investment.");
+    }
+    const record: InvestmentRecord = {
+      investmentId,
+      ownerSub,
+      planId: plan.planId,
+      planName: plan.planName,
+      amountMinor: plan.amountMinor,
+      currency: INVESTMENT_CURRENCY,
+      scale: INVESTMENT_SCALE,
+      status: "active",
+      createdAt: timestamp,
+      updatedAt: timestamp,
+      statusChangedAt: timestamp,
+      activatedAt: timestamp,
+      activatedBy: input.adminSub,
+      depositReference: "ADMIN-DEPOSIT",
+    };
+    const outcome = await input.store.create(record, idempotencyKey);
+    if (outcome.result === "created") {
+      return record;
+    }
+  }
+  throw new InvestmentRequestError(500, "id_generation_failed", "Could not create an investment.");
+}
+

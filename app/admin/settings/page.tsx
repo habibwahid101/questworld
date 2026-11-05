@@ -46,7 +46,7 @@ export default function AdminSettingsPage() {
     <Card>
       <div className="stack">
         <div>
-          <h1>Settings</h1>
+          <h1>Profile Offer</h1>
           <p className="lead">One profile offer. Members see it above their profile between the start and end.</p>
         </div>
         <form className="stack" onSubmit={(event) => void onSubmit(event)}>

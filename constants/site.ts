@@ -93,7 +93,7 @@ export const adminNav: readonly NavItem[] = [
   { href: "/admin/referral-commissions", label: "Referral Commissions" },
   { href: "/admin/withdrawals", label: "Withdrawals" },
   { href: "/admin/transactions", label: "Transactions" },
-  { href: "/admin/settings", label: "Settings" },
+  { href: "/admin/settings", label: "Profile Offer" },
 ];
 
 export const howItWorksSteps = [

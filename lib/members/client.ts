@@ -82,12 +82,12 @@ export async function readCurrentProfilePhoto(): Promise<{ contentType: ProfileP
 }
 
 
-export async function listMyReferrals(): Promise<ReferralListItem[]> {
+export async function listMyReferrals(): Promise<{ first: ReferralListItem[]; second: ReferralListItem[] }> {
   const payload = await memberJson("GET", "/me/referrals");
-  if (!Array.isArray(payload.referrals)) {
-    throw new MemberClientError("member_request_failed", "Could not load your referrals.");
-  }
-  return payload.referrals as ReferralListItem[];
+  const generations = payload.generations as { first?: unknown; second?: unknown } | undefined;
+  const first = Array.isArray(generations?.first) ? (generations.first as ReferralListItem[]) : [];
+  const second = Array.isArray(generations?.second) ? (generations.second as ReferralListItem[]) : [];
+  return { first, second };
 }
 
 export async function listStoredMembers(): Promise<ListedMember[]> {
@@ -110,6 +110,7 @@ async function memberJson(method: string, path: string, body?: unknown): Promise
   member?: MemberProfile;
   members?: unknown;
   referrals?: unknown;
+  generations?: unknown;
   contentType?: string;
   dataBase64?: string;
   error?: string;
@@ -132,6 +133,7 @@ async function memberJson(method: string, path: string, body?: unknown): Promise
     member?: MemberProfile;
     members?: unknown;
     referrals?: unknown;
+  generations?: unknown;
     contentType?: string;
     dataBase64?: string;
     error?: string;

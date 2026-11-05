@@ -101,6 +101,15 @@ export async function saveDepositAddresses(wallets: DepositWallets): Promise<Dep
   return { bep20: payload.bep20, trc20: payload.trc20 };
 }
 
+export async function createAdminDeposit(ownerSub: string, planId: string, amountMinor?: number): Promise<InvestmentRecord> {
+  const body = planId === "custom" ? { ownerSub, planId, amountMinor } : { ownerSub, planId };
+  const payload = await investmentRequest<{ investment?: InvestmentRecord }>("POST", "/admin/investments", body);
+  if (!payload.investment) {
+    throw new InvestmentClientError("investment_request_failed", "Could not create that deposit.");
+  }
+  return payload.investment;
+}
+
 export async function listPendingDeposits(): Promise<InvestmentRecord[]> {
   const payload = await investmentRequest<{ investments?: InvestmentRecord[] }>("GET", "/admin/deposits");
   return payload.investments ?? [];

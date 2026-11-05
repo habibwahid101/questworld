@@ -103,7 +103,7 @@ export async function saveDepositAddresses(wallets: DepositWallets): Promise<Dep
 
 export async function createAdminDeposit(ownerSub: string, planId: string, amountMinor?: number): Promise<InvestmentRecord> {
   const body = planId === "custom" ? { ownerSub, planId, amountMinor } : { ownerSub, planId };
-  const payload = await investmentRequest<{ investment?: InvestmentRecord }>("POST", "/admin/investments", body);
+  const payload = await investmentRequest<{ investment?: InvestmentRecord }>("POST", "/admin/investments", body, crypto.randomUUID());
   if (!payload.investment) {
     throw new InvestmentClientError("investment_request_failed", "Could not create that deposit.");
   }

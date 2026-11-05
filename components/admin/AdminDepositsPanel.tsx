@@ -197,6 +197,7 @@ export function AdminDepositsPanel() {
           <Button type="submit" disabled={depositing || !depositEmail || !depositAmount} aria-busy={depositing}>
             {depositing ? "Creating…" : "Create deposit"}
           </Button>
+          {message ? <p className="notice notice-success" style={{ marginTop: 12 }}>{message}</p> : null}
         </form>
       </Card>
     );

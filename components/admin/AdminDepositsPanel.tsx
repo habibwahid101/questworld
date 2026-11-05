@@ -177,29 +177,7 @@ export function AdminDepositsPanel() {
         <h1>Deposits</h1>
         <p className="lead">Admin review is not connected in this build yet.</p>
       </Card>
-      <Card>
-        <h2>Deposit for a member</h2>
-        <p className="lead" style={{ marginTop: 8 }}>Creates an active investment for the member. This does not move money.</p>
-        <form className="stack" style={{ marginTop: 16 }} onSubmit={(event) => { event.preventDefault(); void adminDeposit(); }}>
-          <div>
-            <label htmlFor="admin-deposit-email">Member email</label>
-            <select id="admin-deposit-email" value={depositEmail} onChange={(event) => setDepositEmail(event.target.value)} style={{ display: "block", width: "100%", marginTop: 8 }}>
-              <option value="">Choose a member</option>
-              {(members ?? []).map((member) => (
-                <option key={member.userId} value={member.email}>{member.name} ({member.email})</option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label htmlFor="admin-deposit-amount">Amount (USDT)</label>
-            <input id="admin-deposit-amount" type="number" min="1" value={depositAmount} onChange={(event) => setDepositAmount(event.target.value)} style={{ display: "block", width: "100%", marginTop: 8 }} />
-          </div>
-          <Button type="submit" disabled={depositing || !depositEmail || !depositAmount} aria-busy={depositing}>
-            {depositing ? "Creating…" : "Create deposit"}
-          </Button>
-          {message ? <p className="notice notice-success" style={{ marginTop: 12 }}>{message}</p> : null}
-        </form>
-      </Card>
+
     );
   }
 
@@ -243,7 +221,29 @@ export function AdminDepositsPanel() {
         </form>
         {message ? <p className="notice notice-success" style={{ marginTop: 16 }}>{message}</p> : null}
       </Card>
-      
+      <Card>
+        <h2>Deposit for a member</h2>
+        <p className="lead" style={{ marginTop: 8 }}>Creates an active investment for the member. This does not move money.</p>
+        <form className="stack" style={{ marginTop: 16 }} onSubmit={(event) => { event.preventDefault(); void adminDeposit(); }}>
+          <div>
+            <label htmlFor="admin-deposit-email">Member email</label>
+            <select id="admin-deposit-email" value={depositEmail} onChange={(event) => setDepositEmail(event.target.value)} style={{ display: "block", width: "100%", marginTop: 8 }}>
+              <option value="">Choose a member</option>
+              {(members ?? []).map((member) => (
+                <option key={member.userId} value={member.email}>{member.name} ({member.email})</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label htmlFor="admin-deposit-amount">Amount (USDT)</label>
+            <input id="admin-deposit-amount" type="number" min="1" value={depositAmount} onChange={(event) => setDepositAmount(event.target.value)} style={{ display: "block", width: "100%", marginTop: 8 }} />
+          </div>
+          <Button type="submit" disabled={depositing || !depositEmail || !depositAmount} aria-busy={depositing}>
+            {depositing ? "Creating…" : "Create deposit"}
+          </Button>
+          {message ? <p className="notice notice-success" style={{ marginTop: 12 }}>{message}</p> : null}
+        </form>
+      </Card>
       <AdminRecordTable
         columns={investmentColumns}
         loading={loading}

@@ -84,7 +84,7 @@ export function AdminDepositsPanel() {
     setMessage(null);
     try {
       await createAdminDeposit(member.userId, "custom", Math.round(amount * 1_000_000));
-      setMessage("Deposit created and activated.");
+      setMessage("Deposit created and activated for " + member.name + ".");
       setDepositEmail("");
       setDepositAmount("");
       await load();
@@ -241,7 +241,7 @@ export function AdminDepositsPanel() {
           <Button type="submit" disabled={depositing || !depositEmail || !depositAmount} aria-busy={depositing}>
             {depositing ? "Creating…" : "Create deposit"}
           </Button>
-          {message ? <p className="notice notice-success" style={{ marginTop: 12 }}>{message}</p> : null}
+          {message ? <p className="notice notice-success" style={{ marginTop: 12, fontWeight: 600, padding: "12px 16px", borderRadius: 8 }}>{message}</p> : null}
         </form>
       </Card>
       <AdminRecordTable

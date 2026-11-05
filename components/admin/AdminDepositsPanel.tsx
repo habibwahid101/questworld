@@ -269,7 +269,7 @@ export function AdminDepositsPanel() {
             return null;
           }
           return (
-            <div className="stack">
+            <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "nowrap" }}>
               {investment.depositProofKey ? (
                 <Button
                   type="button"
@@ -296,12 +296,14 @@ export function AdminDepositsPanel() {
               ) : null}
               {investment.status === "pending_verification" ? (
                 <>
-                  <label htmlFor={`reject-reason-${investment.investmentId}`}>Rejection reason</label>
-                  <textarea
+                  <input
                     id={`reject-reason-${investment.investmentId}`}
+                    type="text"
+                    placeholder="Rejection reason"
                     value={reasons[investment.investmentId] ?? ""}
                     maxLength={500}
                     onChange={(event) => setReasons((current) => ({ ...current, [investment.investmentId]: event.target.value }))}
+                    style={{ width: 140, padding: "6px 8px" }}
                   />
                   <Button
                     variant="secondary"

@@ -66,6 +66,31 @@ export type MemberIdentity = {
 
 export type CreateResult = "created" | "exists" | "referral-taken" | "email-taken" | "phone-taken";
 
+export type MemberCompletion = {
+  firstName: string | null;
+  lastName: string | null;
+  name: string | null;
+  phone: string | null;
+  country: string | null;
+  transactionPasswordHash: string | null;
+  ensurePhone: string | null;
+  updatedAt: string;
+  email: string;
+  referralCode: string;
+  sponsorUserId: string | null;
+  sponsorReferralCode: string | null;
+};
+
+export type CompleteMemberResult = {
+  result: "updated" | "missing" | "phone-taken" | "conflict" | "transient";
+  member: MemberRecord | null;
+};
+
+export type ProfileUpdateResult = {
+  result: "updated" | "missing" | "phone-taken" | "conflict";
+  member: MemberRecord | null;
+};
+
 export type ProfilePatch = {
   name?: string;
   phone?: string | null;
@@ -78,8 +103,10 @@ export type MemberStore = {
   getUserIdByReferralCode(code: string): Promise<string | null>;
   listMembers(): Promise<MemberRecord[]>;
   findRegistrationConflict(input: { userId: string; email: string; phone: string | null }): Promise<"email" | "phone" | null>;
+  getPhoneOwner(phone: string): Promise<string | null>;
   createMember(member: MemberRecord): Promise<CreateResult>;
-  updateProfile(userId: string, patch: ProfilePatch): Promise<MemberRecord | null>;
+  completeMember(userId: string, fill: MemberCompletion): Promise<CompleteMemberResult>;
+  updateProfile(userId: string, patch: ProfilePatch): Promise<ProfileUpdateResult>;
   setTransactionPassword(userId: string, hash: string, updatedAt: string): Promise<MemberRecord | null>;
   setProfilePhoto(userId: string, profilePhotoKey: string, updatedAt: string): Promise<MemberRecord | null>;
 };
@@ -186,7 +213,7 @@ export async function initializeMember(input: {
 }): Promise<MemberRecord> {
   const existing = await input.store.getByUserId(input.identity.userId);
   if (existing) {
-    return existing;
+    return fillMissingMember(existing, input);
   }
 
   const conflict = await input.store.findRegistrationConflict({
@@ -235,7 +262,7 @@ export async function initializeMember(input: {
     if (result === "exists") {
       const raced = await input.store.getByUserId(input.identity.userId);
       if (raced) {
-        return raced;
+        return fillMissingMember(raced, input);
       }
     }
     if (result === "email-taken") {
@@ -247,6 +274,196 @@ export async function initializeMember(input: {
   }
 
   throw new MemberRequestError(500, "code_generation_failed", "Could not create a member profile.");
+}
+
+const TRANSIENT_COMPLETION_ATTEMPTS = 3;
+
+async function fillMissingMember(
+  existing: MemberRecord,
+  input: {
+    profile?: { firstName: string; lastName: string; phone: string; country?: string | null } | null;
+    transactionPassword?: string | null;
+    store: MemberStore;
+    now: () => string;
+  },
+): Promise<MemberRecord> {
+  let current = existing;
+  let transientAttempts = 0;
+
+  while (true) {
+    const fill = missingCompletion(current, input);
+    const phoneToClaim = fill.phone ?? fill.ensurePhone;
+    const hasWork = Boolean(
+      fill.firstName || fill.lastName || fill.name || fill.phone || fill.country || fill.transactionPasswordHash || fill.ensurePhone,
+    );
+    if (!hasWork) {
+      await assertOwnPhone(input.store, current.userId, blankValue(current.phone) ? null : current.phone);
+      return current;
+    }
+    if (fill.phone) {
+      const owner = await input.store.getPhoneOwner(fill.phone);
+      if (owner && owner !== current.userId) {
+        throw phoneTakenError();
+      }
+    }
+
+    const result = await input.store.completeMember(current.userId, fill);
+    const saved = await verifiedCompletion(input.store, current.userId, fill);
+    if (saved) {
+      return saved;
+    }
+
+    const ownerAfter = phoneToClaim ? await input.store.getPhoneOwner(phoneToClaim) : null;
+    if (phoneToClaim && ownerAfter && ownerAfter !== current.userId) {
+      throw phoneTakenError();
+    }
+    if (result.result === "phone-taken") {
+      throw phoneTakenError();
+    }
+    if (result.result === "missing") {
+      const reread = await input.store.getByUserId(current.userId);
+      const recovered = reread ? await verifiedCompletion(input.store, reread.userId, fill) : null;
+      if (recovered) {
+        return recovered;
+      }
+      throw new MemberRequestError(404, "member_not_found", "Create your member profile first.");
+    }
+    if (result.result === "transient") {
+      transientAttempts += 1;
+      const reread = await input.store.getByUserId(current.userId);
+      if (!reread) {
+        throw new MemberRequestError(404, "member_not_found", "Create your member profile first.");
+      }
+      const recovered = await verifiedCompletion(input.store, reread.userId, fill);
+      if (recovered) {
+        return recovered;
+      }
+      if (transientAttempts >= TRANSIENT_COMPLETION_ATTEMPTS) {
+        throw profileConflictError();
+      }
+      current = reread;
+      continue;
+    }
+
+    const reread = await input.store.getByUserId(current.userId);
+    if (!reread) {
+      throw new MemberRequestError(404, "member_not_found", "Create your member profile first.");
+    }
+    const recovered = await verifiedCompletion(input.store, reread.userId, fill);
+    if (recovered) {
+      return recovered;
+    }
+    throw profileConflictError();
+  }
+}
+
+async function verifiedCompletion(
+  store: MemberStore,
+  userId: string,
+  fill: MemberCompletion,
+): Promise<MemberRecord | null> {
+  const member = await store.getByUserId(userId);
+  if (!member || member.userId !== userId) {
+    return null;
+  }
+  if (member.email !== fill.email || member.referralCode !== fill.referralCode) {
+    return null;
+  }
+  if (!sameStoredIdentity(member.sponsorUserId, fill.sponsorUserId)) {
+    return null;
+  }
+  if (!sameStoredIdentity(member.sponsorReferralCode, fill.sponsorReferralCode)) {
+    return null;
+  }
+  if (fill.firstName && member.firstName !== fill.firstName) {
+    return null;
+  }
+  if (fill.lastName && member.lastName !== fill.lastName) {
+    return null;
+  }
+  if (fill.name && member.name !== fill.name) {
+    return null;
+  }
+  if (fill.phone && member.phone !== fill.phone) {
+    return null;
+  }
+  if (fill.country && member.country !== fill.country) {
+    return null;
+  }
+  if (fill.transactionPasswordHash && member.transactionPasswordHash !== fill.transactionPasswordHash) {
+    return null;
+  }
+  const claimed = fill.phone ?? fill.ensurePhone;
+  if (claimed && registrationPhoneKey(claimed)) {
+    const owner = await store.getPhoneOwner(claimed);
+    if (owner !== userId) {
+      return null;
+    }
+  }
+  return member;
+}
+
+async function assertOwnPhone(store: MemberStore, userId: string, phone: string | null): Promise<void> {
+  if (!phone) {
+    return;
+  }
+  const owner = await store.getPhoneOwner(phone);
+  if (owner && owner !== userId) {
+    throw phoneTakenError();
+  }
+}
+
+function phoneTakenError(): MemberRequestError {
+  return new MemberRequestError(409, "phone_taken", "An account with this mobile number already exists.");
+}
+
+function profileConflictError(): MemberRequestError {
+  return new MemberRequestError(409, "profile_conflict", "Could not save your profile. Submit again.");
+}
+
+function missingCompletion(
+  existing: MemberRecord,
+  input: {
+    profile?: { firstName: string; lastName: string; phone: string; country?: string | null } | null;
+    transactionPassword?: string | null;
+    now: () => string;
+  },
+): MemberCompletion {
+  const profile = input.profile ?? null;
+  const firstName = blankValue(existing.firstName) && profile?.firstName ? profile.firstName : null;
+  const lastName = blankValue(existing.lastName) && profile?.lastName ? profile.lastName : null;
+  const phone = blankValue(existing.phone) && profile?.phone ? profile.phone : null;
+  const country = blankValue(existing.country) && profile?.country ? profile.country : null;
+  const transactionPasswordHash =
+    blankValue(existing.transactionPasswordHash) && input.transactionPassword
+      ? hashTransactionPassword(input.transactionPassword)
+      : null;
+  return {
+    firstName,
+    lastName,
+    name: blankValue(existing.name) && profile ? clampName(`${profile.firstName} ${profile.lastName}`) : null,
+    phone,
+    country,
+    transactionPasswordHash,
+    ensurePhone: phone ? null : blankValue(existing.phone) ? null : existing.phone,
+    updatedAt: input.now(),
+    email: existing.email,
+    referralCode: existing.referralCode,
+    sponsorUserId: existing.sponsorUserId,
+    sponsorReferralCode: existing.sponsorReferralCode,
+  };
+}
+
+function sameStoredIdentity(left: string | null | undefined, right: string | null | undefined): boolean {
+  return storedIdentity(left) === storedIdentity(right);
+}
+
+function storedIdentity(value: string | null | undefined): string | null {
+  return value === null || value === undefined || value === "" ? null : value;
+}
+
+function blankValue(value: string | null | undefined): boolean {
+  return value === null || value === undefined || value.trim() === "";
 }
 
 export async function patchMember(input: {
@@ -269,10 +486,16 @@ export async function patchMember(input: {
     ...changes.patch,
     updatedAt: input.now(),
   });
-  if (!updated) {
+  if (updated.result === "phone-taken") {
+    throw phoneTakenError();
+  }
+  if (updated.result === "conflict") {
+    throw profileConflictError();
+  }
+  if (updated.result !== "updated" || !updated.member) {
     throw new MemberRequestError(404, "member_not_found", "Create your member profile first.");
   }
-  return updated;
+  return updated.member;
 }
 
 async function setTransactionPassword(input: {
@@ -609,6 +832,27 @@ export function registrationPhoneKey(phone: string | null | undefined): string {
   }
   const digits = phone.replace(/\D/g, "");
   return digits.length >= 6 ? digits : "";
+}
+
+// Index ownership, not another profile row, decides a PATCH. A same-number save
+// never steals an index, and a legacy number with no index can be claimed once.
+export function profilePhoneIndexPlan(
+  userId: string,
+  currentPhone: string | null,
+  nextPhone: string | null,
+  oldOwner: string | null,
+  newOwner: string | null,
+): { phoneTaken: boolean; releaseOldKey: string; claimNewKey: string } {
+  const oldKey = registrationPhoneKey(currentPhone);
+  const newKey = registrationPhoneKey(nextPhone);
+  if (newKey && newKey !== oldKey && newOwner && newOwner !== userId) {
+    return { phoneTaken: true, releaseOldKey: "", claimNewKey: "" };
+  }
+  return {
+    phoneTaken: false,
+    releaseOldKey: oldKey && oldKey !== newKey && oldOwner === userId ? oldKey : "",
+    claimNewKey: newKey && (newKey !== oldKey || !newOwner) ? newKey : "",
+  };
 }
 
 function referralFromBody(body: unknown): string {

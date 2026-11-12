@@ -88,7 +88,7 @@ test("an existing phone index owned by another member is not a successful comple
   const store = createMemoryMemberStore();
   assert.equal((await initialize(store, "owner", { firstName: "Ada", lastName: "Lovelace", phone: PHONE })).statusCode, 200);
   assert.equal((await initialize(store, "partial", { firstName: "Lin", lastName: "Us", phone: OTHER_PHONE })).statusCode, 200);
-  await store.updateProfile("partial", { phone: PHONE, updatedAt: NOW });
+  store.setPhoneWithoutIndex("partial", PHONE);
   const before = await store.getByUserId("partial");
   assert.equal(before?.phone, PHONE);
   assert.equal(await store.getPhoneOwner("1 (555) 0100"), "owner");
@@ -137,25 +137,31 @@ test("memory phone collisions are reported even when the email also conflicts, a
     "phone",
   );
 
-  await store.updateProfile("owner", { phone: OTHER_PHONE, updatedAt: NOW });
+  const moved = await store.updateProfile("owner", { phone: OTHER_PHONE, updatedAt: NOW });
+  assert.equal(moved.result, "updated");
   assert.equal((await store.getByUserId("owner"))?.phone, OTHER_PHONE);
-  assert.equal(await store.getPhoneOwner(PHONE), "owner");
-  const blocked = await initialize(store, "later", { firstName: "Lin", lastName: "Us", phone: "+1 555 0100" }, "later@example.com");
-  assert.equal(blocked.statusCode, 409);
-  assert.equal(blocked.body.error, "phone_taken");
-  assert.equal(await store.getByUserId("later"), null);
-  assert.equal(await store.getPhoneOwner(PHONE), "owner");
+  assert.equal((await store.getByUserId("owner"))?.email, owner.email);
+  assert.equal((await store.getByUserId("owner"))?.referralCode, owner.referralCode);
+  assert.equal((await store.getByUserId("owner"))?.createdAt, owner.createdAt);
+  assert.equal(await store.getPhoneOwner(PHONE), null);
+  assert.equal(await store.getPhoneOwner(OTHER_PHONE), "owner");
+  const released = await initialize(store, "later", { firstName: "Lin", lastName: "Us", phone: "+1 555 0100" }, "later@example.com");
+  assert.equal(released.statusCode, 200);
+  assert.equal(await store.getByUserId("later") === null, false);
+  assert.equal(await store.getPhoneOwner(PHONE), "later");
+  assert.equal(await store.getPhoneOwner(OTHER_PHONE), "owner");
 
   const partial = record({ userId: "partial", email: "partial@example.com", referralCode: "QWPART0001", name: "Fallback" });
   assert.equal(await store.createMember(partial), "created");
   const before = await store.getByUserId("partial");
   const rolled = await store.completeMember(
     "partial",
-    completion(partial, { firstName: "Lin", phone: PHONE, ensurePhone: null, name: "Should Not Apply" }),
+    completion(partial, { firstName: "Lin", phone: OTHER_PHONE, ensurePhone: null, name: "Should Not Apply" }),
   );
   assert.equal(rolled.result, "phone-taken");
   assert.deepEqual(await store.getByUserId("partial"), before);
-  assert.equal(await store.getPhoneOwner(PHONE), "owner");
+  assert.equal(await store.getPhoneOwner(OTHER_PHONE), "owner");
+  assert.equal(await store.getPhoneOwner(PHONE), "later");
 });
 
 test("a phone index already owned by the same member is idempotent and does not change the profile", async () => {
@@ -658,6 +664,433 @@ test("a mocked DynamoDB transaction persists completion atomically and retries t
   assert.equal(exhausted, 3);
 });
 
+const LATER = "2026-11-12T03:00:00.000Z";
+const FREE_PHONE = "+1 555 0191";
+const LEGACY_PHONE = "+1 555 0181";
+
+function patch(store: MemberStore, userId: string, body: unknown, now = LATER) {
+  return handleMemberApi({
+    method: "PATCH",
+    path: "/me",
+    claims: { sub: userId, email: `${userId}@example.com`, name: "Member Name" },
+    body,
+    store,
+    now: () => now,
+  });
+}
+
+function phoneIndexKey(phone: string): string {
+  return `PHONE#${registrationPhoneKey(phone)}\0UNIQUE`;
+}
+
+function phoneIndexKeys(table: Map<string, Record<string, unknown>>): string[] {
+  return [...table.keys()].filter((key) => key.startsWith("PHONE#")).sort();
+}
+
+test("memory profile saves move, repair, and release phone indexes without stealing one", async () => {
+  const store = createMemoryMemberStore();
+  const owner = record({
+    userId: "owner",
+    email: "ada@example.com",
+    referralCode: "QWOWNER001",
+    phone: PHONE,
+    name: "Ada",
+    firstName: "Ada",
+    lastName: "Lovelace",
+    country: "Bangladesh",
+    sponsorUserId: "sponsor-1",
+    sponsorReferralCode: "QWSPONSOR",
+    createdAt: "2020-01-01T00:00:00.000Z",
+  });
+  assert.equal(await store.createMember(owner), "created");
+  const moved = await store.updateProfile("owner", { phone: FREE_PHONE, name: "Ada Lovelace", country: "Japan", updatedAt: LATER });
+  assert.equal(moved.result, "updated");
+  assert.equal(moved.member?.phone, FREE_PHONE);
+  assert.equal(moved.member?.name, "Ada Lovelace");
+  assert.equal(moved.member?.country, "Japan");
+  assert.equal(moved.member?.email, owner.email);
+  assert.equal(moved.member?.referralCode, owner.referralCode);
+  assert.equal(moved.member?.sponsorUserId, "sponsor-1");
+  assert.equal(moved.member?.sponsorReferralCode, "QWSPONSOR");
+  assert.equal(moved.member?.createdAt, owner.createdAt);
+  assert.equal(moved.member?.firstName, "Ada");
+  assert.equal(moved.member?.lastName, "Lovelace");
+  assert.equal(await store.getPhoneOwner(PHONE), null);
+  assert.equal(await store.getPhoneOwner(FREE_PHONE), "owner");
+  assert.equal(await store.getUserIdByReferralCode("QWOWNER001"), "owner");
+
+  const formatted = await store.updateProfile("owner", { phone: "1 (555) 0191", updatedAt: LATER });
+  assert.equal(formatted.result, "updated");
+  assert.equal(formatted.member?.phone, "1 (555) 0191");
+  assert.equal(await store.getPhoneOwner(FREE_PHONE), "owner");
+
+  const other = record({ userId: "other", email: "other@example.com", referralCode: "QWOTHER01", phone: OTHER_PHONE, name: "Other", country: "Japan" });
+  assert.equal(await store.createMember(other), "created");
+  const beforeOther = await store.getByUserId("other");
+  const taken = await patch(store, "other", { name: "Hacker", phone: "1 (555) 0191", country: "Mars" });
+  assert.equal(taken.statusCode, 409);
+  assert.equal(taken.body.error, "phone_taken");
+  assert.equal(taken.body.message, "An account with this mobile number already exists.");
+  assert.deepEqual(await store.getByUserId("other"), beforeOther);
+  assert.equal(await store.getPhoneOwner(FREE_PHONE), "owner");
+  assert.equal(await store.getPhoneOwner(OTHER_PHONE), "other");
+
+  const cleared = await patch(store, "other", { phone: "" });
+  assert.equal(cleared.statusCode, 200);
+  assert.equal((await store.getByUserId("other"))?.phone, null);
+  assert.equal((await store.getByUserId("other"))?.name, "Other");
+  assert.equal(await store.getPhoneOwner(OTHER_PHONE), null);
+
+  const short = record({ userId: "short", email: "short@example.com", referralCode: "QWSHORT01", phone: PHONE, name: "Short" });
+  assert.equal(await store.createMember(short), "created");
+  const nonIndex = await patch(store, "short", { phone: " 555 ", name: "Still Short" });
+  assert.equal(nonIndex.statusCode, 200);
+  assert.equal((await store.getByUserId("short"))?.phone, "555");
+  assert.equal((await store.getByUserId("short"))?.name, "Still Short");
+  assert.equal(await store.getPhoneOwner(PHONE), null);
+  assert.equal(await store.getPhoneOwner("555"), null);
+  const removed = await patch(store, "short", { phone: null });
+  assert.equal(removed.statusCode, 200);
+  assert.equal((await store.getByUserId("short"))?.phone, null);
+
+  const renamed = await patch(store, "owner", { name: "Renamed" });
+  assert.equal(renamed.statusCode, 200);
+  assert.equal((await store.getByUserId("owner"))?.name, "Renamed");
+  assert.equal((await store.getByUserId("owner"))?.phone, "1 (555) 0191");
+  assert.equal(await store.getPhoneOwner(FREE_PHONE), "owner");
+
+  const legacy = record({ userId: "legacy", email: "legacy@example.com", referralCode: "QWLEGACY1", name: "Legacy" });
+  const twin = record({ userId: "twin", email: "twin@example.com", referralCode: "QWTWIN001", name: "Twin" });
+  assert.equal(await store.createMember(legacy), "created");
+  assert.equal(await store.createMember(twin), "created");
+  store.setPhoneWithoutIndex("legacy", LEGACY_PHONE);
+  store.setPhoneWithoutIndex("twin", LEGACY_PHONE);
+  assert.equal(await store.getPhoneOwner(LEGACY_PHONE), null);
+  const repaired = await patch(store, "legacy", { name: "Repaired" });
+  assert.equal(repaired.statusCode, 200);
+  assert.equal(await store.getPhoneOwner(LEGACY_PHONE), "legacy");
+  assert.equal((await store.getByUserId("legacy"))?.phone, LEGACY_PHONE);
+  const shared = await patch(store, "twin", { name: "Twin Name", country: "Nepal" });
+  assert.equal(shared.statusCode, 200);
+  assert.equal((await store.getByUserId("twin"))?.name, "Twin Name");
+  assert.equal((await store.getByUserId("twin"))?.country, "Nepal");
+  assert.equal((await store.getByUserId("twin"))?.phone, LEGACY_PHONE);
+  assert.equal(await store.getPhoneOwner(LEGACY_PHONE), "legacy");
+  const left = await patch(store, "twin", { phone: "" });
+  assert.equal(left.statusCode, 200);
+  assert.equal((await store.getByUserId("twin"))?.phone, null);
+  assert.equal(await store.getPhoneOwner(LEGACY_PHONE), "legacy");
+  store.setPhoneWithoutIndex("twin", LEGACY_PHONE);
+  const movedAway = await patch(store, "twin", { phone: "+1 555 0182" });
+  assert.equal(movedAway.statusCode, 200);
+  assert.equal(await store.getPhoneOwner(LEGACY_PHONE), "legacy");
+  assert.equal(await store.getPhoneOwner("+1 555 0182"), "twin");
+
+  const holder = record({ userId: "holder", email: "holder@example.com", referralCode: "QWHOLDER1", phone: "+1 555 0183", name: "Holder" });
+  assert.equal(await store.createMember(holder), "created");
+  store.setPhoneWithoutIndex("holder", null);
+  assert.equal(await store.getPhoneOwner("+1 555 0183"), "holder");
+  const reclaimed = await store.updateProfile("holder", { phone: "1 (555) 0183", updatedAt: LATER });
+  assert.equal(reclaimed.result, "updated");
+  assert.equal(reclaimed.member?.phone, "1 (555) 0183");
+  assert.equal(await store.getPhoneOwner("+1 555 0183"), "holder");
+
+  const missing = await store.updateProfile("nobody", { name: "Nope", updatedAt: LATER });
+  assert.equal(missing.result, "missing");
+  assert.equal((await patch(store, "nobody", { name: "Nope" })).statusCode, 404);
+
+  assert.equal(await store.createMember(record({ userId: "race-a", email: "a@example.com", referralCode: "QWRACEA01", name: "A" })), "created");
+  assert.equal(await store.createMember(record({ userId: "race-b", email: "b@example.com", referralCode: "QWRACEB01", name: "B" })), "created");
+  const [first, second] = await Promise.all([
+    store.updateProfile("race-a", { phone: "+1 555 0184", name: "A1", updatedAt: LATER }),
+    store.updateProfile("race-b", { phone: "+1 555 0184", name: "B1", updatedAt: LATER }),
+  ]);
+  assert.equal(first.result, "updated");
+  assert.equal(second.result, "phone-taken");
+  assert.equal(await store.getPhoneOwner("+1 555 0184"), "race-a");
+  assert.equal((await store.getByUserId("race-b"))?.phone, null);
+  assert.equal((await store.getByUserId("race-b"))?.name, "B");
+
+  const beforePassword = await store.getByUserId("owner");
+  const password = await patch(store, "owner", { transactionPassword: "withdrawpass" });
+  assert.equal(password.statusCode, 200);
+  assert.equal((await store.getByUserId("owner"))?.phone, beforePassword?.phone);
+  assert.equal((await store.getByUserId("owner"))?.name, beforePassword?.name);
+  assert.equal(await store.getPhoneOwner(FREE_PHONE), "owner");
+  assert.ok((await store.getByUserId("owner"))?.transactionPasswordHash);
+  const mixed = await patch(store, "owner", { transactionPassword: "otherpass1", phone: OTHER_PHONE });
+  assert.equal(mixed.statusCode, 400);
+  assert.equal(mixed.body.error, "invalid_body");
+  assert.equal((await store.getByUserId("owner"))?.phone, beforePassword?.phone);
+  assert.equal(await store.getPhoneOwner(FREE_PHONE), "owner");
+  assert.equal(await store.getPhoneOwner(OTHER_PHONE), null);
+});
+
+test("mocked DynamoDB profile saves keep phone indexes atomic with the memory store", async () => {
+  const { createDynamoMemberStore } = await loadDynamo();
+  const fake = createEvaluatingClient();
+  const store = createDynamoMemberStore("Members", fake);
+  const owner = record({
+    userId: "owner",
+    email: "ada@example.com",
+    referralCode: "QWOWNER001",
+    phone: PHONE,
+    name: "Ada",
+    firstName: "Ada",
+    lastName: "Lovelace",
+    country: "Bangladesh",
+    sponsorUserId: "sponsor-1",
+    sponsorReferralCode: "QWSPONSOR",
+    createdAt: "2020-01-01T00:00:00.000Z",
+  });
+  assert.equal(await store.createMember(owner), "created");
+  const moved = await patch(store, "owner", { phone: FREE_PHONE, name: "Ada Lovelace", country: "Japan" });
+  assert.equal(moved.statusCode, 200);
+  assert.deepEqual(fake.applied.at(-1), ["Update", "Delete", "Put"]);
+  const saved = await store.getByUserId("owner");
+  assert.equal(saved?.phone, FREE_PHONE);
+  assert.equal(saved?.name, "Ada Lovelace");
+  assert.equal(saved?.country, "Japan");
+  assert.equal(saved?.email, owner.email);
+  assert.equal(saved?.referralCode, owner.referralCode);
+  assert.equal(saved?.sponsorUserId, "sponsor-1");
+  assert.equal(saved?.sponsorReferralCode, "QWSPONSOR");
+  assert.equal(saved?.createdAt, owner.createdAt);
+  assert.equal(saved?.firstName, "Ada");
+  assert.equal(saved?.lastName, "Lovelace");
+  assert.equal(fake.table.get("EMAIL#ada@example.com\0UNIQUE")?.userId, "owner");
+  assert.equal(fake.table.get("REFERRAL#QWOWNER001\0OWNER")?.userId, "owner");
+  assert.equal(fake.table.has(phoneIndexKey(PHONE)), false);
+  assert.equal(fake.table.get(phoneIndexKey(FREE_PHONE))?.userId, "owner");
+  assert.equal(phoneIndexKeys(fake.table).length, 1);
+
+  const formatted = await patch(store, "owner", { phone: "1 (555) 0191" });
+  assert.equal(formatted.statusCode, 200);
+  assert.deepEqual(fake.applied.at(-1), ["Update"]);
+  assert.equal((await store.getByUserId("owner"))?.phone, "1 (555) 0191");
+  assert.equal(fake.table.get(phoneIndexKey(FREE_PHONE))?.userId, "owner");
+  assert.equal(phoneIndexKeys(fake.table).length, 1);
+
+  const other = record({ userId: "other", email: "other@example.com", referralCode: "QWOTHER01", phone: OTHER_PHONE, name: "Other", country: "Japan" });
+  assert.equal(await store.createMember(other), "created");
+  const beforeOther = await store.getByUserId("other");
+  const appliedBeforeTaken = fake.applied.length;
+  const taken = await patch(store, "other", { name: "Hacker", phone: FREE_PHONE, country: "Mars" });
+  assert.equal(taken.statusCode, 409);
+  assert.equal(taken.body.error, "phone_taken");
+  assert.equal(fake.applied.length, appliedBeforeTaken);
+  assert.deepEqual(await store.getByUserId("other"), beforeOther);
+  assert.equal(fake.table.get(phoneIndexKey(FREE_PHONE))?.userId, "owner");
+  assert.equal(fake.table.get(phoneIndexKey(OTHER_PHONE))?.userId, "other");
+
+  const cleared = await patch(store, "other", { phone: "" });
+  assert.equal(cleared.statusCode, 200);
+  assert.deepEqual(fake.applied.at(-1), ["Update", "Delete"]);
+  assert.equal((await store.getByUserId("other"))?.phone, null);
+  assert.equal((await store.getByUserId("other"))?.country, "Japan");
+  assert.equal(fake.table.has(phoneIndexKey(OTHER_PHONE)), false);
+
+  const short = record({ userId: "short", email: "short@example.com", referralCode: "QWSHORT01", phone: PHONE, name: "Short" });
+  assert.equal(await store.createMember(short), "created");
+  const nonIndex = await patch(store, "short", { phone: " 555 " });
+  assert.equal(nonIndex.statusCode, 200);
+  assert.deepEqual(fake.applied.at(-1), ["Update", "Delete"]);
+  assert.equal((await store.getByUserId("short"))?.phone, "555");
+  assert.equal(fake.table.has(phoneIndexKey(PHONE)), false);
+  assert.equal(phoneIndexKeys(fake.table).includes("PHONE#555\0UNIQUE"), false);
+
+  const legacy = record({ userId: "legacy", email: "legacy@example.com", referralCode: "QWLEGACY1", name: "Legacy" });
+  const twin = record({ userId: "twin", email: "twin@example.com", referralCode: "QWTWIN001", name: "Twin" });
+  assert.equal(await store.createMember(legacy), "created");
+  assert.equal(await store.createMember(twin), "created");
+  const legacyItem = fake.table.get("USER#legacy\0PROFILE");
+  const twinItem = fake.table.get("USER#twin\0PROFILE");
+  assert.ok(legacyItem && twinItem);
+  legacyItem.phone = LEGACY_PHONE;
+  twinItem.phone = LEGACY_PHONE;
+  const repaired = await patch(store, "legacy", { name: "Repaired" });
+  assert.equal(repaired.statusCode, 200);
+  assert.deepEqual(fake.applied.at(-1), ["Update", "Put"]);
+  assert.equal(fake.table.get(phoneIndexKey(LEGACY_PHONE))?.userId, "legacy");
+  const shared = await patch(store, "twin", { name: "Twin Name", country: "Nepal" });
+  assert.equal(shared.statusCode, 200);
+  assert.deepEqual(fake.applied.at(-1), ["Update"]);
+  assert.equal((await store.getByUserId("twin"))?.name, "Twin Name");
+  assert.equal((await store.getByUserId("twin"))?.country, "Nepal");
+  assert.equal((await store.getByUserId("twin"))?.phone, LEGACY_PHONE);
+  assert.equal(fake.table.get(phoneIndexKey(LEGACY_PHONE))?.userId, "legacy");
+  const left = await patch(store, "twin", { phone: "" });
+  assert.equal(left.statusCode, 200);
+  assert.deepEqual(fake.applied.at(-1), ["Update"]);
+  assert.equal((await store.getByUserId("twin"))?.phone, null);
+  assert.equal(fake.table.get(phoneIndexKey(LEGACY_PHONE))?.userId, "legacy");
+  const twinAgain = fake.table.get("USER#twin\0PROFILE");
+  assert.ok(twinAgain);
+  twinAgain.phone = LEGACY_PHONE;
+  const movedAway = await patch(store, "twin", { phone: "+1 555 0182" });
+  assert.equal(movedAway.statusCode, 200);
+  assert.deepEqual(fake.applied.at(-1), ["Update", "Put"]);
+  assert.equal(fake.table.get(phoneIndexKey(LEGACY_PHONE))?.userId, "legacy");
+  assert.equal(fake.table.get(phoneIndexKey("+1 555 0182"))?.userId, "twin");
+
+  const holder = record({ userId: "holder", email: "holder@example.com", referralCode: "QWHOLDER1", phone: "+1 555 0183", name: "Holder" });
+  assert.equal(await store.createMember(holder), "created");
+  const holderItem = fake.table.get("USER#holder\0PROFILE");
+  assert.ok(holderItem);
+  delete holderItem.phone;
+  const reclaimed = await patch(store, "holder", { phone: "1 (555) 0183" });
+  assert.equal(reclaimed.statusCode, 200);
+  assert.equal((await store.getByUserId("holder"))?.phone, "1 (555) 0183");
+  assert.equal(fake.table.get(phoneIndexKey("+1 555 0183"))?.userId, "holder");
+  assert.equal(phoneIndexKeys(fake.table).filter((key) => key.includes(registrationPhoneKey("+1 555 0183"))).length, 1);
+
+  const renamed = await patch(store, "owner", { name: "Renamed" });
+  assert.equal(renamed.statusCode, 200);
+  assert.deepEqual(fake.applied.at(-1), ["Update"]);
+  assert.equal((await store.getByUserId("owner"))?.phone, "1 (555) 0191");
+  assert.equal(fake.table.get(phoneIndexKey(FREE_PHONE))?.userId, "owner");
+
+  assert.equal(await store.createMember(record({ userId: "race-a", email: "a@example.com", referralCode: "QWRACEA01", name: "A" })), "created");
+  assert.equal(await store.createMember(record({ userId: "race-b", email: "b@example.com", referralCode: "QWRACEB01", name: "B" })), "created");
+  const [first, second] = await Promise.all([
+    store.updateProfile("race-a", { phone: "+1 555 0184", name: "A1", updatedAt: LATER }),
+    store.updateProfile("race-b", { phone: "+1 555 0184", name: "B1", updatedAt: LATER }),
+  ]);
+  const results = [first, second];
+  assert.equal(results.filter((result) => result.result === "updated").length, 1);
+  assert.equal(results.filter((result) => result.result === "phone-taken").length, 1);
+  const winner = results.find((result) => result.result === "updated")?.member?.userId;
+  assert.equal(fake.table.get(phoneIndexKey("+1 555 0184"))?.userId, winner);
+  assert.equal(phoneIndexKeys(fake.table).filter((key) => key.includes(registrationPhoneKey("+1 555 0184"))).length, 1);
+  const loser = winner === "race-a" ? "race-b" : "race-a";
+  assert.equal((await store.getByUserId(loser))?.phone, null);
+  assert.equal((await store.getByUserId(loser))?.name, loser === "race-a" ? "A" : "B");
+
+  const beforePassword = await store.getByUserId("owner");
+  const password = await patch(store, "owner", { transactionPassword: "withdrawpass" });
+  assert.equal(password.statusCode, 200);
+  assert.equal(fake.commands.includes("UpdateCommand"), true);
+  assert.equal((await store.getByUserId("owner"))?.phone, beforePassword?.phone);
+  assert.equal(fake.table.get(phoneIndexKey(FREE_PHONE))?.userId, "owner");
+  assert.ok((await store.getByUserId("owner"))?.transactionPasswordHash);
+  const commandCount = fake.commands.length;
+  const mixed = await patch(store, "owner", { transactionPassword: "otherpass1", phone: PHONE });
+  assert.equal(mixed.statusCode, 400);
+  assert.equal(fake.commands.length, commandCount + 1);
+  assert.equal((await store.getByUserId("owner"))?.phone, beforePassword?.phone);
+  assert.equal(fake.table.get(phoneIndexKey(FREE_PHONE))?.userId, "owner");
+  assert.equal(fake.table.has(phoneIndexKey(PHONE)), false);
+});
+
+test("a rejected phone-index condition writes nothing and conflict retries stay bounded", async () => {
+  const { createDynamoMemberStore } = await loadDynamo();
+  const fake = createEvaluatingClient();
+  const setup = createDynamoMemberStore("Members", fake);
+  const member = record({
+    userId: "mover",
+    email: "mover@example.com",
+    referralCode: "QWMOVER01",
+    phone: PHONE,
+    name: "Mover",
+    sponsorUserId: "sponsor-1",
+    sponsorReferralCode: "QWSPONSOR",
+    createdAt: "2020-01-01T00:00:00.000Z",
+  });
+  assert.equal(await setup.createMember(member), "created");
+  const before = new Map([...fake.table.entries()].map(([key, value]) => [key, { ...value }]));
+  let newPhoneReads = 0;
+  const racing = createDynamoMemberStore("Members", {
+    async send(command: unknown) {
+      const current = command as { constructor: { name: string }; input: CommandInput };
+      if (current.constructor.name === "GetCommand" && current.input.Key?.pk === `PHONE#${registrationPhoneKey(FREE_PHONE)}`) {
+        newPhoneReads += 1;
+        if (newPhoneReads > 1) {
+          return { Item: { pk: current.input.Key.pk, sk: "UNIQUE", userId: "other-member" } };
+        }
+      }
+      if (current.constructor.name === "TransactWriteCommand") {
+        const count = current.input.TransactItems?.length ?? 0;
+        throw canceled(Array.from({ length: count }, (_, index) => (index === count - 1 ? "ConditionalCheckFailed" : "None")));
+      }
+      return fake.send(command);
+    },
+  });
+  const rejected = await patch(racing, "mover", { name: "Nope", phone: FREE_PHONE, country: "Mars" });
+  assert.equal(rejected.statusCode, 409);
+  assert.equal(rejected.body.error, "phone_taken");
+  assert.equal(newPhoneReads, 2);
+  assert.equal(fake.table.size, before.size);
+  for (const [key, value] of before) {
+    assert.deepEqual(fake.table.get(key), value, key);
+  }
+
+  let staleWrites = 0;
+  const stale = createDynamoMemberStore("Members", {
+    async send(command: unknown) {
+      const current = command as { constructor: { name: string }; input: CommandInput };
+      if (current.constructor.name === "TransactWriteCommand") {
+        staleWrites += 1;
+        if (staleWrites === 1) {
+          throw canceled((current.input.TransactItems ?? []).map((_, index) => (index === 0 ? "ConditionalCheckFailed" : "None")));
+        }
+      }
+      return fake.send(command);
+    },
+  });
+  const retried = await patch(stale, "mover", { name: "Retried" });
+  assert.equal(retried.statusCode, 200);
+  assert.equal(staleWrites, 2);
+  assert.equal((await stale.getByUserId("mover"))?.name, "Retried");
+  assert.equal((await stale.getByUserId("mover"))?.phone, PHONE);
+  assert.equal(fake.table.get(phoneIndexKey(PHONE))?.userId, "mover");
+  assert.equal(fake.table.has(phoneIndexKey(FREE_PHONE)), false);
+
+  let conflicts = 0;
+  const retrying = createDynamoMemberStore("Members", {
+    async send(command: unknown) {
+      const current = command as { constructor: { name: string }; input: CommandInput };
+      if (current.constructor.name === "TransactWriteCommand") {
+        conflicts += 1;
+        if (conflicts < 3) {
+          throw canceled((current.input.TransactItems ?? []).map(() => "TransactionConflict"));
+        }
+      }
+      return fake.send(command);
+    },
+  });
+  const recovered = await patch(retrying, "mover", { phone: FREE_PHONE });
+  assert.equal(recovered.statusCode, 200);
+  assert.equal(conflicts, 3);
+  assert.equal((await retrying.getByUserId("mover"))?.phone, FREE_PHONE);
+  assert.equal((await retrying.getByUserId("mover"))?.name, "Retried");
+  assert.equal(fake.table.has(phoneIndexKey(PHONE)), false);
+  assert.equal(fake.table.get(phoneIndexKey(FREE_PHONE))?.userId, "mover");
+  assert.equal((await retrying.getByUserId("mover"))?.email, member.email);
+  assert.equal((await retrying.getByUserId("mover"))?.createdAt, member.createdAt);
+
+  const anchored = new Map([...fake.table.entries()].map(([key, value]) => [key, { ...value }]));
+  let exhausted = 0;
+  const failing = createDynamoMemberStore("Members", {
+    async send(command: unknown) {
+      const current = command as { constructor: { name: string }; input: CommandInput };
+      if (current.constructor.name === "TransactWriteCommand") {
+        exhausted += 1;
+        throw canceled((current.input.TransactItems ?? []).map(() => "TransactionConflict"));
+      }
+      return fake.send(command);
+    },
+  });
+  const conflicted = await patch(failing, "mover", { name: "Lost", phone: OTHER_PHONE });
+  assert.equal(conflicted.statusCode, 409);
+  assert.equal(conflicted.body.error, "profile_conflict");
+  assert.equal(conflicted.body.message, "Could not save your profile. Submit again.");
+  assert.equal(exhausted, 3);
+  assert.equal(fake.table.size, anchored.size);
+  for (const [key, value] of anchored) {
+    assert.deepEqual(fake.table.get(key), value, key);
+  }
+});
+
 async function loadDynamo(): Promise<DynamoModule> {
   const imported: unknown = await import("../infrastructure/lambda/members/index.ts");
   return imported as DynamoModule;
@@ -683,9 +1116,13 @@ function canceled(reasons: string[]): Error {
 function createEvaluatingClient() {
   const table = new Map<string, Record<string, unknown>>();
   const commands: string[] = [];
+  const applied: string[][] = [];
+  const rejected: string[][] = [];
   return {
     table,
     commands,
+    applied,
+    rejected,
     async send(command: unknown) {
       const current = command as { constructor: { name: string }; input: CommandInput };
       commands.push(current.constructor.name);
@@ -706,10 +1143,24 @@ function createEvaluatingClient() {
         });
         return { Items: items.map((item) => ({ ...item })), ScannedCount: items.length };
       }
+      if (current.constructor.name === "UpdateCommand") {
+        const entry = { Update: current.input as TransactEntry };
+        if (!conditionPasses(entry, table)) {
+          const error = new Error("Conditional check failed");
+          error.name = "ConditionalCheckFailedException";
+          throw error;
+        }
+        applyEntry(entry, table);
+        const key = current.input.Key;
+        const item = key?.pk && key.sk ? table.get(`${key.pk}\0${key.sk}`) : undefined;
+        return { Attributes: item ? { ...item } : undefined };
+      }
       if (current.constructor.name === "TransactWriteCommand") {
         const entries = current.input.TransactItems ?? [];
+        const names = operationNames(entries);
         const reasons = entries.map((entry) => (conditionPasses(entry, table) ? "None" : "ConditionalCheckFailed"));
         if (reasons.some((reason) => reason !== "None")) {
+          rejected.push(names);
           throw canceled(reasons);
         }
         const next = new Map(table);
@@ -720,6 +1171,7 @@ function createEvaluatingClient() {
         for (const [key, item] of next) {
           table.set(key, item);
         }
+        applied.push(names);
         return {};
       }
       throw new Error(`unexpected ${current.constructor.name}`);
@@ -727,8 +1179,26 @@ function createEvaluatingClient() {
   };
 }
 
+function operationNames(entries: Array<Record<string, TransactEntry>>): string[] {
+  return entries.map((entry) => {
+    if (entry.Put) {
+      return "Put";
+    }
+    if (entry.Update) {
+      return "Update";
+    }
+    if (entry.Delete) {
+      return "Delete";
+    }
+    if (entry.ConditionCheck) {
+      return "ConditionCheck";
+    }
+    return "Other";
+  });
+}
+
 function conditionPasses(entry: Record<string, TransactEntry>, table: Map<string, Record<string, unknown>>): boolean {
-  const operation = entry.Put ?? entry.Update ?? entry.ConditionCheck;
+  const operation = entry.Put ?? entry.Update ?? entry.ConditionCheck ?? entry.Delete;
   if (!operation?.ConditionExpression) {
     return false;
   }
@@ -740,6 +1210,10 @@ function conditionPasses(entry: Record<string, TransactEntry>, table: Map<string
 function applyEntry(entry: Record<string, TransactEntry>, table: Map<string, Record<string, unknown>>): void {
   if (entry.Put?.Item) {
     table.set(`${String(entry.Put.Item.pk)}\0${String(entry.Put.Item.sk)}`, { ...entry.Put.Item });
+    return;
+  }
+  if (entry.Delete?.Key) {
+    table.delete(`${entry.Delete.Key.pk}\0${entry.Delete.Key.sk}`);
     return;
   }
   if (!entry.Update?.UpdateExpression || !entry.Update.Key) {

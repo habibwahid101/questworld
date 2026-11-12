@@ -14,17 +14,21 @@ import {
   handleMemberApi,
   MemberRequestError,
   profilePhotoKey,
+  profilePhoneIndexPlan,
   registrationPhoneKey,
   type CreateResult,
   type MemberCompletion,
   type MemberRecord,
   type MemberStore,
+  type ProfilePatch,
   type ProfilePhotoStore,
+  type ProfileUpdateResult,
 } from "../../../lib/members/service";
 
 const PROFILE_SK = "PROFILE";
 const OWNER_SK = "OWNER";
 const UNIQUE_SK = "UNIQUE";
+const PROFILE_UPDATE_ATTEMPTS = 3;
 
 type ApiGatewayEvent = {
   rawPath?: string;
@@ -91,6 +95,29 @@ function json(statusCode: number, body: Record<string, unknown>) {
 }
 
 export function createDynamoMemberStore(tableName: string, client: DynamoDBDocumentClient = document): MemberStore {
+  async function loadMember(userId: string): Promise<MemberRecord | null> {
+    const response = await client.send(
+      new GetCommand({
+        TableName: tableName,
+        Key: { pk: userKey(userId), sk: PROFILE_SK },
+        ConsistentRead: true,
+      }),
+    );
+    return response.Item ? itemToMember(response.Item) : null;
+  }
+
+  async function readPhoneOwner(digits: string): Promise<string | null> {
+    const response = await client.send(
+      new GetCommand({
+        TableName: tableName,
+        Key: { pk: `PHONE#${digits}`, sk: UNIQUE_SK },
+        ConsistentRead: true,
+      }),
+    );
+    const owner = response.Item?.userId;
+    return typeof owner === "string" ? owner : null;
+  }
+
   return {
     async getByUserId(userId) {
       const response = await client.send(
@@ -378,44 +405,47 @@ export function createDynamoMemberStore(tableName: string, client: DynamoDBDocum
         return { result: "conflict" as const, member };
       }
     },
-    async updateProfile(userId, patch) {
-      const names: Record<string, string> = { "#updatedAt": "updatedAt" };
-      const values: Record<string, unknown> = { ":updatedAt": patch.updatedAt };
-      const sets = ["#updatedAt = :updatedAt"];
-      if (patch.name !== undefined) {
-        names["#name"] = "name";
-        values[":name"] = patch.name;
-        sets.push("#name = :name");
-      }
-      if (patch.phone !== undefined) {
-        names["#phone"] = "phone";
-        values[":phone"] = patch.phone;
-        sets.push("#phone = :phone");
-      }
-      if (patch.country !== undefined) {
-        names["#country"] = "country";
-        values[":country"] = patch.country;
-        sets.push("#country = :country");
-      }
-      try {
-        const response = await client.send(
-          new UpdateCommand({
-            TableName: tableName,
-            Key: { pk: userKey(userId), sk: PROFILE_SK },
-            UpdateExpression: `SET ${sets.join(", ")}`,
-            ExpressionAttributeNames: names,
-            ExpressionAttributeValues: values,
-            ConditionExpression: "attribute_exists(pk)",
-            ReturnValues: "ALL_NEW",
-          }),
-        );
-        return response.Attributes ? itemToMember(response.Attributes) : null;
-      } catch (caught) {
-        if (isConditionalFailure(caught)) {
-          return null;
+    async updateProfile(userId, patch): Promise<ProfileUpdateResult> {
+      let latest: MemberRecord | null = null;
+      for (let attempt = 0; attempt < PROFILE_UPDATE_ATTEMPTS; attempt += 1) {
+        const current = await loadMember(userId);
+        if (!current) {
+          return { result: "missing", member: null };
         }
-        throw caught;
+        latest = current;
+        const nextPhone = patch.phone === undefined ? current.phone : patch.phone;
+        const oldKey = registrationPhoneKey(current.phone);
+        const newKey = registrationPhoneKey(nextPhone);
+        const oldOwner = oldKey ? await readPhoneOwner(oldKey) : null;
+        const newOwner = !newKey || newKey === oldKey ? oldOwner : await readPhoneOwner(newKey);
+        const plan = profilePhoneIndexPlan(userId, current.phone, nextPhone, oldOwner, newOwner);
+        if (plan.phoneTaken) {
+          return { result: "phone-taken", member: current };
+        }
+        const items = profileUpdateItems(tableName, userId, patch, current, plan);
+        try {
+          await client.send(new TransactWriteCommand({ TransactItems: items }));
+          const saved = await loadMember(userId);
+          return saved ? { result: "updated", member: saved } : { result: "missing", member: null };
+        } catch (caught) {
+          const reasons = cancellationReasons(caught);
+          if (reasons.length === 0) {
+            throw caught;
+          }
+          const phoneRejected = plan.claimNewKey !== "" && reasons[items.length - 1] === "ConditionalCheckFailed";
+          if (phoneRejected) {
+            const owner = await readPhoneOwner(plan.claimNewKey);
+            if (owner && owner !== userId) {
+              return { result: "phone-taken", member: current };
+            }
+          }
+          if (attempt === PROFILE_UPDATE_ATTEMPTS - 1) {
+            const reread = await loadMember(userId);
+            return reread ? { result: "conflict", member: reread } : { result: "missing", member: null };
+          }
+        }
       }
+      return latest ? { result: "conflict", member: latest } : { result: "missing", member: null };
     },
     async setTransactionPassword(userId, hash, updatedAt) {
       try {
@@ -561,6 +591,92 @@ function emailKey(email: string): string {
 
 function phoneKey(phone: string | null): string {
   return `PHONE#${registrationPhoneKey(phone)}`;
+}
+
+function profileUpdateItems(
+  tableName: string,
+  userId: string,
+  patch: ProfilePatch,
+  current: MemberRecord,
+  plan: { releaseOldKey: string; claimNewKey: string },
+): NonNullable<TransactWriteCommandInput["TransactItems"]> {
+  const names: Record<string, string> = { "#updatedAt": "updatedAt" };
+  const values: Record<string, string | null> = { ":updatedAt": patch.updatedAt };
+  const sets = ["#updatedAt = :updatedAt"];
+  if (patch.name !== undefined) {
+    names["#name"] = "name";
+    values[":name"] = patch.name;
+    sets.push("#name = :name");
+  }
+  if (patch.phone !== undefined) {
+    names["#phone"] = "phone";
+    values[":phone"] = patch.phone;
+    sets.push("#phone = :phone");
+  }
+  if (patch.country !== undefined) {
+    names["#country"] = "country";
+    values[":country"] = patch.country;
+    sets.push("#country = :country");
+  }
+  const phoneCondition = phoneStillCurrent(current.phone);
+  Object.assign(names, phoneCondition.names);
+  Object.assign(values, phoneCondition.values);
+  const items: NonNullable<TransactWriteCommandInput["TransactItems"]> = [
+    {
+      Update: {
+        TableName: tableName,
+        Key: { pk: userKey(userId), sk: PROFILE_SK },
+        UpdateExpression: `SET ${sets.join(", ")}`,
+        ConditionExpression: phoneCondition.expression,
+        ExpressionAttributeNames: names,
+        ExpressionAttributeValues: values,
+      },
+    },
+  ];
+  if (plan.releaseOldKey) {
+    items.push({
+      Delete: {
+        TableName: tableName,
+        Key: { pk: `PHONE#${plan.releaseOldKey}`, sk: UNIQUE_SK },
+        ConditionExpression: "userId = :owner",
+        ExpressionAttributeValues: { ":owner": userId },
+      },
+    });
+  }
+  if (plan.claimNewKey) {
+    items.push({
+      Put: {
+        TableName: tableName,
+        Item: {
+          pk: `PHONE#${plan.claimNewKey}`,
+          sk: UNIQUE_SK,
+          userId,
+        },
+        ConditionExpression: "attribute_not_exists(pk) OR userId = :owner",
+        ExpressionAttributeValues: { ":owner": userId },
+      },
+    });
+  }
+  return items;
+}
+
+function phoneStillCurrent(phone: string | null): {
+  expression: string;
+  names: Record<string, string>;
+  values: Record<string, string>;
+} {
+  if (phone) {
+    return {
+      expression: "attribute_exists(pk) AND #phone = :previousPhone",
+      names: { "#phone": "phone" },
+      values: { ":previousPhone": phone },
+    };
+  }
+  return {
+    expression: "attribute_exists(pk) AND (attribute_not_exists(#phone) OR #phone = :blank OR attribute_type(#phone, :nullType))",
+    names: { "#phone": "phone" },
+    values: { ":blank": "", ":nullType": "NULL" },
+  };
 }
 
 function memberToItem(member: MemberRecord): Record<string, unknown> {

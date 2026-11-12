@@ -86,6 +86,11 @@ export type CompleteMemberResult = {
   member: MemberRecord | null;
 };
 
+export type ProfileUpdateResult = {
+  result: "updated" | "missing" | "phone-taken" | "conflict";
+  member: MemberRecord | null;
+};
+
 export type ProfilePatch = {
   name?: string;
   phone?: string | null;
@@ -101,7 +106,7 @@ export type MemberStore = {
   getPhoneOwner(phone: string): Promise<string | null>;
   createMember(member: MemberRecord): Promise<CreateResult>;
   completeMember(userId: string, fill: MemberCompletion): Promise<CompleteMemberResult>;
-  updateProfile(userId: string, patch: ProfilePatch): Promise<MemberRecord | null>;
+  updateProfile(userId: string, patch: ProfilePatch): Promise<ProfileUpdateResult>;
   setTransactionPassword(userId: string, hash: string, updatedAt: string): Promise<MemberRecord | null>;
   setProfilePhoto(userId: string, profilePhotoKey: string, updatedAt: string): Promise<MemberRecord | null>;
 };
@@ -481,10 +486,16 @@ export async function patchMember(input: {
     ...changes.patch,
     updatedAt: input.now(),
   });
-  if (!updated) {
+  if (updated.result === "phone-taken") {
+    throw phoneTakenError();
+  }
+  if (updated.result === "conflict") {
+    throw profileConflictError();
+  }
+  if (updated.result !== "updated" || !updated.member) {
     throw new MemberRequestError(404, "member_not_found", "Create your member profile first.");
   }
-  return updated;
+  return updated.member;
 }
 
 async function setTransactionPassword(input: {
@@ -821,6 +832,27 @@ export function registrationPhoneKey(phone: string | null | undefined): string {
   }
   const digits = phone.replace(/\D/g, "");
   return digits.length >= 6 ? digits : "";
+}
+
+// Index ownership, not another profile row, decides a PATCH. A same-number save
+// never steals an index, and a legacy number with no index can be claimed once.
+export function profilePhoneIndexPlan(
+  userId: string,
+  currentPhone: string | null,
+  nextPhone: string | null,
+  oldOwner: string | null,
+  newOwner: string | null,
+): { phoneTaken: boolean; releaseOldKey: string; claimNewKey: string } {
+  const oldKey = registrationPhoneKey(currentPhone);
+  const newKey = registrationPhoneKey(nextPhone);
+  if (newKey && newKey !== oldKey && newOwner && newOwner !== userId) {
+    return { phoneTaken: true, releaseOldKey: "", claimNewKey: "" };
+  }
+  return {
+    phoneTaken: false,
+    releaseOldKey: oldKey && oldKey !== newKey && oldOwner === userId ? oldKey : "",
+    claimNewKey: newKey && (newKey !== oldKey || !newOwner) ? newKey : "",
+  };
 }
 
 function referralFromBody(body: unknown): string {

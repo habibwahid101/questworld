@@ -1,6 +1,10 @@
-import { registrationPhoneKey, type CompleteMemberResult, type CreateResult, type MemberCompletion, type MemberRecord, type MemberStore, type ProfilePatch } from "./service.ts";
+import { profilePhoneIndexPlan, registrationPhoneKey, type CompleteMemberResult, type CreateResult, type MemberCompletion, type MemberRecord, type MemberStore, type ProfilePatch, type ProfileUpdateResult } from "./service.ts";
 
-export function createMemoryMemberStore(): MemberStore {
+export type MemoryMemberStore = MemberStore & {
+  setPhoneWithoutIndex(userId: string, phone: string | null): void;
+};
+
+export function createMemoryMemberStore(): MemoryMemberStore {
   const members = new Map<string, MemberRecord>();
   const codes = new Map<string, string>();
   const phones = new Map<string, string>();
@@ -121,20 +125,49 @@ export function createMemoryMemberStore(): MemberStore {
       }
       return { result: "updated", member: structuredClone(changed ? next : current) };
     },
-    async updateProfile(userId, patch: ProfilePatch) {
+    async updateProfile(userId, patch: ProfilePatch): Promise<ProfileUpdateResult> {
       const current = members.get(userId);
       if (!current) {
-        return null;
+        return { result: "missing", member: null };
+      }
+      const nextPhone = patch.phone === undefined ? current.phone : patch.phone;
+      const oldKey = registrationPhoneKey(current.phone);
+      const newKey = registrationPhoneKey(nextPhone);
+      const oldOwner = oldKey ? phones.get(oldKey) ?? null : null;
+      const newOwner = !newKey || newKey === oldKey ? oldOwner : phones.get(newKey) ?? null;
+      const plan = profilePhoneIndexPlan(userId, current.phone, nextPhone, oldOwner, newOwner);
+      if (plan.phoneTaken) {
+        return { result: "phone-taken", member: structuredClone(current) };
+      }
+      const occupied = plan.claimNewKey ? phones.get(plan.claimNewKey) : undefined;
+      if (occupied && occupied !== userId) {
+        return { result: "phone-taken", member: structuredClone(current) };
       }
       const next: MemberRecord = {
         ...current,
         name: patch.name ?? current.name,
-        phone: patch.phone === undefined ? current.phone : patch.phone,
+        phone: nextPhone,
         country: patch.country === undefined ? current.country : patch.country,
         updatedAt: patch.updatedAt,
       };
       members.set(userId, next);
-      return structuredClone(next);
+      let released = false;
+      if (plan.releaseOldKey && phones.get(plan.releaseOldKey) === userId) {
+        phones.delete(plan.releaseOldKey);
+        released = true;
+      }
+      if (plan.claimNewKey) {
+        const claimed = phones.get(plan.claimNewKey);
+        if (claimed && claimed !== userId) {
+          members.set(userId, current);
+          if (released) {
+            phones.set(plan.releaseOldKey, userId);
+          }
+          return { result: "phone-taken", member: structuredClone(current) };
+        }
+        phones.set(plan.claimNewKey, userId);
+      }
+      return { result: "updated", member: structuredClone(next) };
     },
     async setTransactionPassword(userId, hash, updatedAt) {
       const current = members.get(userId);
@@ -161,6 +194,13 @@ export function createMemoryMemberStore(): MemberStore {
       };
       members.set(userId, next);
       return structuredClone(next);
+    },
+    setPhoneWithoutIndex(userId, phone) {
+      const current = members.get(userId);
+      if (!current) {
+        throw new Error(`No member ${userId}`);
+      }
+      members.set(userId, { ...current, phone });
     },
   };
 }

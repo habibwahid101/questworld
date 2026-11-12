@@ -90,10 +90,10 @@ function json(statusCode: number, body: Record<string, unknown>) {
   };
 }
 
-export function createDynamoMemberStore(tableName: string): MemberStore {
+export function createDynamoMemberStore(tableName: string, client: DynamoDBDocumentClient = document): MemberStore {
   return {
     async getByUserId(userId) {
-      const response = await document.send(
+      const response = await client.send(
         new GetCommand({
           TableName: tableName,
           Key: { pk: userKey(userId), sk: PROFILE_SK },
@@ -102,8 +102,23 @@ export function createDynamoMemberStore(tableName: string): MemberStore {
       );
       return response.Item ? itemToMember(response.Item) : null;
     },
+    async getPhoneOwner(phone) {
+      const key = registrationPhoneKey(phone);
+      if (!key) {
+        return null;
+      }
+      const response = await client.send(
+        new GetCommand({
+          TableName: tableName,
+          Key: { pk: phoneKey(phone), sk: UNIQUE_SK },
+          ConsistentRead: true,
+        }),
+      );
+      const owner = response.Item?.userId;
+      return typeof owner === "string" ? owner : null;
+    },
     async getUserIdByReferralCode(code) {
-      const response = await document.send(
+      const response = await client.send(
         new GetCommand({
           TableName: tableName,
           Key: { pk: referralKey(code), sk: OWNER_SK },
@@ -117,7 +132,7 @@ export function createDynamoMemberStore(tableName: string): MemberStore {
       let startKey: Record<string, unknown> | undefined;
       let read = 0;
       do {
-        const response = await document.send(
+        const response = await client.send(
           new ScanCommand({
             TableName: tableName,
             FilterExpression: "sk = :profile AND begins_with(pk, :user)",
@@ -134,10 +149,24 @@ export function createDynamoMemberStore(tableName: string): MemberStore {
     },
     async findRegistrationConflict({ userId, email, phone }) {
       const emailKey = email.trim().toLowerCase();
-      const phoneKey = registrationPhoneKey(phone);
+      const normalizedPhone = registrationPhoneKey(phone);
+      if (normalizedPhone) {
+        const index = await client.send(
+          new GetCommand({
+            TableName: tableName,
+            Key: { pk: phoneKey(phone), sk: UNIQUE_SK },
+            ConsistentRead: true,
+          }),
+        );
+        const owner = index.Item?.userId;
+        if (typeof owner === "string" && owner.length > 0 && owner !== userId) {
+          return "phone";
+        }
+      }
+      let emailConflict = false;
       let startKey: Record<string, unknown> | undefined;
       do {
-        const response = await document.send(
+        const response = await client.send(
           new ScanCommand({
             TableName: tableName,
             FilterExpression: "sk = :profile",
@@ -150,20 +179,20 @@ export function createDynamoMemberStore(tableName: string): MemberStore {
           if (member.userId === userId) {
             continue;
           }
-          if (member.email.trim().toLowerCase() === emailKey) {
-            return "email";
-          }
-          if (phoneKey && registrationPhoneKey(member.phone) === phoneKey) {
+          if (normalizedPhone && registrationPhoneKey(member.phone) === normalizedPhone) {
             return "phone";
+          }
+          if (member.email.trim().toLowerCase() === emailKey) {
+            emailConflict = true;
           }
         }
         startKey = response.LastEvaluatedKey;
       } while (startKey);
-      return null;
+      return emailConflict ? "email" : null;
     },
     async createMember(member) {
       try {
-        await document.send(
+        await client.send(
           new TransactWriteCommand({
             TransactItems: [
               {
@@ -225,22 +254,19 @@ export function createDynamoMemberStore(tableName: string): MemberStore {
       const conditions = ["attribute_exists(pk)", "email = :email", "referralCode = :referralCode"];
       values[":email"] = fill.email;
       values[":referralCode"] = fill.referralCode;
-      if (fill.sponsorUserId) {
-        conditions.push("sponsorUserId = :sponsorUserId");
-        values[":sponsorUserId"] = fill.sponsorUserId;
-      } else {
-        names["#sponsorUserId"] = "sponsorUserId";
+      const allowBlankIdentity = (attribute: "sponsorUserId" | "sponsorReferralCode", value: string | null) => {
+        if (value) {
+          conditions.push(`${attribute} = :${attribute}`);
+          values[`:${attribute}`] = value;
+          return;
+        }
+        names[`#${attribute}`] = attribute;
+        values[":blank"] = "";
         values[":nullType"] = "NULL";
-        conditions.push("(attribute_not_exists(#sponsorUserId) OR attribute_type(#sponsorUserId, :nullType))");
-      }
-      if (fill.sponsorReferralCode) {
-        conditions.push("sponsorReferralCode = :sponsorReferralCode");
-        values[":sponsorReferralCode"] = fill.sponsorReferralCode;
-      } else {
-        names["#sponsorReferralCode"] = "sponsorReferralCode";
-        values[":nullType"] = "NULL";
-        conditions.push("(attribute_not_exists(#sponsorReferralCode) OR attribute_type(#sponsorReferralCode, :nullType))");
-      }
+        conditions.push(`(attribute_not_exists(#${attribute}) OR #${attribute} = :blank OR attribute_type(#${attribute}, :nullType))`);
+      };
+      allowBlankIdentity("sponsorUserId", fill.sponsorUserId);
+      allowBlankIdentity("sponsorReferralCode", fill.sponsorReferralCode);
       const setIfEmpty = (attribute: string, value: string | null) => {
         if (!value) {
           return;
@@ -257,11 +283,7 @@ export function createDynamoMemberStore(tableName: string): MemberStore {
       setIfEmpty("phone", fill.phone);
       setIfEmpty("country", fill.country);
       setIfEmpty("transactionPasswordHash", fill.transactionPasswordHash);
-      if (fill.name) {
-        names["#name"] = "name";
-        values[":name"] = fill.name;
-        sets.push("#name = :name");
-      }
+      setIfEmpty("name", fill.name);
       if (sets.length > 0) {
         names["#updatedAt"] = "updatedAt";
         values[":updatedAt"] = fill.updatedAt;
@@ -308,14 +330,14 @@ export function createDynamoMemberStore(tableName: string): MemberStore {
         });
       }
       if (items.length === 0) {
-        const current = await document.send(
+        const current = await client.send(
           new GetCommand({ TableName: tableName, Key: { pk: userKey(userId), sk: PROFILE_SK }, ConsistentRead: true }),
         );
         return current.Item ? { result: "updated" as const, member: itemToMember(current.Item) } : { result: "missing" as const, member: null };
       }
       try {
-        await document.send(new TransactWriteCommand({ TransactItems: items }));
-        const saved = await document.send(
+        await client.send(new TransactWriteCommand({ TransactItems: items }));
+        const saved = await client.send(
           new GetCommand({ TableName: tableName, Key: { pk: userKey(userId), sk: PROFILE_SK }, ConsistentRead: true }),
         );
         return saved.Item ? { result: "updated" as const, member: itemToMember(saved.Item) } : { result: "missing" as const, member: null };
@@ -324,12 +346,31 @@ export function createDynamoMemberStore(tableName: string): MemberStore {
         if (!reasons.length) {
           throw caught;
         }
-        const current = await document.send(
+        const current = await client.send(
           new GetCommand({ TableName: tableName, Key: { pk: userKey(userId), sk: PROFILE_SK }, ConsistentRead: true }),
         );
         const member = current.Item ? itemToMember(current.Item) : null;
-        if (phoneIndex >= 0 && reasons[phoneIndex] === "ConditionalCheckFailed") {
-          return { result: "phone-taken" as const, member };
+        const phoneFailed = phoneIndex >= 0 && reasons[phoneIndex] === "ConditionalCheckFailed";
+        if (phoneFailed) {
+          let owner: string | null = null;
+          if (phoneForIndex) {
+            const index = await client.send(
+              new GetCommand({
+                TableName: tableName,
+                Key: { pk: phoneKey(phoneForIndex), sk: UNIQUE_SK },
+                ConsistentRead: true,
+              }),
+            );
+            owner = typeof index.Item?.userId === "string" ? index.Item.userId : null;
+          }
+          if (owner !== userId) {
+            return { result: "phone-taken" as const, member };
+          }
+        }
+        const transient = reasons.some((reason) => reason === "TransactionConflict");
+        const conditional = reasons.some((reason) => reason === "ConditionalCheckFailed");
+        if (transient && !conditional) {
+          return { result: "transient" as const, member };
         }
         if (!member) {
           return { result: "missing" as const, member: null };
@@ -357,7 +398,7 @@ export function createDynamoMemberStore(tableName: string): MemberStore {
         sets.push("#country = :country");
       }
       try {
-        const response = await document.send(
+        const response = await client.send(
           new UpdateCommand({
             TableName: tableName,
             Key: { pk: userKey(userId), sk: PROFILE_SK },
@@ -378,7 +419,7 @@ export function createDynamoMemberStore(tableName: string): MemberStore {
     },
     async setTransactionPassword(userId, hash, updatedAt) {
       try {
-        const response = await document.send(
+        const response = await client.send(
           new UpdateCommand({
             TableName: tableName,
             Key: { pk: userKey(userId), sk: PROFILE_SK },
@@ -405,7 +446,7 @@ export function createDynamoMemberStore(tableName: string): MemberStore {
     },
     async setProfilePhoto(userId, profilePhotoKeyValue, updatedAt) {
       try {
-        const response = await document.send(
+        const response = await client.send(
           new UpdateCommand({
             TableName: tableName,
             Key: { pk: userKey(userId), sk: PROFILE_SK },
@@ -444,10 +485,13 @@ function cancellationResult(caught: unknown): CreateResult {
     if (referralFailed) {
       return "referral-taken";
     }
+    if (reasons[3] === "ConditionalCheckFailed") {
+      return "phone-taken";
+    }
     if (reasons[2] === "ConditionalCheckFailed" || reasons[2] === "TransactionConflict") {
       return "email-taken";
     }
-    if (reasons[3] === "ConditionalCheckFailed" || reasons[3] === "TransactionConflict") {
+    if (reasons[3] === "TransactionConflict") {
       return "phone-taken";
     }
   }

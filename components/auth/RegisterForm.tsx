@@ -7,10 +7,11 @@ import { Button } from "@/components/ui/Button";
 import { PasswordField } from "@/components/auth/PasswordField";
 import { Field, Input, Select } from "@/components/ui/Field";
 import { useAuth } from "@/components/auth/AuthProvider";
-import { loginAccount, registerAccount } from "@/lib/auth/cognito";
+import { loadCurrentUser, loginAccount, logoutAccount, registerAccount } from "@/lib/auth/cognito";
 import { mapAuthError } from "@/lib/auth/errors";
 import { PASSWORD_HINT, passwordIssue, TRANSACTION_PASSWORD_MIN } from "@/lib/auth/password";
 import { normalizeReferralCode, readPendingReferral, rememberPendingReferral } from "@/lib/auth/referral";
+import { canInitializeSubmittedAccount, normalizeSignupEmail, readyAccountStillValid, type ReadyAccount, type SignupPrincipal } from "@/lib/auth/signup-session";
 import { rememberPendingSignupProfile, readPendingSignupProfile } from "@/lib/auth/signup-profile";
 import { countryNames } from "@/constants/countries";
 import { checkReferralCode, initializeCurrentMember, MemberClientError } from "@/lib/members/client";
@@ -30,7 +31,7 @@ export function RegisterForm() {
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [submitting, setSubmitting] = useState(false);
   const [progress, setProgress] = useState<string | null>(null);
-  const accountReady = useRef(false);
+  const readyAccount = useRef<ReadyAccount | null>(null);
   const linkedReferral = normalizeReferralCode(searchParams.get("ref") ?? "");
   const countries = countryNames();
 
@@ -145,10 +146,13 @@ export function RegisterForm() {
 
     // Referral is optional. When given, confirm it exists before creating any Cognito account.
     const referral = normalizeReferralCode(String(form.get("referralCode") ?? ""));
-    rememberPendingSignupProfile(window.sessionStorage, { ...profile, email });
+    const normalizedEmail = normalizeSignupEmail(email);
+    rememberPendingSignupProfile(window.sessionStorage, { ...profile, email: normalizedEmail });
     rememberPendingReferral(window.localStorage, referral);
+    const principalBefore = await readSignupPrincipal();
+    const sameSession = readyAccountStillValid(readyAccount.current, { email: normalizedEmail, password }, principalBefore);
     if (referral) {
-      if (!accountReady.current) {
+      if (!sameSession) {
         try {
           const check = await checkReferralCode(referral);
           if (!check.valid) {
@@ -167,17 +171,23 @@ export function RegisterForm() {
     }
 
     try {
-      if (!accountReady.current) {
+      if (!sameSession) {
+        if (principalBefore) {
+          await logoutAccount();
+        }
+        readyAccount.current = null;
+        let signedIn = false;
         setProgress("Creating your account…");
         try {
-          await registerAccount({ name: `${profile.firstName} ${profile.lastName}`, email, password });
+          await registerAccount({ name: `${profile.firstName} ${profile.lastName}`, email: normalizedEmail, password });
         } catch (caught) {
           if (!isUsernameExists(caught)) {
             throw caught;
           }
           setProgress("Signing in to finish your profile…");
           try {
-            await loginAccount({ email, password, remember: true });
+            await loginAccount({ email: normalizedEmail, password, remember: true });
+            signedIn = true;
           } catch {
             setErrors({
               password: "An account with this email already exists, and that password did not match. Try again, or log in if you use a different password.",
@@ -186,13 +196,35 @@ export function RegisterForm() {
             setProgress(null);
             return;
           }
-          accountReady.current = true;
         }
-        if (!accountReady.current) {
+        if (!signedIn) {
           setProgress("Signing in…");
-          await loginAccount({ email, password, remember: true });
-          accountReady.current = true;
+          await loginAccount({ email: normalizedEmail, password, remember: true });
         }
+        const signedInPrincipal = await readSignupPrincipal();
+        if (!signedInPrincipal || signedInPrincipal.email !== normalizedEmail || !signedInPrincipal.sub) {
+          if (signedInPrincipal) {
+            await logoutAccount();
+          }
+          readyAccount.current = null;
+          setErrors({ email: "Sign in with this email before saving the profile." });
+          setSubmitting(false);
+          setProgress(null);
+          return;
+        }
+        readyAccount.current = { email: normalizedEmail, password, sub: signedInPrincipal.sub };
+      }
+      const principal = await readSignupPrincipal();
+      const ready = readyAccount.current;
+      if (!canInitializeSubmittedAccount(ready, principal, normalizedEmail)) {
+        readyAccount.current = null;
+        if (principal && (!ready || principal.sub !== ready.sub || principal.email !== normalizedEmail)) {
+          await logoutAccount();
+        }
+        setErrors({ email: "Sign in with this email before saving the profile." });
+        setSubmitting(false);
+        setProgress(null);
+        return;
       }
       setProgress("Saving your profile…");
       await initializeCurrentMember(referral, { ...profile, transactionPassword });
@@ -337,4 +369,14 @@ export function RegisterForm() {
 
 function isUsernameExists(error: unknown): boolean {
   return Boolean(error && typeof error === "object" && "name" in error && (error as { name?: unknown }).name === "UsernameExistsException");
+}
+
+async function readSignupPrincipal(): Promise<SignupPrincipal | null> {
+  const current = await loadCurrentUser();
+  const sub = typeof current?.payload?.sub === "string" ? current.payload.sub : "";
+  const email = typeof current?.payload?.email === "string" ? current.payload.email : current?.email ?? "";
+  if (!sub || !email.includes("@")) {
+    return null;
+  }
+  return { sub, email: normalizeSignupEmail(email) };
 }

@@ -681,7 +681,7 @@ test("missing profile fields can be recovered without replacing sponsor, code, o
   const saved = await store.getByUserId("partial");
   assert.equal(saved?.firstName, "Ada");
   assert.equal(saved?.lastName, "Lovelace");
-  assert.equal(saved?.name, "Ada Lovelace");
+  assert.equal(saved?.name, "Member Name");
   assert.equal(saved?.phone, "+1 555 0199");
   assert.equal(saved?.country, "Bangladesh");
   assert.equal(saved?.email, "partial@example.com");
@@ -710,7 +710,7 @@ test("missing profile fields can be recovered without replacing sponsor, code, o
   const kept = await store.getByUserId("partial");
   assert.equal(kept?.firstName, "Ada");
   assert.equal(kept?.lastName, "Lovelace");
-  assert.equal(kept?.name, "Ada Lovelace");
+  assert.equal(kept?.name, "Member Name");
   assert.equal(kept?.phone, "+1 555 0199");
   assert.equal(kept?.country, "Bangladesh");
   assert.equal(kept?.sponsorUserId, "sponsor");

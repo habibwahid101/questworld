@@ -82,7 +82,7 @@ export type MemberCompletion = {
 };
 
 export type CompleteMemberResult = {
-  result: "updated" | "missing" | "phone-taken" | "conflict";
+  result: "updated" | "missing" | "phone-taken" | "conflict" | "transient";
   member: MemberRecord | null;
 };
 
@@ -98,6 +98,7 @@ export type MemberStore = {
   getUserIdByReferralCode(code: string): Promise<string | null>;
   listMembers(): Promise<MemberRecord[]>;
   findRegistrationConflict(input: { userId: string; email: string; phone: string | null }): Promise<"email" | "phone" | null>;
+  getPhoneOwner(phone: string): Promise<string | null>;
   createMember(member: MemberRecord): Promise<CreateResult>;
   completeMember(userId: string, fill: MemberCompletion): Promise<CompleteMemberResult>;
   updateProfile(userId: string, patch: ProfilePatch): Promise<MemberRecord | null>;
@@ -270,6 +271,8 @@ export async function initializeMember(input: {
   throw new MemberRequestError(500, "code_generation_failed", "Could not create a member profile.");
 }
 
+const TRANSIENT_COMPLETION_ATTEMPTS = 3;
+
 async function fillMissingMember(
   existing: MemberRecord,
   input: {
@@ -280,44 +283,137 @@ async function fillMissingMember(
   },
 ): Promise<MemberRecord> {
   let current = existing;
-  for (let attempt = 0; attempt < 2; attempt += 1) {
+  let transientAttempts = 0;
+
+  while (true) {
     const fill = missingCompletion(current, input);
+    const phoneToClaim = fill.phone ?? fill.ensurePhone;
     const hasWork = Boolean(
       fill.firstName || fill.lastName || fill.name || fill.phone || fill.country || fill.transactionPasswordHash || fill.ensurePhone,
     );
     if (!hasWork) {
+      await assertOwnPhone(input.store, current.userId, blankValue(current.phone) ? null : current.phone);
       return current;
     }
     if (fill.phone) {
-      const conflict = await input.store.findRegistrationConflict({
-        userId: current.userId,
-        email: current.email,
-        phone: fill.phone,
-      });
-      if (conflict === "phone") {
-        throw new MemberRequestError(409, "phone_taken", "An account with this mobile number already exists.");
+      const owner = await input.store.getPhoneOwner(fill.phone);
+      if (owner && owner !== current.userId) {
+        throw phoneTakenError();
       }
     }
+
     const result = await input.store.completeMember(current.userId, fill);
+    const saved = await verifiedCompletion(input.store, current.userId, fill);
+    if (saved) {
+      return saved;
+    }
+
+    const ownerAfter = phoneToClaim ? await input.store.getPhoneOwner(phoneToClaim) : null;
+    if (phoneToClaim && ownerAfter && ownerAfter !== current.userId) {
+      throw phoneTakenError();
+    }
     if (result.result === "phone-taken") {
-      if (!fill.phone) {
-        return result.member ?? current;
-      }
-      throw new MemberRequestError(409, "phone_taken", "An account with this mobile number already exists.");
+      throw phoneTakenError();
     }
     if (result.result === "missing") {
+      const reread = await input.store.getByUserId(current.userId);
+      const recovered = reread ? await verifiedCompletion(input.store, reread.userId, fill) : null;
+      if (recovered) {
+        return recovered;
+      }
       throw new MemberRequestError(404, "member_not_found", "Create your member profile first.");
     }
-    if (result.result === "updated" && result.member) {
-      return result.member;
+    if (result.result === "transient") {
+      transientAttempts += 1;
+      const reread = await input.store.getByUserId(current.userId);
+      if (!reread) {
+        throw new MemberRequestError(404, "member_not_found", "Create your member profile first.");
+      }
+      const recovered = await verifiedCompletion(input.store, reread.userId, fill);
+      if (recovered) {
+        return recovered;
+      }
+      if (transientAttempts >= TRANSIENT_COMPLETION_ATTEMPTS) {
+        throw profileConflictError();
+      }
+      current = reread;
+      continue;
     }
+
     const reread = await input.store.getByUserId(current.userId);
     if (!reread) {
       throw new MemberRequestError(404, "member_not_found", "Create your member profile first.");
     }
-    current = reread;
+    const recovered = await verifiedCompletion(input.store, reread.userId, fill);
+    if (recovered) {
+      return recovered;
+    }
+    throw profileConflictError();
   }
-  return current;
+}
+
+async function verifiedCompletion(
+  store: MemberStore,
+  userId: string,
+  fill: MemberCompletion,
+): Promise<MemberRecord | null> {
+  const member = await store.getByUserId(userId);
+  if (!member || member.userId !== userId) {
+    return null;
+  }
+  if (member.email !== fill.email || member.referralCode !== fill.referralCode) {
+    return null;
+  }
+  if (!sameStoredIdentity(member.sponsorUserId, fill.sponsorUserId)) {
+    return null;
+  }
+  if (!sameStoredIdentity(member.sponsorReferralCode, fill.sponsorReferralCode)) {
+    return null;
+  }
+  if (fill.firstName && member.firstName !== fill.firstName) {
+    return null;
+  }
+  if (fill.lastName && member.lastName !== fill.lastName) {
+    return null;
+  }
+  if (fill.name && member.name !== fill.name) {
+    return null;
+  }
+  if (fill.phone && member.phone !== fill.phone) {
+    return null;
+  }
+  if (fill.country && member.country !== fill.country) {
+    return null;
+  }
+  if (fill.transactionPasswordHash && member.transactionPasswordHash !== fill.transactionPasswordHash) {
+    return null;
+  }
+  const claimed = fill.phone ?? fill.ensurePhone;
+  if (claimed && registrationPhoneKey(claimed)) {
+    const owner = await store.getPhoneOwner(claimed);
+    if (owner !== userId) {
+      return null;
+    }
+  }
+  return member;
+}
+
+async function assertOwnPhone(store: MemberStore, userId: string, phone: string | null): Promise<void> {
+  if (!phone) {
+    return;
+  }
+  const owner = await store.getPhoneOwner(phone);
+  if (owner && owner !== userId) {
+    throw phoneTakenError();
+  }
+}
+
+function phoneTakenError(): MemberRequestError {
+  return new MemberRequestError(409, "phone_taken", "An account with this mobile number already exists.");
+}
+
+function profileConflictError(): MemberRequestError {
+  return new MemberRequestError(409, "profile_conflict", "Could not save your profile. Submit again.");
 }
 
 function missingCompletion(
@@ -340,7 +436,7 @@ function missingCompletion(
   return {
     firstName,
     lastName,
-    name: blankValue(existing.firstName) && blankValue(existing.lastName) && profile ? clampName(`${profile.firstName} ${profile.lastName}`) : null,
+    name: blankValue(existing.name) && profile ? clampName(`${profile.firstName} ${profile.lastName}`) : null,
     phone,
     country,
     transactionPasswordHash,
@@ -351,6 +447,14 @@ function missingCompletion(
     sponsorUserId: existing.sponsorUserId,
     sponsorReferralCode: existing.sponsorReferralCode,
   };
+}
+
+function sameStoredIdentity(left: string | null | undefined, right: string | null | undefined): boolean {
+  return storedIdentity(left) === storedIdentity(right);
+}
+
+function storedIdentity(value: string | null | undefined): string | null {
+  return value === null || value === undefined || value === "" ? null : value;
 }
 
 function blankValue(value: string | null | undefined): boolean {

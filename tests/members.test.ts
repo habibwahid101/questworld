@@ -622,3 +622,234 @@ test("a profile photo is private to the signed-in member", async () => {
   assert.match(dashboardCss, /--color-accent-soft/);
   assert.match(dashboardCss, /--color-accent/);
 });
+
+test("signup with and without a referral creates one profile and no second owner", async () => {
+  const store = createMemoryMemberStore();
+  const alone = await initialize(
+    store,
+    "alone",
+    { firstName: "Ada", lastName: "Lovelace", phone: "+1 555 0100", country: "Bangladesh" },
+    () => "QWALONE001",
+  );
+  assert.equal(alone.statusCode, 200);
+  assert.equal((await store.getByUserId("alone"))?.sponsorUserId, null);
+  assert.equal(await store.getUserIdByReferralCode("QWALONE001"), "alone");
+
+  const sponsored = await initialize(
+    store,
+    "child",
+    { firstName: "Grace", lastName: "Hopper", phone: "+1 555 0101", referralCode: "qwalone001" },
+    () => "QWCHILD001",
+  );
+  assert.equal(sponsored.statusCode, 200);
+  assert.equal((await store.getByUserId("child"))?.sponsorUserId, "alone");
+  assert.equal((await store.getByUserId("child"))?.sponsorReferralCode, "QWALONE001");
+  assert.equal((await store.listMembers()).length, 2);
+});
+
+test("missing profile fields can be recovered without replacing sponsor, code, or email", async () => {
+  const store = createMemoryMemberStore();
+  await initialize(store, "sponsor", {}, () => "QWSPONSOR1");
+  await initialize(store, "other", {}, () => "QWOTHER001");
+  const created = await initialize(store, "partial", { referralCode: "QWSPONSOR1" }, () => "QWPARTIAL1");
+  assert.equal(created.statusCode, 200);
+  const blank = await store.getByUserId("partial");
+  assert.equal(blank?.firstName, null);
+  assert.equal(blank?.phone, null);
+  assert.equal(blank?.transactionPasswordHash, null);
+  assert.equal(blank?.sponsorUserId, "sponsor");
+
+  let generated = 0;
+  const filled = await initialize(
+    store,
+    "partial",
+    {
+      firstName: "Ada",
+      lastName: "Lovelace",
+      phone: "+1 555 0199",
+      country: "Bangladesh",
+      transactionPassword: "withdrawpass",
+      referralCode: "QWOTHER001",
+    },
+    () => {
+      generated += 1;
+      return "QWHACKED01";
+    },
+  );
+  assert.equal(filled.statusCode, 200);
+  assert.equal(generated, 0);
+  const saved = await store.getByUserId("partial");
+  assert.equal(saved?.firstName, "Ada");
+  assert.equal(saved?.lastName, "Lovelace");
+  assert.equal(saved?.name, "Ada Lovelace");
+  assert.equal(saved?.phone, "+1 555 0199");
+  assert.equal(saved?.country, "Bangladesh");
+  assert.equal(saved?.email, "partial@example.com");
+  assert.equal(saved?.referralCode, "QWPARTIAL1");
+  assert.equal(saved?.sponsorUserId, "sponsor");
+  assert.equal(saved?.sponsorReferralCode, "QWSPONSOR1");
+  assert.equal(verifyTransactionPassword("withdrawpass", saved?.transactionPasswordHash ?? ""), true);
+  assert.equal(JSON.stringify(filled.body).includes("withdrawpass"), false);
+  assert.equal(await store.getUserIdByReferralCode("QWPARTIAL1"), "partial");
+  assert.equal(await store.getUserIdByReferralCode("QWHACKED01"), null);
+
+  const keptResponse = await initialize(
+    store,
+    "partial",
+    {
+      firstName: "Grace",
+      lastName: "Hopper",
+      phone: "+44 7700 900123",
+      country: "Japan",
+      transactionPassword: "differentpass",
+      referralCode: "QWNOBODY01",
+    },
+    () => "QWCHANGED1",
+  );
+  assert.equal(keptResponse.statusCode, 200);
+  const kept = await store.getByUserId("partial");
+  assert.equal(kept?.firstName, "Ada");
+  assert.equal(kept?.lastName, "Lovelace");
+  assert.equal(kept?.name, "Ada Lovelace");
+  assert.equal(kept?.phone, "+1 555 0199");
+  assert.equal(kept?.country, "Bangladesh");
+  assert.equal(kept?.sponsorUserId, "sponsor");
+  assert.equal(kept?.email, "partial@example.com");
+  assert.equal(kept?.referralCode, "QWPARTIAL1");
+  assert.equal(kept?.transactionPasswordHash, saved?.transactionPasswordHash);
+  assert.equal(JSON.stringify(keptResponse.body).includes("differentpass"), false);
+  assert.equal((await store.listMembers()).filter((member) => member.userId === "partial").length, 1);
+});
+
+test("a duplicate phone can be corrected on retry and an interrupted profile stays unique", async () => {
+  const store = createMemoryMemberStore();
+  await initialize(store, "owner", { firstName: "Ada", lastName: "Lovelace", phone: "+1 555 0100" }, () => "QWOWNER001");
+  const blocked = await initialize(
+    store,
+    "next",
+    { firstName: "Grace", lastName: "Hopper", phone: "1 (555) 0100" },
+    () => "QWNEXT0001",
+  );
+  assert.equal(blocked.statusCode, 409);
+  assert.equal(blocked.body.error, "phone_taken");
+  assert.equal(await store.getByUserId("next"), null);
+  assert.equal(await store.getUserIdByReferralCode("QWNEXT0001"), null);
+
+  const created = await initialize(
+    store,
+    "next",
+    { firstName: "Grace", lastName: "Hopper", phone: "+44 7700 900123", transactionPassword: "withdrawpass" },
+    () => "QWNEXT0001",
+  );
+  assert.equal(created.statusCode, 200);
+  assert.equal((await store.getByUserId("next"))?.phone, "+44 7700 900123");
+  assert.equal(await store.getUserIdByReferralCode("QWNEXT0001"), "next");
+
+  await initialize(store, "partial", {}, () => "QWPART0001");
+  const stillTaken = await initialize(
+    store,
+    "partial",
+    { firstName: "Lin", lastName: "Us", phone: "+1 555 0100", transactionPassword: "withdrawpass" },
+    () => "QWDUP00001",
+  );
+  assert.equal(stillTaken.statusCode, 409);
+  assert.equal(stillTaken.body.error, "phone_taken");
+  assert.equal((await store.getByUserId("partial"))?.phone, null);
+  assert.equal((await store.getByUserId("partial"))?.referralCode, "QWPART0001");
+  assert.equal(await store.getUserIdByReferralCode("QWDUP00001"), null);
+
+  const repaired = await initialize(
+    store,
+    "partial",
+    { firstName: "Lin", lastName: "Us", phone: "+1 555 0198", country: "Bangladesh", transactionPassword: "withdrawpass" },
+    () => "QWDUP00001",
+  );
+  assert.equal(repaired.statusCode, 200);
+  const partial = await store.getByUserId("partial");
+  assert.equal(partial?.phone, "+1 555 0198");
+  assert.equal(partial?.referralCode, "QWPART0001");
+  assert.equal(partial?.sponsorUserId, null);
+  assert.equal(verifyTransactionPassword("withdrawpass", partial?.transactionPasswordHash ?? ""), true);
+  assert.equal((await store.listMembers()).length, 3);
+});
+
+test("a lost initialize response does not create a second profile or referral owner", async () => {
+  const store = createMemoryMemberStore();
+  const first = await initialize(
+    store,
+    "user-lost",
+    { firstName: "Ada", lastName: "Lovelace", phone: "+1 555 0100", country: "Bangladesh", transactionPassword: "withdrawpass" },
+    () => "QWLOST0001",
+  );
+  assert.equal(first.statusCode, 200);
+  const second = await initialize(
+    store,
+    "user-lost",
+    { firstName: "Ada", lastName: "Lovelace", phone: "+1 555 0100", country: "Bangladesh", transactionPassword: "withdrawpass" },
+    () => "QWLOST0002",
+  );
+  assert.equal(second.statusCode, 200);
+  assert.equal((second.body.member as { referralCode: string }).referralCode, "QWLOST0001");
+  assert.equal((await store.listMembers()).length, 1);
+  assert.equal(await store.getUserIdByReferralCode("QWLOST0001"), "user-lost");
+  assert.equal(await store.getUserIdByReferralCode("QWLOST0002"), null);
+  const saved = await store.getByUserId("user-lost");
+  assert.equal(verifyTransactionPassword("withdrawpass", saved?.transactionPasswordHash ?? ""), true);
+});
+
+test("signup recovery does not create a blank profile, a second account, or financial records", () => {
+  const register = readFileSync(new URL("../components/auth/RegisterForm.tsx", import.meta.url), "utf8");
+  const finish = readFileSync(new URL("../components/auth/FinishRegistration.tsx", import.meta.url), "utf8");
+  const memberData = readFileSync(new URL("../components/member/MemberData.tsx", import.meta.url), "utf8");
+  const layout = readFileSync(new URL("../app/(member)/layout.tsx", import.meta.url), "utf8");
+  const service = readFileSync(new URL("../lib/members/service.ts", import.meta.url), "utf8");
+  const lambda = readFileSync(new URL("../infrastructure/lambda/members/index.ts", import.meta.url), "utf8");
+  const pending = readFileSync(new URL("../lib/auth/signup-profile.ts", import.meta.url), "utf8");
+
+  assert.equal((register.match(/registerAccount\(/g) ?? []).length, 1);
+  assert.match(register, /UsernameExistsException/);
+  assert.match(register, /Creating your account…/);
+  assert.match(register, /Signing in to finish your profile…/);
+  assert.match(register, /Signing in…/);
+  assert.match(register, /Saving your profile…/);
+  assert.match(register, /invalid_referral/);
+  assert.match(register, /phone_taken/);
+  assert.match(register, /email_taken/);
+  assert.match(register, /readPendingSignupProfile/);
+  assert.match(register, /that password did not match/);
+  const registerAt = register.indexOf("await registerAccount(");
+  const existsAt = register.indexOf("isUsernameExists(caught)");
+  const initializeAt = register.indexOf("await initializeCurrentMember");
+  assert.ok(registerAt > 0 && registerAt < existsAt && existsAt < initializeAt);
+  assert.match(register.slice(existsAt, initializeAt), /loginAccount\(/);
+  assert.match(register.slice(existsAt, initializeAt), /return;/);
+  assert.doesNotMatch(register, /rememberPendingSignupProfile\([^)]*transactionPassword/);
+  assert.doesNotMatch(register, /localStorage\.setItem\(/);
+  assert.doesNotMatch(register, /sessionStorage\.setItem\(/);
+  assert.doesNotMatch(register, /createCurrentInvestment|putProfit|requestCurrentWithdrawal|submitCurrentDeposit/);
+
+  assert.match(finish, /initializeCurrentMember/);
+  assert.match(finish, /Saving your profile…/);
+  assert.match(finish, /does not create another account or any investment/);
+  assert.match(finish, /readPendingSignupProfile/);
+  assert.doesNotMatch(finish, /registerAccount|signUp\(/);
+  assert.doesNotMatch(finish, /rememberPendingSignupProfile\([^)]*transactionPassword/);
+  assert.doesNotMatch(finish, /createCurrentInvestment|putProfit|requestCurrentWithdrawal|submitCurrentDeposit/);
+
+  assert.match(memberData, /readCurrentMember/);
+  assert.match(memberData, /member_not_found/);
+  assert.match(memberData, /FinishRegistration/);
+  assert.match(memberData, /Try again/);
+  assert.doesNotMatch(memberData, /initializeCurrentMember/);
+  assert.doesNotMatch(layout, /initializeCurrentMember/);
+
+  assert.match(lambda, /async completeMember/);
+  assert.match(lambda, /new TransactWriteCommand/);
+  assert.match(lambda, /PHONE#/);
+  assert.match(lambda, /EMAIL#/);
+  assert.match(lambda, /attribute_not_exists\(pk\) OR userId = :owner/);
+  assert.doesNotMatch(lambda, /addGlobalSecondaryIndex/);
+  assert.doesNotMatch(lambda, /createCurrentInvestment|putProfit|commission/);
+  assert.doesNotMatch(service, /createCurrentInvestment|putProfit|commission/);
+  assert.doesNotMatch(pending, /password/);
+});

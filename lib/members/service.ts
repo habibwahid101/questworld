@@ -66,6 +66,26 @@ export type MemberIdentity = {
 
 export type CreateResult = "created" | "exists" | "referral-taken" | "email-taken" | "phone-taken";
 
+export type MemberCompletion = {
+  firstName: string | null;
+  lastName: string | null;
+  name: string | null;
+  phone: string | null;
+  country: string | null;
+  transactionPasswordHash: string | null;
+  ensurePhone: string | null;
+  updatedAt: string;
+  email: string;
+  referralCode: string;
+  sponsorUserId: string | null;
+  sponsorReferralCode: string | null;
+};
+
+export type CompleteMemberResult = {
+  result: "updated" | "missing" | "phone-taken" | "conflict";
+  member: MemberRecord | null;
+};
+
 export type ProfilePatch = {
   name?: string;
   phone?: string | null;
@@ -79,6 +99,7 @@ export type MemberStore = {
   listMembers(): Promise<MemberRecord[]>;
   findRegistrationConflict(input: { userId: string; email: string; phone: string | null }): Promise<"email" | "phone" | null>;
   createMember(member: MemberRecord): Promise<CreateResult>;
+  completeMember(userId: string, fill: MemberCompletion): Promise<CompleteMemberResult>;
   updateProfile(userId: string, patch: ProfilePatch): Promise<MemberRecord | null>;
   setTransactionPassword(userId: string, hash: string, updatedAt: string): Promise<MemberRecord | null>;
   setProfilePhoto(userId: string, profilePhotoKey: string, updatedAt: string): Promise<MemberRecord | null>;
@@ -186,7 +207,7 @@ export async function initializeMember(input: {
 }): Promise<MemberRecord> {
   const existing = await input.store.getByUserId(input.identity.userId);
   if (existing) {
-    return existing;
+    return fillMissingMember(existing, input);
   }
 
   const conflict = await input.store.findRegistrationConflict({
@@ -235,7 +256,7 @@ export async function initializeMember(input: {
     if (result === "exists") {
       const raced = await input.store.getByUserId(input.identity.userId);
       if (raced) {
-        return raced;
+        return fillMissingMember(raced, input);
       }
     }
     if (result === "email-taken") {
@@ -247,6 +268,93 @@ export async function initializeMember(input: {
   }
 
   throw new MemberRequestError(500, "code_generation_failed", "Could not create a member profile.");
+}
+
+async function fillMissingMember(
+  existing: MemberRecord,
+  input: {
+    profile?: { firstName: string; lastName: string; phone: string; country?: string | null } | null;
+    transactionPassword?: string | null;
+    store: MemberStore;
+    now: () => string;
+  },
+): Promise<MemberRecord> {
+  let current = existing;
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    const fill = missingCompletion(current, input);
+    const hasWork = Boolean(
+      fill.firstName || fill.lastName || fill.name || fill.phone || fill.country || fill.transactionPasswordHash || fill.ensurePhone,
+    );
+    if (!hasWork) {
+      return current;
+    }
+    if (fill.phone) {
+      const conflict = await input.store.findRegistrationConflict({
+        userId: current.userId,
+        email: current.email,
+        phone: fill.phone,
+      });
+      if (conflict === "phone") {
+        throw new MemberRequestError(409, "phone_taken", "An account with this mobile number already exists.");
+      }
+    }
+    const result = await input.store.completeMember(current.userId, fill);
+    if (result.result === "phone-taken") {
+      if (!fill.phone) {
+        return result.member ?? current;
+      }
+      throw new MemberRequestError(409, "phone_taken", "An account with this mobile number already exists.");
+    }
+    if (result.result === "missing") {
+      throw new MemberRequestError(404, "member_not_found", "Create your member profile first.");
+    }
+    if (result.result === "updated" && result.member) {
+      return result.member;
+    }
+    const reread = await input.store.getByUserId(current.userId);
+    if (!reread) {
+      throw new MemberRequestError(404, "member_not_found", "Create your member profile first.");
+    }
+    current = reread;
+  }
+  return current;
+}
+
+function missingCompletion(
+  existing: MemberRecord,
+  input: {
+    profile?: { firstName: string; lastName: string; phone: string; country?: string | null } | null;
+    transactionPassword?: string | null;
+    now: () => string;
+  },
+): MemberCompletion {
+  const profile = input.profile ?? null;
+  const firstName = blankValue(existing.firstName) && profile?.firstName ? profile.firstName : null;
+  const lastName = blankValue(existing.lastName) && profile?.lastName ? profile.lastName : null;
+  const phone = blankValue(existing.phone) && profile?.phone ? profile.phone : null;
+  const country = blankValue(existing.country) && profile?.country ? profile.country : null;
+  const transactionPasswordHash =
+    blankValue(existing.transactionPasswordHash) && input.transactionPassword
+      ? hashTransactionPassword(input.transactionPassword)
+      : null;
+  return {
+    firstName,
+    lastName,
+    name: blankValue(existing.firstName) && blankValue(existing.lastName) && profile ? clampName(`${profile.firstName} ${profile.lastName}`) : null,
+    phone,
+    country,
+    transactionPasswordHash,
+    ensurePhone: phone ? null : blankValue(existing.phone) ? null : existing.phone,
+    updatedAt: input.now(),
+    email: existing.email,
+    referralCode: existing.referralCode,
+    sponsorUserId: existing.sponsorUserId,
+    sponsorReferralCode: existing.sponsorReferralCode,
+  };
+}
+
+function blankValue(value: string | null | undefined): boolean {
+  return value === null || value === undefined || value.trim() === "";
 }
 
 export async function patchMember(input: {

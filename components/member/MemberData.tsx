@@ -1,20 +1,19 @@
 "use client";
 
-import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
-import { clearPendingReferral, readPendingReferral } from "@/lib/auth/referral";
-import { clearPendingSignupProfile, readPendingSignupProfile } from "@/lib/auth/signup-profile";
-import { MemberClientError, initializeCurrentMember, updateCurrentMember } from "@/lib/members/client";
+import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
+import { FinishRegistration } from "@/components/auth/FinishRegistration";
+import { clearPendingReferral } from "@/lib/auth/referral";
+import { clearPendingSignupProfile } from "@/lib/auth/signup-profile";
+import { MemberClientError, readCurrentMember, updateCurrentMember } from "@/lib/members/client";
 import { isMemberApiConfigured } from "@/lib/members/config";
 import type { MemberProfile } from "@/lib/members/service";
 
-type MemberDataStatus = "loading" | "ready" | "unconfigured" | "error";
+type MemberDataStatus = "loading" | "ready" | "unconfigured" | "finish" | "error";
 
 type MemberDataValue = {
   status: MemberDataStatus;
   member: MemberProfile | null;
   message: string | null;
-  referralBlocked: boolean;
-  continueWithoutReferral: () => Promise<void>;
   saveProfile: (patch: { name: string; phone: string; country: string }) => Promise<void>;
 };
 
@@ -24,66 +23,66 @@ export function MemberDataProvider({ children }: { children: React.ReactNode }) 
   const [status, setStatus] = useState<MemberDataStatus>(isMemberApiConfigured() ? "loading" : "unconfigured");
   const [member, setMember] = useState<MemberProfile | null>(null);
   const [message, setMessage] = useState<string | null>(null);
-  const [referralBlocked, setReferralBlocked] = useState(false);
-  const [continuing, setContinuing] = useState(false);
-  const continuingRef = useRef(false);
 
   const applySuccess = useCallback((next: MemberProfile) => {
     clearPendingReferral(window.localStorage);
     clearPendingSignupProfile(window.sessionStorage);
     setMember(next);
     setMessage(null);
-    setReferralBlocked(false);
     setStatus("ready");
   }, []);
 
-  const initialize = useCallback(
-    async (referralCode: string) => {
-      const next = await initializeCurrentMember(referralCode, readPendingSignupProfile(window.sessionStorage));
-      applySuccess(next);
-    },
-    [applySuccess],
-  );
+  const load = useCallback(async () => {
+    if (!isMemberApiConfigured()) {
+      setStatus("unconfigured");
+      return;
+    }
+    setStatus("loading");
+    setMessage(null);
+    try {
+      applySuccess(await readCurrentMember());
+    } catch (caught: unknown) {
+      const error = caught instanceof MemberClientError ? caught : new MemberClientError("member_request_failed", "Could not load your member profile.");
+      if (error.code === "member_not_found") {
+        setMember(null);
+        setMessage(null);
+        setStatus("finish");
+        return;
+      }
+      setMessage(error.message);
+      setStatus("error");
+    }
+  }, [applySuccess]);
 
   useEffect(() => {
     if (!isMemberApiConfigured()) {
       return;
     }
     let active = true;
-    const pending = readPendingReferral(window.localStorage);
-    void initialize(pending).catch((caught: unknown) => {
-      if (!active) {
-        return;
-      }
-      const error = caught instanceof MemberClientError ? caught : new MemberClientError("member_request_failed", "Could not create your member profile.");
-      setReferralBlocked(error.code === "invalid_referral" || error.code === "self_referral");
-      setMessage(error.message);
-      setStatus("error");
-    });
+    void readCurrentMember()
+      .then((next) => {
+        if (active) {
+          applySuccess(next);
+        }
+      })
+      .catch((caught: unknown) => {
+        if (!active) {
+          return;
+        }
+        const error = caught instanceof MemberClientError ? caught : new MemberClientError("member_request_failed", "Could not load your member profile.");
+        if (error.code === "member_not_found") {
+          setMember(null);
+          setMessage(null);
+          setStatus("finish");
+          return;
+        }
+        setMessage(error.message);
+        setStatus("error");
+      });
     return () => {
       active = false;
     };
-  }, [initialize]);
-
-  const continueWithoutReferral = useCallback(async () => {
-    if (continuingRef.current) {
-      return;
-    }
-    continuingRef.current = true;
-    setContinuing(true);
-    setStatus("loading");
-    try {
-      await initialize("");
-    } catch (caught) {
-      const error = caught instanceof MemberClientError ? caught : new MemberClientError("member_request_failed", "Could not create your member profile.");
-      setReferralBlocked(false);
-      setMessage(error.message);
-      setStatus("error");
-    } finally {
-      continuingRef.current = false;
-      setContinuing(false);
-    }
-  }, [initialize]);
+  }, [applySuccess]);
 
   const saveProfile = useCallback(
     async (patch: { name: string; phone: string; country: string }) => {
@@ -102,29 +101,28 @@ export function MemberDataProvider({ children }: { children: React.ReactNode }) 
       status,
       member,
       message,
-      referralBlocked,
-      continueWithoutReferral,
       saveProfile,
     }),
-    [status, member, message, referralBlocked, continueWithoutReferral, saveProfile],
+    [status, member, message, saveProfile],
   );
 
   return (
     <MemberDataContext.Provider value={value}>
-      {message ? (
-        <p className="form-error" role="alert">
-          {message}
-          {referralBlocked ? (
-            <>
-              {" "}
-              <button type="button" onClick={() => void continueWithoutReferral()} disabled={continuing} aria-busy={continuing}>
-                {continuing ? "Please wait" : "Continue without this referral code"}
+      {status === "finish" ? (
+        <FinishRegistration onComplete={applySuccess} />
+      ) : (
+        <>
+          {message ? (
+            <p className="form-error" role="alert">
+              {message}{" "}
+              <button type="button" onClick={() => void load()}>
+                Try again
               </button>
-            </>
+            </p>
           ) : null}
-        </p>
-      ) : null}
-      {children}
+          {children}
+        </>
+      )}
     </MemberDataContext.Provider>
   );
 }

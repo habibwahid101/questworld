@@ -1,4 +1,4 @@
-import { registrationPhoneKey, type CreateResult, type MemberRecord, type MemberStore, type ProfilePatch } from "./service.ts";
+import { registrationPhoneKey, type CompleteMemberResult, type CreateResult, type MemberCompletion, type MemberRecord, type MemberStore, type ProfilePatch } from "./service.ts";
 
 export function createMemoryMemberStore(): MemberStore {
   const members = new Map<string, MemberRecord>();
@@ -35,6 +35,62 @@ export function createMemoryMemberStore(): MemberStore {
       members.set(member.userId, structuredClone(member));
       codes.set(member.referralCode, member.userId);
       return "created";
+    },
+    async completeMember(userId, fill: MemberCompletion): Promise<CompleteMemberResult> {
+      const current = members.get(userId);
+      if (!current) {
+        return { result: "missing", member: null };
+      }
+      if (
+        current.email !== fill.email ||
+        current.referralCode !== fill.referralCode ||
+        current.sponsorUserId !== fill.sponsorUserId ||
+        current.sponsorReferralCode !== fill.sponsorReferralCode
+      ) {
+        return { result: "conflict", member: structuredClone(current) };
+      }
+      const phoneToClaim = fill.phone ?? fill.ensurePhone;
+      if (phoneToClaim && registrationConflict([...members.values()], userId, current.email, phoneToClaim) === "phone") {
+        return { result: "phone-taken", member: structuredClone(current) };
+      }
+      const next: MemberRecord = {
+        ...current,
+        email: current.email,
+        referralCode: current.referralCode,
+        sponsorUserId: current.sponsorUserId,
+        sponsorReferralCode: current.sponsorReferralCode,
+      };
+      let changed = false;
+      if (fill.firstName && blank(current.firstName)) {
+        next.firstName = fill.firstName;
+        changed = true;
+      }
+      if (fill.lastName && blank(current.lastName)) {
+        next.lastName = fill.lastName;
+        changed = true;
+      }
+      if (fill.name && blank(current.firstName) && blank(current.lastName)) {
+        next.name = fill.name;
+        changed = true;
+      }
+      if (fill.phone && blank(current.phone)) {
+        next.phone = fill.phone;
+        changed = true;
+      }
+      if (fill.country && blank(current.country)) {
+        next.country = fill.country;
+        changed = true;
+      }
+      if (fill.transactionPasswordHash && blank(current.transactionPasswordHash)) {
+        next.transactionPasswordHash = fill.transactionPasswordHash;
+        changed = true;
+      }
+      if (changed) {
+        next.updatedAt = fill.updatedAt;
+        members.set(userId, next);
+        return { result: "updated", member: structuredClone(next) };
+      }
+      return { result: "updated", member: structuredClone(current) };
     },
     async updateProfile(userId, patch: ProfilePatch) {
       const current = members.get(userId);
@@ -78,6 +134,10 @@ export function createMemoryMemberStore(): MemberStore {
       return structuredClone(next);
     },
   };
+}
+
+function blank(value: string | null | undefined): boolean {
+  return value === null || value === undefined || value.trim() === "";
 }
 
 function registrationConflict(

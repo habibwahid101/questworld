@@ -5,6 +5,7 @@ import {
   ScanCommand,
   TransactWriteCommand,
   UpdateCommand,
+  type TransactWriteCommandInput,
 } from "@aws-sdk/lib-dynamodb";
 import { GetObjectCommand, PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import { CognitoIdentityProviderClient, ListUsersInGroupCommand } from "@aws-sdk/client-cognito-identity-provider";
@@ -15,6 +16,7 @@ import {
   profilePhotoKey,
   registrationPhoneKey,
   type CreateResult,
+  type MemberCompletion,
   type MemberRecord,
   type MemberStore,
   type ProfilePhotoStore,
@@ -95,6 +97,7 @@ export function createDynamoMemberStore(tableName: string): MemberStore {
         new GetCommand({
           TableName: tableName,
           Key: { pk: userKey(userId), sk: PROFILE_SK },
+          ConsistentRead: true,
         }),
       );
       return response.Item ? itemToMember(response.Item) : null;
@@ -213,6 +216,125 @@ export function createDynamoMemberStore(tableName: string): MemberStore {
         return "created";
       } catch (caught) {
         return cancellationResult(caught);
+      }
+    },
+    async completeMember(userId, fill: MemberCompletion) {
+      const names: Record<string, string> = {};
+      const values: Record<string, string> = {};
+      const sets: string[] = [];
+      const conditions = ["attribute_exists(pk)", "email = :email", "referralCode = :referralCode"];
+      values[":email"] = fill.email;
+      values[":referralCode"] = fill.referralCode;
+      if (fill.sponsorUserId) {
+        conditions.push("sponsorUserId = :sponsorUserId");
+        values[":sponsorUserId"] = fill.sponsorUserId;
+      } else {
+        names["#sponsorUserId"] = "sponsorUserId";
+        values[":nullType"] = "NULL";
+        conditions.push("(attribute_not_exists(#sponsorUserId) OR attribute_type(#sponsorUserId, :nullType))");
+      }
+      if (fill.sponsorReferralCode) {
+        conditions.push("sponsorReferralCode = :sponsorReferralCode");
+        values[":sponsorReferralCode"] = fill.sponsorReferralCode;
+      } else {
+        names["#sponsorReferralCode"] = "sponsorReferralCode";
+        values[":nullType"] = "NULL";
+        conditions.push("(attribute_not_exists(#sponsorReferralCode) OR attribute_type(#sponsorReferralCode, :nullType))");
+      }
+      const setIfEmpty = (attribute: string, value: string | null) => {
+        if (!value) {
+          return;
+        }
+        names[`#${attribute}`] = attribute;
+        values[`:${attribute}`] = value;
+        values[":blank"] = "";
+        values[":nullType"] = "NULL";
+        sets.push(`#${attribute} = :${attribute}`);
+        conditions.push(`(attribute_not_exists(#${attribute}) OR #${attribute} = :blank OR attribute_type(#${attribute}, :nullType))`);
+      };
+      setIfEmpty("firstName", fill.firstName);
+      setIfEmpty("lastName", fill.lastName);
+      setIfEmpty("phone", fill.phone);
+      setIfEmpty("country", fill.country);
+      setIfEmpty("transactionPasswordHash", fill.transactionPasswordHash);
+      if (fill.name) {
+        names["#name"] = "name";
+        values[":name"] = fill.name;
+        sets.push("#name = :name");
+      }
+      if (sets.length > 0) {
+        names["#updatedAt"] = "updatedAt";
+        values[":updatedAt"] = fill.updatedAt;
+        sets.push("#updatedAt = :updatedAt");
+      }
+      const phoneForIndex = fill.phone ?? fill.ensurePhone;
+      const items: NonNullable<TransactWriteCommandInput["TransactItems"]> = [];
+      const expressionNames = Object.keys(names).length > 0 ? names : undefined;
+      if (sets.length > 0) {
+        items.push({
+          Update: {
+            TableName: tableName,
+            Key: { pk: userKey(userId), sk: PROFILE_SK },
+            UpdateExpression: `SET ${sets.join(", ")}`,
+            ConditionExpression: conditions.join(" AND "),
+            ...(expressionNames ? { ExpressionAttributeNames: expressionNames } : {}),
+            ExpressionAttributeValues: values,
+          },
+        });
+      } else if (registrationPhoneKey(phoneForIndex)) {
+        items.push({
+          ConditionCheck: {
+            TableName: tableName,
+            Key: { pk: userKey(userId), sk: PROFILE_SK },
+            ConditionExpression: conditions.join(" AND "),
+            ...(expressionNames ? { ExpressionAttributeNames: expressionNames } : {}),
+            ExpressionAttributeValues: values,
+          },
+        });
+      }
+      const phoneIndex = registrationPhoneKey(phoneForIndex) ? items.length : -1;
+      if (phoneIndex >= 0 && phoneForIndex) {
+        items.push({
+          Put: {
+            TableName: tableName,
+            Item: {
+              pk: phoneKey(phoneForIndex),
+              sk: UNIQUE_SK,
+              userId,
+            },
+            ConditionExpression: "attribute_not_exists(pk) OR userId = :owner",
+            ExpressionAttributeValues: { ":owner": userId },
+          },
+        });
+      }
+      if (items.length === 0) {
+        const current = await document.send(
+          new GetCommand({ TableName: tableName, Key: { pk: userKey(userId), sk: PROFILE_SK }, ConsistentRead: true }),
+        );
+        return current.Item ? { result: "updated" as const, member: itemToMember(current.Item) } : { result: "missing" as const, member: null };
+      }
+      try {
+        await document.send(new TransactWriteCommand({ TransactItems: items }));
+        const saved = await document.send(
+          new GetCommand({ TableName: tableName, Key: { pk: userKey(userId), sk: PROFILE_SK }, ConsistentRead: true }),
+        );
+        return saved.Item ? { result: "updated" as const, member: itemToMember(saved.Item) } : { result: "missing" as const, member: null };
+      } catch (caught) {
+        const reasons = cancellationReasons(caught);
+        if (!reasons.length) {
+          throw caught;
+        }
+        const current = await document.send(
+          new GetCommand({ TableName: tableName, Key: { pk: userKey(userId), sk: PROFILE_SK }, ConsistentRead: true }),
+        );
+        const member = current.Item ? itemToMember(current.Item) : null;
+        if (phoneIndex >= 0 && reasons[phoneIndex] === "ConditionalCheckFailed") {
+          return { result: "phone-taken" as const, member };
+        }
+        if (!member) {
+          return { result: "missing" as const, member: null };
+        }
+        return { result: "conflict" as const, member };
       }
     },
     async updateProfile(userId, patch) {

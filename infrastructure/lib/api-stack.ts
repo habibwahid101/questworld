@@ -58,12 +58,40 @@ export class ApiStack extends cdk.Stack {
         externalModules: ["@aws-sdk/*"],
       },
     });
-    // TransactWrite Put actions are authorized as dynamodb:PutItem.
-    // There is no ConditionCheck action in the transaction.
+    // TransactWrite Put and Update use PutItem and UpdateItem.
+    // Releasing a PHONE# index requires DeleteItem. A no-field completion uses ConditionCheckItem.
     membersFn.addToRolePolicy(
       new iam.PolicyStatement({
         actions: ["dynamodb:GetItem", "dynamodb:PutItem", "dynamodb:UpdateItem", "dynamodb:Scan"],
         resources: [table.tableArn],
+      }),
+    );
+    membersFn.addToRolePolicy(
+      new iam.PolicyStatement({
+        actions: ["dynamodb:DeleteItem"],
+        resources: [table.tableArn],
+        conditions: {
+          "ForAllValues:StringLike": {
+            "dynamodb:LeadingKeys": ["PHONE#*"],
+          },
+          Null: {
+            "dynamodb:LeadingKeys": "false",
+          },
+        },
+      }),
+    );
+    membersFn.addToRolePolicy(
+      new iam.PolicyStatement({
+        actions: ["dynamodb:ConditionCheckItem"],
+        resources: [table.tableArn],
+        conditions: {
+          "ForAllValues:StringLike": {
+            "dynamodb:LeadingKeys": ["USER#*"],
+          },
+          Null: {
+            "dynamodb:LeadingKeys": "false",
+          },
+        },
       }),
     );
     membersFn.addToRolePolicy(

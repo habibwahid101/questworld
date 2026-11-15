@@ -1092,7 +1092,8 @@ test("a rejected phone-index condition writes nothing and conflict retries stay 
 });
 
 async function loadDynamo(): Promise<DynamoModule> {
-  const imported: unknown = await import("../infrastructure/lambda/members/index.ts");
+  // A string assertion keeps this runtime import out of the frontend TypeScript program.
+  const imported: unknown = await import("../infrastructure/lambda/members/index.ts" as string);
   return imported as DynamoModule;
 }
 

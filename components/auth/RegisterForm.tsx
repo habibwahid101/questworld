@@ -10,7 +10,7 @@ import { useAuth } from "@/components/auth/AuthProvider";
 import { loadCurrentUser, loginAccount, logoutAccount, registerAccount } from "@/lib/auth/cognito";
 import { mapAuthError } from "@/lib/auth/errors";
 import { PASSWORD_HINT, passwordIssue, TRANSACTION_PASSWORD_MIN } from "@/lib/auth/password";
-import { normalizeReferralCode, readPendingReferral, rememberPendingReferral } from "@/lib/auth/referral";
+import { normalizeReferralCode, referralCodeFromLink, rememberPendingReferral } from "@/lib/auth/referral";
 import { canInitializeSubmittedAccount, normalizeSignupEmail, readyAccountStillValid, type ReadyAccount, type SignupPrincipal } from "@/lib/auth/signup-session";
 import { rememberPendingSignupProfile, readPendingSignupProfile } from "@/lib/auth/signup-profile";
 import { countryNames } from "@/constants/countries";
@@ -22,7 +22,6 @@ export function RegisterForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { refresh } = useAuth();
-  const [referralCode, setReferralCode] = useState("");
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
   const [email, setEmail] = useState("");
@@ -32,13 +31,26 @@ export function RegisterForm() {
   const [submitting, setSubmitting] = useState(false);
   const [progress, setProgress] = useState<string | null>(null);
   const readyAccount = useRef<ReadyAccount | null>(null);
-  const linkedReferral = normalizeReferralCode(searchParams.get("ref") ?? "");
+  const linkedReferral = searchParams.get("ref");
+  const [referralCode, setReferralCode] = useState(() => {
+    const initial = normalizeReferralCode(linkedReferral ?? "");
+    if (typeof window !== "undefined" && initial) {
+      rememberPendingReferral(window.localStorage, initial);
+    }
+    return initial;
+  });
   const countries = countryNames();
 
   useEffect(() => {
-    if (linkedReferral) {
-      setReferralCode(linkedReferral);
+    const resolved = referralCodeFromLink(linkedReferral, window.localStorage);
+    if (!resolved) {
+      return;
     }
+    if (normalizeReferralCode(linkedReferral ?? "")) {
+      setReferralCode(resolved);
+      return;
+    }
+    setReferralCode((current) => current || resolved);
   }, [linkedReferral]);
 
   useEffect(() => {
@@ -51,10 +63,6 @@ export function RegisterForm() {
     setEmail((current) => current || pending.email || "");
     setPhone((current) => current || pending.phone);
     setCountry((current) => current || pending.country || "");
-    const savedReferral = readPendingReferral(window.localStorage);
-    if (savedReferral) {
-      setReferralCode((current) => current || savedReferral);
-    }
   }, []);
 
   useEffect(() => {

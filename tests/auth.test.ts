@@ -17,7 +17,7 @@ import { mapAuthError, mapRecoveryRequestError } from "../lib/auth/errors.ts";
 import { isAdminGroups, normalizeGroups } from "../lib/auth/groups.ts";
 import { passwordIssue } from "../lib/auth/password.ts";
 import { isAdminPath, isMemberPath, isProtectedPath } from "../lib/auth/paths.ts";
-import { normalizeReferralCode, rememberPendingReferral, PENDING_REFERRAL_KEY } from "../lib/auth/referral.ts";
+import { normalizeReferralCode, referralCodeFromLink, rememberPendingReferral, PENDING_REFERRAL_KEY } from "../lib/auth/referral.ts";
 
 test("member routes are protected and public referral page is not", () => {
   assert.equal(isMemberPath("/dashboard"), true);
@@ -88,6 +88,51 @@ test("referral handoff stores only a trimmed pending code", () => {
   rememberPendingReferral(storage, "   ");
   assert.equal(saved.has(PENDING_REFERRAL_KEY), false);
   assert.equal(normalizeReferralCode("x".repeat(80)).length, 64);
+});
+
+test("a URL referral wins and a blank referral does not invent a sponsor", () => {
+  const saved = new Map<string, string>();
+  const storage = {
+    setItem(key: string, value: string) {
+      saved.set(key, value);
+    },
+    removeItem(key: string) {
+      saved.delete(key);
+    },
+    getItem(key: string) {
+      return saved.get(key) ?? null;
+    },
+  };
+  rememberPendingReferral(storage, "QWOLDCODE");
+  assert.equal(referralCodeFromLink("  QWNEWCODE ", storage), "QWNEWCODE");
+  assert.equal(saved.get(PENDING_REFERRAL_KEY), "QWNEWCODE");
+  assert.equal(referralCodeFromLink(null, storage), "QWNEWCODE");
+  assert.equal(referralCodeFromLink(undefined, storage), "QWNEWCODE");
+  assert.equal(referralCodeFromLink("   ", storage), "QWNEWCODE");
+  assert.equal(saved.get(PENDING_REFERRAL_KEY), "QWNEWCODE");
+
+  const empty = new Map<string, string>();
+  const emptyStorage = {
+    setItem(key: string, value: string) {
+      empty.set(key, value);
+    },
+    removeItem(key: string) {
+      empty.delete(key);
+    },
+    getItem(key: string) {
+      return empty.get(key) ?? null;
+    },
+  };
+  assert.equal(referralCodeFromLink(null, emptyStorage), "");
+  assert.equal(referralCodeFromLink("", emptyStorage), "");
+  assert.equal(referralCodeFromLink("   ", emptyStorage), "");
+  assert.equal(empty.has(PENDING_REFERRAL_KEY), false);
+
+  const register = readFileSync(new URL("../components/auth/RegisterForm.tsx", import.meta.url), "utf8");
+  const finish = readFileSync(new URL("../components/auth/FinishRegistration.tsx", import.meta.url), "utf8");
+  assert.match(register, /referralCodeFromLink\(linkedReferral, window\.localStorage\)/);
+  assert.match(finish, /readPendingReferral\(window\.localStorage\)/);
+  assert.doesNotMatch(finish, /referralCodeFromLink/);
 });
 
 function recordingDeps(remembered: boolean) {

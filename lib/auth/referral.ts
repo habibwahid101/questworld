@@ -29,3 +29,15 @@ export function readPendingReferral(storage: Pick<Storage, "getItem">): string {
 export function clearPendingReferral(storage: Pick<Storage, "removeItem">): void {
   storage.removeItem(PENDING_REFERRAL_KEY);
 }
+
+export function referralCodeFromLink(
+  ref: string | null | undefined,
+  storage: Pick<Storage, "getItem" | "setItem" | "removeItem">,
+): string {
+  const linked = normalizeReferralCode(ref ?? "");
+  if (!linked) {
+    return readPendingReferral(storage);
+  }
+  rememberPendingReferral(storage, linked);
+  return linked;
+}

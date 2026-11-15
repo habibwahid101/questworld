@@ -647,6 +647,55 @@ test("signup with and without a referral creates one profile and no second owner
   assert.equal((await store.listMembers()).length, 2);
 });
 
+test("a sponsored member stays attributed and is only a first-generation referral", async () => {
+  const store = createMemoryMemberStore();
+  await initialize(store, "sponsor", { firstName: "Ada", lastName: "Lovelace", phone: "+1 555 0100" }, () => "QWSPONSOR1");
+  const created = await initialize(
+    store,
+    "child",
+    { firstName: "Grace", lastName: "Hopper", phone: "+1 555 0101", referralCode: "qwsponsor1" },
+    () => "QWCHILD001",
+  );
+  assert.equal(created.statusCode, 200);
+  assert.equal((await store.getByUserId("child"))?.sponsorUserId, "sponsor");
+  assert.equal((await store.getByUserId("child"))?.sponsorReferralCode, "QWSPONSOR1");
+
+  const profile = await handleMemberApi({
+    method: "GET",
+    path: "/me",
+    claims: claims("child"),
+    store,
+    now: () => NOW,
+  });
+  assert.equal(profile.statusCode, 200);
+  const member = profile.body.member as { referralCode: string; sponsorReferralCode: string | null };
+  assert.equal(member.referralCode, "QWCHILD001");
+  assert.equal(member.sponsorReferralCode, "QWSPONSOR1");
+  assert.equal("sponsorUserId" in member, false);
+
+  const grandchild = await initialize(
+    store,
+    "grand",
+    { firstName: "Lin", lastName: "Us", phone: "+1 555 0102", referralCode: "QWCHILD001" },
+    () => "QWGRAND001",
+  );
+  assert.equal(grandchild.statusCode, 200);
+
+  const list = await handleMemberApi({
+    method: "GET",
+    path: "/me/referrals",
+    claims: claims("sponsor"),
+    store,
+    now: () => NOW,
+  });
+  assert.equal(list.statusCode, 200);
+  const generations = list.body.generations as { first: Array<{ referralCode: string }>; second: Array<{ referralCode: string }> };
+  assert.deepEqual(generations.first.map((row) => row.referralCode), ["QWCHILD001"]);
+  assert.deepEqual(generations.second.map((row) => row.referralCode), ["QWGRAND001"]);
+  assert.equal(generations.first.some((row) => row.referralCode === "QWGRAND001"), false);
+  assert.equal(generations.second.some((row) => row.referralCode === "QWCHILD001"), false);
+});
+
 test("missing profile fields can be recovered without replacing sponsor, code, or email", async () => {
   const store = createMemoryMemberStore();
   await initialize(store, "sponsor", {}, () => "QWSPONSOR1");

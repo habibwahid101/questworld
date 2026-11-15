@@ -18,6 +18,7 @@ import {
   investmentFromStoredItem,
   postDueReturns,
   addReturnCycle,
+  investmentActivation,
   profitFromStoredItem,
   withdrawalFromStoredItem,
   commissionFromStoredItem,
@@ -814,25 +815,28 @@ async function reviewStoredDeposit(tableName: string, review: DepositReview): Pr
     return { result: "not-found" };
   }
   const confirming = review.decision === "deposit_verified";
+  const activation = confirming ? investmentActivation(review.reviewedAt, review.reviewedBy) : null;
   try {
     const response = await document.send(
       new UpdateCommand({
         TableName: tableName,
         Key: { pk: item.pk, sk: item.sk },
         UpdateExpression: confirming
-          ? "SET #status = :active, reviewedAt = :reviewedAt, reviewedBy = :reviewedBy, activatedAt = :reviewedAt, activatedBy = :reviewedBy, nextDueAt = :nextDueAt, paymentsPosted = :paymentsPosted, updatedAt = :reviewedAt, statusChangedAt = :reviewedAt REMOVE rejectionReason"
+          ? "SET #status = :active, reviewedAt = :reviewedAt, reviewedBy = :reviewedBy, activatedAt = :activatedAt, activatedBy = :activatedBy, nextDueAt = :nextDueAt, paymentsPosted = :paymentsPosted, updatedAt = :reviewedAt, statusChangedAt = :reviewedAt REMOVE rejectionReason"
           : "SET #status = :decision, reviewedAt = :reviewedAt, reviewedBy = :reviewedBy, updatedAt = :reviewedAt, statusChangedAt = :reviewedAt" +
             (review.rejectionReason ? ", rejectionReason = :reason" : " REMOVE rejectionReason"),
         ConditionExpression: "#status = :pending",
         ExpressionAttributeNames: { "#status": "status" },
-        ExpressionAttributeValues: confirming
+        ExpressionAttributeValues: activation
           ? {
-              ":active": "active",
+              ":active": activation.status,
               ":pending": "pending_verification",
               ":reviewedAt": review.reviewedAt,
               ":reviewedBy": review.reviewedBy,
-              ":nextDueAt": addReturnCycle(review.reviewedAt),
-              ":paymentsPosted": 0,
+              ":activatedAt": activation.activatedAt,
+              ":activatedBy": activation.activatedBy,
+              ":nextDueAt": activation.nextDueAt,
+              ":paymentsPosted": activation.paymentsPosted,
             }
           : {
               ":decision": review.decision,
@@ -912,6 +916,7 @@ async function activateStoredInvestment(
   if (item.status !== "deposit_verified") {
     return { result: "rejected" };
   }
+  const scheduled = investmentActivation(activation.activatedAt, activation.activatedBy);
   try {
     const response = await document.send(
       new UpdateCommand({
@@ -922,12 +927,12 @@ async function activateStoredInvestment(
         ConditionExpression: "#status = :verified",
         ExpressionAttributeNames: { "#status": "status" },
         ExpressionAttributeValues: {
-          ":active": "active",
+          ":active": scheduled.status,
           ":verified": "deposit_verified",
-          ":activatedAt": activation.activatedAt,
-          ":activatedBy": activation.activatedBy,
-          ":nextDueAt": addReturnCycle(activation.activatedAt),
-          ":paymentsPosted": 0,
+          ":activatedAt": scheduled.activatedAt,
+          ":activatedBy": scheduled.activatedBy,
+          ":nextDueAt": scheduled.nextDueAt,
+          ":paymentsPosted": scheduled.paymentsPosted,
         },
         ReturnValues: "ALL_NEW",
       }),

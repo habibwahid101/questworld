@@ -444,6 +444,15 @@ test("only an admin can list and review a pending deposit", async () => {
   assert.equal(saved.planId, "starter");
   assert.equal(saved.ownerSub, "member-1");
 
+  const again = await review(store, "admin-1", PENDING_ID, { decision: "deposit_verified" }, ["Admins"]);
+  assert.equal(again.statusCode, 409);
+  assert.equal(again.body.error, "review_not_allowed");
+  const unchanged = await store.getById("member-1", PENDING_ID);
+  assert.equal(unchanged?.status, "active");
+  assert.equal(unchanged?.nextDueAt, saved.nextDueAt);
+  assert.equal(unchanged?.paymentsPosted, saved.paymentsPosted);
+  assert.equal(unchanged?.activatedAt, saved.activatedAt);
+
   const second = await review(store, "admin-1", PENDING_ID, { decision: "rejected" }, ["Admins"]);
   assert.equal(second.statusCode, 409);
   assert.equal(second.body.error, "review_not_allowed");
@@ -695,6 +704,154 @@ test("deposit address saves are allowed by CORS", () => {
   const origins = readFileSync(new URL("../infrastructure/lib/public-ids.ts", import.meta.url), "utf8");
   assert.match(origins, /https:\/\/main\.d1xja8a1py5jgx\.amplifyapp\.com/);
   assert.match(origins, /https:\/\/www\.questraworld\.online/);
+});
+
+test("an admin records a pending catalog or custom deposit and confirmation schedules the first return", async () => {
+  const store = createMemoryInvestmentStore();
+  const sponsors: SponsorDirectory = { async sponsorOf() { return null; } };
+  const admin = { sub: "admin-1", email: "admin@example.com", "cognito:groups": "Admins" };
+  const confirmedAt = "2026-11-01T00:00:00.000Z";
+  const newInvestmentId = ids("00000000-0000-4000-8000");
+  const create = (body: unknown, idempotencyKey: string) =>
+    handleInvestmentApi({
+      method: "POST",
+      path: "/admin/investments",
+      claims: admin,
+      body,
+      idempotencyKey,
+      store,
+      now: () => NOW,
+      newInvestmentId,
+    });
+
+  const member = await handleInvestmentApi({
+    method: "POST",
+    path: "/admin/investments",
+    claims: claims("member-1"),
+    body: { ownerSub: "member-1", planId: "starter" },
+    idempotencyKey: "admin-deposit-member",
+    store,
+    now: () => NOW,
+    newInvestmentId: ids("20000000-0000-4000-8000"),
+  });
+  assert.equal(member.statusCode, 403);
+  assert.equal((await store.listByOwner("member-1")).length, 0);
+
+  const tooSmall = await create({ ownerSub: "member-1", planId: "custom", amountMinor: 1 }, "admin-deposit-small");
+  assert.equal(tooSmall.statusCode, 400);
+  assert.equal(tooSmall.body.error, "invalid_amount");
+
+  for (const planId of ["starter", "growth", "professional", "premium"] as const) {
+    const created = await create({ ownerSub: "member-1", planId, amountMinor: 1 }, `admin-catalog-${planId}`);
+    assert.equal(created.statusCode, 200, planId);
+    const investment = created.body.investment as InvestmentRecord;
+    assert.equal(investment.planId, planId);
+    assert.equal(investment.amountMinor, investmentCatalog[planId].amountMinor);
+    assert.equal(investment.status, "pending_verification");
+    assert.equal(investment.activatedAt, undefined);
+    assert.equal(investment.activatedBy, undefined);
+    assert.equal(investment.paymentsPosted, undefined);
+    assert.equal(investment.nextDueAt, undefined);
+    assert.equal(investment.depositReference, undefined);
+  }
+
+  const customAmount = 100_000_000;
+  const first = await create({ ownerSub: "member-1", planId: "custom", amountMinor: customAmount }, "admin-deposit-1");
+  assert.equal(first.statusCode, 200);
+  const investment = first.body.investment as InvestmentRecord;
+  assert.equal(investment.status, "pending_verification");
+  assert.equal(investment.amountMinor, customAmount);
+  assert.equal(investment.activatedAt, undefined);
+  assert.equal(investment.nextDueAt, undefined);
+
+  const repeat = await create({ ownerSub: "member-1", planId: "custom", amountMinor: customAmount }, "admin-deposit-1");
+  assert.equal(repeat.statusCode, 200);
+  assert.equal((repeat.body.investment as InvestmentRecord).investmentId, investment.investmentId);
+  assert.equal((await store.listByOwner("member-1")).filter((record) => record.planId === "custom").length, 1);
+
+  const conflict = await create({ ownerSub: "member-1", planId: "custom", amountMinor: 2_000_000 }, "admin-deposit-1");
+  assert.equal(conflict.statusCode, 409);
+  assert.equal(conflict.body.error, "idempotency_conflict");
+  const preserved = await store.getById("member-1", investment.investmentId);
+  assert.equal(preserved?.amountMinor, customAmount);
+  assert.equal(preserved?.status, "pending_verification");
+  assert.equal(preserved?.planId, "custom");
+  const planConflict = await create({ ownerSub: "member-1", planId: "starter" }, "admin-deposit-1");
+  assert.equal(planConflict.statusCode, 409);
+  assert.equal((await store.getById("member-1", investment.investmentId))?.amountMinor, customAmount);
+  assert.equal((await store.getById("member-1", investment.investmentId))?.status, "pending_verification");
+  assert.equal((await store.listByOwner("member-1")).length, 5);
+
+  const otherMember = await create({ ownerSub: "member-2", planId: "custom", amountMinor: customAmount }, "admin-deposit-1");
+  assert.equal(otherMember.statusCode, 200);
+  assert.notEqual((otherMember.body.investment as InvestmentRecord).investmentId, investment.investmentId);
+
+  const early = await postDueReturns({ store, sponsors, now: confirmedAt });
+  assert.equal(early.posted, 0);
+
+  const confirmed = await handleInvestmentApi({
+    method: "POST",
+    path: `/admin/deposits/${investment.investmentId}/review`,
+    claims: admin,
+    body: { decision: "deposit_verified" },
+    store,
+    now: () => confirmedAt,
+  });
+  assert.equal(confirmed.statusCode, 200);
+  const active = confirmed.body.investment as InvestmentRecord;
+  assert.equal(active.status, "active");
+  assert.equal(active.activatedAt, confirmedAt);
+  assert.equal(active.activatedBy, "admin-1");
+  assert.equal(active.paymentsPosted, 0);
+  assert.equal(active.nextDueAt, addReturnCycle(confirmedAt));
+  assert.equal(active.amountMinor, customAmount);
+
+  const secondConfirm = await handleInvestmentApi({
+    method: "POST",
+    path: `/admin/deposits/${investment.investmentId}/review`,
+    claims: admin,
+    body: { decision: "deposit_verified" },
+    store,
+    now: () => "2026-12-01T00:00:00.000Z",
+  });
+  assert.equal(secondConfirm.statusCode, 409);
+  const still = await store.getById("member-1", investment.investmentId);
+  assert.equal(still?.nextDueAt, active.nextDueAt);
+  assert.equal(still?.paymentsPosted, 0);
+  assert.equal(still?.activatedAt, confirmedAt);
+
+  const beforeDue = await postDueReturns({ store, sponsors, now: confirmedAt });
+  assert.equal(beforeDue.posted, 0);
+  const dueAt = addReturnCycle(confirmedAt);
+  const posted = await postDueReturns({ store, sponsors, now: dueAt });
+  assert.equal(posted.posted, 1);
+  const saved = await store.getById("member-1", investment.investmentId);
+  assert.equal(saved?.paymentsPosted, 1);
+  assert.equal(saved?.nextDueAt, addReturnCycle(dueAt));
+  const profits = await store.listProfits("member-1");
+  assert.equal(profits.length, 1);
+  assert.equal(profits[0]?.profitMinor, returnPaymentMinor(customAmount, 1));
+  assert.equal(profits[0]?.paymentNumber, 1);
+});
+
+test("a recorded admin deposit keeps its key when refreshing the list fails", () => {
+  const panel = readFileSync(new URL("../components/admin/AdminDepositsPanel.tsx", import.meta.url), "utf8");
+  const adminDeposit = panel.slice(panel.indexOf("async function adminDeposit"), panel.indexOf("async function decide"));
+  const createCatch = adminDeposit.slice(adminDeposit.indexOf("} catch (caught)"), adminDeposit.indexOf("} finally"));
+  const refreshCatch = adminDeposit.slice(adminDeposit.lastIndexOf("} catch"));
+  assert.ok(adminDeposit.indexOf("await createAdminDeposit") < adminDeposit.indexOf("depositKey.current = null"));
+  assert.ok(adminDeposit.indexOf("depositKey.current = null") < adminDeposit.indexOf("await load()"));
+  assert.equal(panel.split("depositKey.current = null").length - 1, 1);
+  assert.match(createCatch, /Could not create that deposit/);
+  assert.doesNotMatch(createCatch, /could not be refreshed/);
+  assert.match(refreshCatch, /could not be refreshed/);
+  assert.doesNotMatch(refreshCatch, /Could not create that deposit/);
+  const lambda = readFileSync(new URL("../infrastructure/lambda/investments/index.ts", import.meta.url), "utf8");
+  const review = lambda.slice(lambda.indexOf("async function reviewStoredDeposit"), lambda.indexOf("async function advanceStoredCycle"));
+  assert.match(review, /activatedAt = :activatedAt, activatedBy = :activatedBy/);
+  assert.match(review, /":activatedAt": activation\.activatedAt/);
+  assert.match(review, /":activatedBy": activation\.activatedBy/);
+  assert.match(review, /ConditionExpression: "#status = :pending"/);
 });
 
 test("a due return posts once, keeps the principal, and completes on the 12th payment", async () => {

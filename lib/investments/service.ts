@@ -460,6 +460,22 @@ export function addReturnCycle(isoTime: string, cycles = 1): string {
   return new Date(date.getTime() + cycles * RETURN_CYCLE_MS).toISOString();
 }
 
+export function investmentActivation(activatedAt: string, activatedBy: string): {
+  status: "active";
+  activatedAt: string;
+  activatedBy: string;
+  nextDueAt: string;
+  paymentsPosted: 0;
+} {
+  return {
+    status: "active",
+    activatedAt,
+    activatedBy,
+    nextDueAt: addReturnCycle(activatedAt),
+    paymentsPosted: 0,
+  };
+}
+
 export async function postProfitForInvestment(input: {
   record: InvestmentRecord;
   paymentNumber: number;
@@ -955,7 +971,6 @@ export async function handleInvestmentApi(input: {
         store: input.store,
         now,
         newInvestmentId,
-        adminSub: identity.userId,
       });
       return { statusCode: 200, body: { investment: record } };
     }
@@ -1693,7 +1708,6 @@ async function createAdminDeposit(input: {
   store: InvestmentStore;
   now: () => string;
   newInvestmentId: () => string;
-  adminSub: string;
 }): Promise<InvestmentRecord> {
   if (!input.body || typeof input.body !== "object" || Array.isArray(input.body)) {
     throw new InvestmentRequestError(400, "invalid_body", "Choose a member and an amount.");
@@ -1703,7 +1717,7 @@ async function createAdminDeposit(input: {
   if (typeof ownerSub !== "string" || ownerSub.length === 0) {
     throw new InvestmentRequestError(400, "invalid_body", "Choose a member.");
   }
-  const plan = planFromBody(input.body);
+  const plan = planFromAdminBody(source);
   const idempotencyKey = readIdempotencyKey(input.idempotencyKey);
   const timestamp = input.now();
   for (let attempt = 0; attempt < 3; attempt += 1) {
@@ -1719,19 +1733,41 @@ async function createAdminDeposit(input: {
       amountMinor: plan.amountMinor,
       currency: INVESTMENT_CURRENCY,
       scale: INVESTMENT_SCALE,
-      status: "active",
+      status: "pending_verification",
       createdAt: timestamp,
       updatedAt: timestamp,
       statusChangedAt: timestamp,
-      activatedAt: timestamp,
-      activatedBy: input.adminSub,
-      depositReference: "ADMIN-DEPOSIT",
     };
     const outcome = await input.store.create(record, idempotencyKey);
     if (outcome.result === "created") {
       return record;
     }
+    if (outcome.result === "exists") {
+      const existing = await input.store.getById(ownerSub, outcome.investmentId);
+      if (!existing || existing.ownerSub !== ownerSub) {
+        throw new InvestmentRequestError(500, "idempotency_failed", "Could not reuse that investment request.");
+      }
+      if (existing.planId !== plan.planId || existing.amountMinor !== plan.amountMinor) {
+        throw new InvestmentRequestError(409, "idempotency_conflict", "That request was already used for a different investment.");
+      }
+      return existing;
+    }
   }
   throw new InvestmentRequestError(500, "id_generation_failed", "Could not create an investment.");
+}
+
+function planFromAdminBody(source: Record<string, unknown>): { planId: StoredPlanId; planName: string; amountMinor: number } {
+  const extra = Object.keys(source).filter((key) => key !== "ownerSub" && key !== "planId" && key !== "amountMinor");
+  if (extra.length > 0) {
+    throw new InvestmentRequestError(400, "invalid_body", "Choose a member and a plan.");
+  }
+  const planBody: Record<string, unknown> = {};
+  if ("planId" in source) {
+    planBody.planId = source.planId;
+  }
+  if (source.planId === "custom" && "amountMinor" in source) {
+    planBody.amountMinor = source.amountMinor;
+  }
+  return planFromBody(planBody);
 }
 

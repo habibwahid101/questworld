@@ -18,7 +18,7 @@ import type {
   WithdrawalReview,
   WithdrawalReviewResult,
 } from "./service.ts";
-import { addReturnCycle } from "./service.ts";
+import { addReturnCycle, investmentActivation } from "./service.ts";
 
 export function createMemoryInvestmentStore(seed: readonly InvestmentRecord[] = []): InvestmentStore {
   const investments = new Map<string, InvestmentRecord>();
@@ -108,20 +108,15 @@ export function createMemoryInvestmentStore(seed: readonly InvestmentRecord[] = 
         return { result: "rejected" };
       }
       const confirming = review.decision === "deposit_verified";
+      const activation = confirming ? investmentActivation(review.reviewedAt, review.reviewedBy) : null;
       const record: InvestmentRecord = {
         ...current,
-        status: confirming ? "active" : review.decision,
+        ...(activation ?? { status: review.decision }),
         reviewedAt: review.reviewedAt,
         reviewedBy: review.reviewedBy,
         updatedAt: review.reviewedAt,
         statusChangedAt: review.reviewedAt,
       };
-      if (confirming) {
-        record.activatedAt = review.reviewedAt;
-        record.activatedBy = review.reviewedBy;
-        record.nextDueAt = addReturnCycle(review.reviewedAt);
-        record.paymentsPosted = 0;
-      }
       if (review.decision === "rejected" && review.rejectionReason) {
         record.rejectionReason = review.rejectionReason;
       } else {
@@ -134,8 +129,8 @@ export function createMemoryInvestmentStore(seed: readonly InvestmentRecord[] = 
       const matches = [...investments.values()].filter((record) => record.investmentId === investmentId);
       return matches.length === 1 ? structuredClone(matches[0]) : null;
     },
-    async activateInvestment(activation: InvestmentActivation): Promise<InvestmentActivationResult> {
-      const found = [...investments.entries()].find(([, record]) => record.investmentId === activation.investmentId);
+    async activateInvestment(request: InvestmentActivation): Promise<InvestmentActivationResult> {
+      const found = [...investments.entries()].find(([, record]) => record.investmentId === request.investmentId);
       if (!found) {
         return { result: "not-found" };
       }
@@ -143,13 +138,10 @@ export function createMemoryInvestmentStore(seed: readonly InvestmentRecord[] = 
       if (current.status !== "deposit_verified") {
         return { result: "rejected" };
       }
+      const activation = investmentActivation(request.activatedAt, request.activatedBy);
       const record: InvestmentRecord = {
         ...current,
-        status: "active",
-        activatedAt: activation.activatedAt,
-        activatedBy: activation.activatedBy,
-        nextDueAt: addReturnCycle(activation.activatedAt),
-        paymentsPosted: 0,
+        ...activation,
         updatedAt: activation.activatedAt,
         statusChangedAt: activation.activatedAt,
       };

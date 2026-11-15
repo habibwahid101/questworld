@@ -1,13 +1,13 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { AdminRecordTable } from "@/components/admin/AdminRecordTable";
 import { useStoredMembers } from "@/components/admin/useStoredMembers";
 import { adminTableRow, investmentColumns } from "@/lib/admin/table";
 import { InvestmentClientError, activateVerifiedInvestment, createAdminDeposit, listPendingDeposits, listVerifiedDeposits, readCurrentDepositAddresses, readDepositProofUrl, reviewPendingDeposit, saveDepositAddresses } from "@/lib/investments/client";
-import { formatUsdtAmount, type InvestmentRecord, type InvestmentStatus } from "@/lib/investments/service";
+import { formatUsdtAmount, investmentCatalog, type InvestmentRecord, type InvestmentStatus, type PlanId } from "@/lib/investments/service";
 import { isMemberApiConfigured } from "@/lib/members/config";
 import styles from "./AdminDepositsPanel.module.css";
 
@@ -25,8 +25,10 @@ export function AdminDepositsPanel() {
   const [verified, setVerified] = useState<InvestmentRecord[]>([]);
   const [message, setMessage] = useState<string | null>(null);
   const [depositEmail, setDepositEmail] = useState("");
+  const [depositPlan, setDepositPlan] = useState<PlanId | "custom" | "">("");
   const [depositAmount, setDepositAmount] = useState("");
   const [depositing, setDepositing] = useState(false);
+  const depositKey = useRef<string | null>(null);
   const [loading, setLoading] = useState(isMemberApiConfigured());
   const [saving, setSaving] = useState<{ id: string; kind: "verify" | "reject" | "activate" | "screenshot" } | null>(null);
   const [bep20Draft, setBep20Draft] = useState("");
@@ -67,7 +69,7 @@ export function AdminDepositsPanel() {
   }, [load]);
 
   async function adminDeposit() {
-    if (depositing || !depositEmail || !depositAmount) {
+    if (depositing || !depositEmail || !depositPlan || (depositPlan === "custom" && !depositAmount)) {
       return;
     }
     const member = (members ?? []).find((item) => item.email.toLowerCase() === depositEmail.toLowerCase());
@@ -76,22 +78,36 @@ export function AdminDepositsPanel() {
       return;
     }
     const amount = Number(depositAmount);
-    if (!Number.isFinite(amount) || amount <= 0) {
+    if (depositPlan === "custom" && (!Number.isFinite(amount) || amount <= 0)) {
       setMessage("Enter a valid amount.");
       return;
     }
     setDepositing(true);
     setMessage(null);
+    const idempotencyKey = depositKey.current ?? crypto.randomUUID();
+    depositKey.current = idempotencyKey;
     try {
-      await createAdminDeposit(member.userId, "custom", Math.round(amount * 1_000_000));
-      setMessage("Deposit created and activated for " + member.name + ".");
-      setDepositEmail("");
-      setDepositAmount("");
-      await load();
+      await createAdminDeposit(
+        member.userId,
+        depositPlan,
+        depositPlan === "custom" ? Math.round(amount * 1_000_000) : undefined,
+        idempotencyKey,
+      );
+      depositKey.current = null;
     } catch (caught) {
       setMessage(caught instanceof InvestmentClientError ? caught.message : "Could not create that deposit.");
+      return;
     } finally {
       setDepositing(false);
+    }
+    setMessage("Deposit recorded for " + member.name + ". Confirm it after the funding is verified.");
+    setDepositEmail("");
+    setDepositPlan("");
+    setDepositAmount("");
+    try {
+      await load();
+    } catch {
+      setMessage("Deposit recorded for " + member.name + ", but the list could not be refreshed.");
     }
   }
 
@@ -223,7 +239,7 @@ export function AdminDepositsPanel() {
       </Card>
       <Card>
         <h2>Deposit for a member</h2>
-        <p className="lead" style={{ marginTop: 8 }}>Creates an active investment for the member. This does not move money.</p>
+        <p className="lead" style={{ marginTop: 8 }}>Records a pending investment for the member. Confirm it after the funding is verified. This does not move money.</p>
         <form className="stack" style={{ marginTop: 16 }} onSubmit={(event) => { event.preventDefault(); void adminDeposit(); }}>
           <div>
             <label htmlFor="admin-deposit-email">Member email</label>
@@ -235,10 +251,22 @@ export function AdminDepositsPanel() {
             </select>
           </div>
           <div>
-            <label htmlFor="admin-deposit-amount">Amount (USDT)</label>
-            <input id="admin-deposit-amount" type="number" min="1" value={depositAmount} onChange={(event) => setDepositAmount(event.target.value)} style={{ display: "block", width: "100%", marginTop: 8 }} />
+            <label htmlFor="admin-deposit-plan">Plan</label>
+            <select id="admin-deposit-plan" value={depositPlan} onChange={(event) => setDepositPlan(event.target.value as PlanId | "custom" | "")} style={{ display: "block", width: "100%", marginTop: 8 }}>
+              <option value="">Choose a plan</option>
+              {(Object.keys(investmentCatalog) as PlanId[]).map((planId) => (
+                <option key={planId} value={planId}>{investmentCatalog[planId].planName}</option>
+              ))}
+              <option value="custom">Custom</option>
+            </select>
           </div>
-          <Button type="submit" disabled={depositing || !depositEmail || !depositAmount} aria-busy={depositing}>
+          {depositPlan === "custom" ? (
+            <div>
+              <label htmlFor="admin-deposit-amount">Amount (USDT)</label>
+              <input id="admin-deposit-amount" type="number" min="1" value={depositAmount} onChange={(event) => setDepositAmount(event.target.value)} style={{ display: "block", width: "100%", marginTop: 8 }} />
+            </div>
+          ) : null}
+          <Button type="submit" disabled={depositing || !depositEmail || !depositPlan || (depositPlan === "custom" && !depositAmount)} aria-busy={depositing}>
             {depositing ? "Creating…" : "Create deposit"}
           </Button>
           {message ? <p className="notice notice-success" style={{ marginTop: 12, fontWeight: 600, padding: "12px 16px", borderRadius: 8 }}>{message}</p> : null}

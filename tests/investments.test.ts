@@ -697,6 +697,91 @@ test("deposit address saves are allowed by CORS", () => {
   assert.match(origins, /https:\/\/www\.questraworld\.online/);
 });
 
+test("an admin-created deposit is scheduled like a confirmed member deposit and a repeat is the same investment", async () => {
+  const store = createMemoryInvestmentStore();
+  const sponsors: SponsorDirectory = { async sponsorOf() { return null; } };
+  const admin = { sub: "admin-1", email: "admin@example.com", "cognito:groups": "Admins" };
+  const create = (body: unknown, idempotencyKey: string) =>
+    handleInvestmentApi({
+      method: "POST",
+      path: "/admin/investments",
+      claims: admin,
+      body,
+      idempotencyKey,
+      store,
+      now: () => NOW,
+      newInvestmentId: ids("00000000-0000-4000-8000"),
+    });
+
+  const member = await handleInvestmentApi({
+    method: "POST",
+    path: "/admin/investments",
+    claims: claims("member-1"),
+    body: { ownerSub: "member-1", planId: "starter" },
+    idempotencyKey: "admin-deposit-member",
+    store,
+    now: () => NOW,
+    newInvestmentId: ids("20000000-0000-4000-8000"),
+  });
+  assert.equal(member.statusCode, 403);
+  assert.equal((await store.listByOwner("member-1")).length, 0);
+
+  const unknown = await handleInvestmentApi({
+    method: "POST",
+    path: "/admin/investments",
+    claims: admin,
+    body: { ownerSub: "member-1", planId: "starter" },
+    idempotencyKey: "admin-deposit-catalog",
+    store,
+    now: () => NOW,
+    newInvestmentId: ids("10000000-0000-4000-8000"),
+  });
+  assert.equal(unknown.statusCode, 400);
+  assert.equal(unknown.body.error, "invalid_body");
+  assert.equal((await store.listByOwner("member-1")).length, 0);
+
+  const created = await create({ ownerSub: "member-1", planId: "custom", amountMinor: 1 }, "admin-deposit-small");
+  assert.equal(created.statusCode, 400);
+  assert.equal(created.body.error, "invalid_amount");
+
+  const amountMinor = 100_000_000;
+  const first = await create({ ownerSub: "member-1", planId: "custom", amountMinor }, "admin-deposit-1");
+  assert.equal(first.statusCode, 200);
+  const investment = first.body.investment as InvestmentRecord;
+  assert.equal(investment.status, "active");
+  assert.equal(investment.amountMinor, amountMinor);
+  assert.equal(investment.activatedAt, NOW);
+  assert.equal(investment.activatedBy, "admin-1");
+  assert.equal(investment.paymentsPosted, 0);
+  assert.equal(investment.nextDueAt, addReturnCycle(NOW));
+
+  const repeat = await create({ ownerSub: "member-1", planId: "custom", amountMinor: 2_000_000 }, "admin-deposit-1");
+  assert.equal(repeat.statusCode, 200);
+  const replayed = repeat.body.investment as InvestmentRecord;
+  assert.equal(replayed.investmentId, investment.investmentId);
+  assert.equal(replayed.amountMinor, amountMinor);
+  assert.equal(replayed.nextDueAt, investment.nextDueAt);
+  assert.equal(replayed.paymentsPosted, 0);
+  assert.equal((await store.listByOwner("member-1")).length, 1);
+
+  const early = await postDueReturns({ store, sponsors, now: NOW });
+  assert.equal(early.posted, 0);
+  assert.equal((await store.listProfits("member-1")).length, 0);
+
+  const dueAt = addReturnCycle(NOW);
+  const posted = await postDueReturns({ store, sponsors, now: dueAt });
+  assert.equal(posted.posted, 1);
+  const saved = await store.getById("member-1", investment.investmentId);
+  assert.equal(saved?.status, "active");
+  assert.equal(saved?.paymentsPosted, 1);
+  assert.equal(saved?.amountMinor, amountMinor);
+  assert.equal(saved?.nextDueAt, addReturnCycle(dueAt));
+  const profits = await store.listProfits("member-1");
+  assert.equal(profits.length, 1);
+  assert.equal(profits[0]?.profitMinor, returnPaymentMinor(amountMinor, 1));
+  assert.equal(profits[0]?.paymentNumber, 1);
+});
+
 test("a due return posts once, keeps the principal, and completes on the 12th payment", async () => {
   const activatedAt = "2026-10-01T00:00:00.000Z";
   const active: InvestmentRecord = {

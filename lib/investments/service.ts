@@ -1725,11 +1725,20 @@ async function createAdminDeposit(input: {
       statusChangedAt: timestamp,
       activatedAt: timestamp,
       activatedBy: input.adminSub,
+      nextDueAt: addReturnCycle(timestamp),
+      paymentsPosted: 0,
       depositReference: "ADMIN-DEPOSIT",
     };
     const outcome = await input.store.create(record, idempotencyKey);
     if (outcome.result === "created") {
       return record;
+    }
+    if (outcome.result === "exists") {
+      const existing = await input.store.getById(ownerSub, outcome.investmentId);
+      if (!existing || existing.ownerSub !== ownerSub) {
+        throw new InvestmentRequestError(500, "idempotency_failed", "Could not reuse that investment request.");
+      }
+      return existing;
     }
   }
   throw new InvestmentRequestError(500, "id_generation_failed", "Could not create an investment.");

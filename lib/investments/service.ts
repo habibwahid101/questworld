@@ -564,6 +564,20 @@ export async function postDueReturns(input: {
   return summary;
 }
 
+export function dailyReturnsCompletion(
+  postedAt: string,
+  summary: { posted: number; duplicate: number; skipped: number; completed: number },
+): {
+  event: "daily_returns_complete";
+  postedAt: string;
+  posted: number;
+  duplicate: number;
+  skipped: number;
+  completed: number;
+} {
+  return { event: "daily_returns_complete", postedAt, ...summary };
+}
+
 export function commissionMinor(amountMinor: number, generation: CommissionGeneration): number {
   if (!Number.isSafeInteger(amountMinor) || amountMinor < 0) {
     throw new InvestmentRequestError(500, "invalid_commission_amount", "That investment amount cannot earn commission.");

@@ -17,6 +17,7 @@ import {
   handleInvestmentApi,
   investmentFromStoredItem,
   postDueReturns,
+  dailyReturnsCompletion,
   addReturnCycle,
   investmentActivation,
   profitFromStoredItem,
@@ -77,16 +78,21 @@ export async function handler(event: ApiGatewayEvent): Promise<{
 }> {
   const tableName = process.env.INVESTMENTS_TABLE_NAME;
   const membersTableName = process.env.MEMBERS_TABLE_NAME;
-  if (!tableName || !membersTableName) {
-    return json(500, { error: "configuration", message: "Investment storage is not configured." });
-  }
 
   if (event.source === "aws.events") {
+    if (!tableName || !membersTableName) {
+      throw new Error("Investment storage is not configured.");
+    }
     const postedAt = typeof event.time === "string" ? event.time : new Date().toISOString();
     const store = createDynamoInvestmentStore(tableName);
     const sponsors = { sponsorOf: (userId: string) => sponsorOf(membersTableName, userId) };
     const returns = await postDueReturns({ store, sponsors, now: postedAt });
+    console.log(JSON.stringify(dailyReturnsCompletion(postedAt, returns)));
     return json(200, returns);
+  }
+
+  if (!tableName || !membersTableName) {
+    return json(500, { error: "configuration", message: "Investment storage is not configured." });
   }
 
   let body: unknown;

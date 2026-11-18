@@ -51,6 +51,7 @@ const investmentStatusLabel: Record<InvestmentStatus, string> = {
 const withdrawalStatusLabel: Record<WithdrawalStatus, string> = {
   pending_review: "Pending review",
   approved: "Approved",
+  paid: "Paid",
   rejected: "Rejected",
 };
 

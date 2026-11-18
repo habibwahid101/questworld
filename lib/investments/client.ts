@@ -161,6 +161,9 @@ export async function reviewAdminWithdrawal(
     `/admin/withdrawals/${encodeURIComponent(withdrawalId)}/review`,
     { decision },
   );
+  if (!payload.withdrawal) {
+    throw new InvestmentClientError("investment_request_failed", "Could not save that review.");
+  }
   return payload.withdrawal;
 }
 

@@ -17,8 +17,10 @@ import type {
   WithdrawalRequest,
   WithdrawalReview,
   WithdrawalReviewResult,
+  WithdrawalPayoutResult,
 } from "./service.ts";
 import { addReturnCycle, investmentActivation } from "./service.ts";
+import { readPayoutHash } from "../deposits/address.ts";
 
 export function createMemoryInvestmentStore(seed: readonly InvestmentRecord[] = []): InvestmentStore {
   const investments = new Map<string, InvestmentRecord>();
@@ -272,6 +274,39 @@ export function createMemoryInvestmentStore(seed: readonly InvestmentRecord[] = 
       };
       withdrawals.set(key, request);
       return { result: "reviewed", request: structuredClone(request) };
+    },
+    async recordPayout(payout): Promise<WithdrawalPayoutResult> {
+      const found = [...withdrawals.entries()].find(([, request]) => request.withdrawalId === payout.withdrawalId);
+      if (!found) {
+        return { result: "not-found" };
+      }
+      const [key, current] = found;
+      const hash = current.network ? readPayoutHash(current.network, payout.transactionHash) : "";
+      if (
+        current.status === "paid" &&
+        hash &&
+        current.payoutReference === hash &&
+        current.payoutNetwork === current.network
+      ) {
+        return { result: "replay", request: structuredClone(current) };
+      }
+      if (current.status !== "approved" || !current.network || !current.destination) {
+        return { result: "conflict" };
+      }
+      if (!hash) {
+        return { result: "invalid" };
+      }
+      const request: WithdrawalRequest = {
+        ...current,
+        status: "paid",
+        payoutReference: hash,
+        payoutNetwork: current.network,
+        paidAt: payout.paidAt,
+        paidBy: payout.paidBy,
+        updatedAt: payout.paidAt,
+      };
+      withdrawals.set(key, request);
+      return { result: "paid", request: structuredClone(request) };
     },
     async getById(ownerSub, investmentId) {
       const found = investments.get(`${ownerSub}#${investmentId}`);

@@ -94,7 +94,7 @@ export function transactionHistory(input: {
       id: `withdrawal:${request.withdrawalId}`,
       title: "Withdrawal",
       at: request.createdAt,
-      flow: request.status,
+      flow: request.status === "paid" && request.payoutReference ? `Paid ${request.payoutNetwork ?? ""} ${request.payoutReference}`.trim() : request.status,
       ownerSub: request.ownerSub,
       amountMinor: request.amountMinor,
       scale: request.scale,

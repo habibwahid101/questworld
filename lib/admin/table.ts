@@ -86,7 +86,7 @@ export const investmentColumns: readonly AdminTableColumn[] = adminTableColumns;
 
 export const profitColumns: readonly AdminTableColumn[] = ["who", "recorded", "plan", "amount", "status"];
 
-export const withdrawalColumns: readonly AdminTableColumn[] = ["who", "recorded", "amount", "status", "reviewed"];
+export const withdrawalColumns: readonly AdminTableColumn[] = ["who", "recorded", "amount", "status", "reference", "reviewed"];
 
 export function filterAdminRows(rows: readonly AdminTableRow[], query: string): AdminTableRow[] {
   const needle = query.trim().toLowerCase();

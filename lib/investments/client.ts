@@ -72,10 +72,17 @@ export async function listCurrentWithdrawals(): Promise<{ withdrawals: Withdrawa
   return { withdrawals: payload.withdrawals ?? [], availableMinor: payload.availableMinor ?? 0 };
 }
 
-export async function requestCurrentWithdrawal(amountMinor: number, transactionPassword: string): Promise<WithdrawalRequest> {
+export async function requestCurrentWithdrawal(
+  amountMinor: number,
+  transactionPassword: string,
+  network: "BEP20" | "TRC20",
+  destination: string,
+): Promise<WithdrawalRequest> {
   const payload = await investmentRequest<{ withdrawal?: WithdrawalRequest }>("POST", "/withdrawals", {
     amountMinor,
     transactionPassword,
+    network,
+    destination,
   });
   if (!payload.withdrawal) {
     throw new InvestmentClientError("investment_request_failed", "Could not save that withdrawal request.");
@@ -154,8 +161,17 @@ export async function reviewAdminWithdrawal(
     `/admin/withdrawals/${encodeURIComponent(withdrawalId)}/review`,
     { decision },
   );
+  return payload.withdrawal;
+}
+
+export async function recordAdminPayout(withdrawalId: string, transactionHash: string): Promise<WithdrawalRequest> {
+  const payload = await investmentRequest<{ withdrawal?: WithdrawalRequest }>(
+    "POST",
+    `/admin/withdrawals/${encodeURIComponent(withdrawalId)}/payout`,
+    { transactionHash },
+  );
   if (!payload.withdrawal) {
-    throw new InvestmentClientError("investment_request_failed", "Could not save that review.");
+    throw new InvestmentClientError("investment_request_failed", "Could not record that payout.");
   }
   return payload.withdrawal;
 }

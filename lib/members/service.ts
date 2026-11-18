@@ -1,4 +1,5 @@
 import { passwordIssue, TRANSACTION_PASSWORD_MIN } from "../auth/password.ts";
+import { PRIVACY_VERSION, registrationAcceptanceId, TERMS_VERSION, type LegalAcceptanceRecord } from "../legal/versions.ts";
 import { isAdminClaims } from "../investments/service.ts";
 import { hashTransactionPassword, verifyTransactionPassword } from "./transaction-password.ts";
 
@@ -104,7 +105,8 @@ export type MemberStore = {
   listMembers(): Promise<MemberRecord[]>;
   findRegistrationConflict(input: { userId: string; email: string; phone: string | null }): Promise<"email" | "phone" | null>;
   getPhoneOwner(phone: string): Promise<string | null>;
-  createMember(member: MemberRecord): Promise<CreateResult>;
+  createMember(member: MemberRecord, acceptance?: LegalAcceptanceRecord): Promise<CreateResult>;
+  getLegalAcceptance(memberId: string): Promise<LegalAcceptanceRecord | null>;
   completeMember(userId: string, fill: MemberCompletion): Promise<CompleteMemberResult>;
   updateProfile(userId: string, patch: ProfilePatch): Promise<ProfileUpdateResult>;
   setTransactionPassword(userId: string, hash: string, updatedAt: string): Promise<MemberRecord | null>;
@@ -207,6 +209,7 @@ export async function initializeMember(input: {
   referralCode?: string;
   profile?: { firstName: string; lastName: string; phone: string; country?: string | null } | null;
   transactionPassword?: string | null;
+  body?: unknown;
   store: MemberStore;
   now: () => string;
   newReferralCode?: () => string;
@@ -214,6 +217,13 @@ export async function initializeMember(input: {
   const existing = await input.store.getByUserId(input.identity.userId);
   if (existing) {
     return fillMissingMember(existing, input);
+  }
+  const acceptanceFlags = acceptanceFlagsFromBody(input.body);
+  if (!acceptanceFlags.acceptTerms) {
+    throw new MemberRequestError(400, "terms_acceptance_required", "Accept the Terms of Service to continue.");
+  }
+  if (!acceptanceFlags.acceptPrivacy) {
+    throw new MemberRequestError(400, "privacy_acceptance_required", "Acknowledge the Privacy Policy to continue.");
   }
 
   const conflict = await input.store.findRegistrationConflict({
@@ -255,7 +265,15 @@ export async function initializeMember(input: {
       updatedAt: timestamp,
       status: "active",
     };
-    const result = await input.store.createMember(member);
+    const acceptance: LegalAcceptanceRecord = {
+      acceptanceId: registrationAcceptanceId(input.identity.userId),
+      memberId: input.identity.userId,
+      termsVersion: TERMS_VERSION,
+      privacyVersion: PRIVACY_VERSION,
+      acceptedAt: timestamp,
+      acceptanceMethod: "registration",
+    };
+    const result = await input.store.createMember(member, acceptance);
     if (result === "created") {
       return member;
     }
@@ -603,6 +621,7 @@ export async function handleMemberApi(input: {
         referralCode,
         profile,
         transactionPassword,
+        body: input.body,
         store: input.store,
         now,
         newReferralCode: input.newReferralCode,
@@ -852,6 +871,17 @@ export function profilePhoneIndexPlan(
     phoneTaken: false,
     releaseOldKey: oldKey && oldKey !== newKey && oldOwner === userId ? oldKey : "",
     claimNewKey: newKey && (newKey !== oldKey || !newOwner) ? newKey : "",
+  };
+}
+
+function acceptanceFlagsFromBody(body: unknown): { acceptTerms: boolean; acceptPrivacy: boolean } {
+  if (!body || typeof body !== "object" || Array.isArray(body)) {
+    return { acceptTerms: false, acceptPrivacy: false };
+  }
+  const source = body as Record<string, unknown>;
+  return {
+    acceptTerms: source.acceptTerms === true,
+    acceptPrivacy: source.acceptPrivacy === true,
   };
 }
 

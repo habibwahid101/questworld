@@ -1,4 +1,5 @@
 import { profilePhoneIndexPlan, registrationPhoneKey, type CompleteMemberResult, type CreateResult, type MemberCompletion, type MemberRecord, type MemberStore, type ProfilePatch, type ProfileUpdateResult } from "./service.ts";
+import type { LegalAcceptanceRecord } from "../legal/versions.ts";
 
 export type MemoryMemberStore = MemberStore & {
   setPhoneWithoutIndex(userId: string, phone: string | null): void;
@@ -8,6 +9,7 @@ export function createMemoryMemberStore(): MemoryMemberStore {
   const members = new Map<string, MemberRecord>();
   const codes = new Map<string, string>();
   const phones = new Map<string, string>();
+  const acceptances = new Map<string, LegalAcceptanceRecord>();
 
   return {
     async getByUserId(userId) {
@@ -30,7 +32,7 @@ export function createMemoryMemberStore(): MemoryMemberStore {
       }
       return phones.get(key) ?? null;
     },
-    async createMember(member): Promise<CreateResult> {
+    async createMember(member, acceptance): Promise<CreateResult> {
       if (members.has(member.userId)) {
         return "exists";
       }
@@ -50,7 +52,14 @@ export function createMemoryMemberStore(): MemoryMemberStore {
       if (phoneKey) {
         phones.set(phoneKey, member.userId);
       }
+      if (acceptance && acceptance.memberId === member.userId) {
+        acceptances.set(acceptance.acceptanceId, structuredClone(acceptance));
+      }
       return "created";
+    },
+    async getLegalAcceptance(memberId) {
+      const found = [...acceptances.values()].find((record) => record.memberId === memberId);
+      return found ? structuredClone(found) : null;
     },
     async completeMember(userId, fill: MemberCompletion): Promise<CompleteMemberResult> {
       const current = members.get(userId);

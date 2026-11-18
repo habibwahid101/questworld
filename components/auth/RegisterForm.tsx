@@ -14,6 +14,7 @@ import { normalizeReferralCode, referralCodeFromLink, rememberPendingReferral } 
 import { canInitializeSubmittedAccount, normalizeSignupEmail, readyAccountStillValid, type ReadyAccount, type SignupPrincipal } from "@/lib/auth/signup-session";
 import { rememberPendingSignupProfile, readPendingSignupProfile } from "@/lib/auth/signup-profile";
 import { countryNames } from "@/constants/countries";
+import { TERMS_VERSION, PRIVACY_VERSION } from "@/lib/legal/versions";
 import { checkReferralCode, initializeCurrentMember, MemberClientError } from "@/lib/members/client";
 import fieldStyles from "./AuthFields.module.css";
 import styles from "./RegisterForm.module.css";
@@ -82,7 +83,8 @@ export function RegisterForm() {
     const confirmPassword = String(form.get("confirmPassword") ?? "");
     const transactionPassword = String(form.get("transactionPassword") ?? "");
     const confirmTransactionPassword = String(form.get("confirmTransactionPassword") ?? "");
-    const accepted = form.get("terms") === "on";
+    const acceptedTerms = form.get("acceptTerms") === "on";
+    const acceptedPrivacy = form.get("acceptPrivacy") === "on";
     const issue = passwordIssue(password);
     const transactionIssue = passwordIssue(transactionPassword, TRANSACTION_PASSWORD_MIN);
     const nextErrors: Record<string, string> = {};
@@ -117,8 +119,11 @@ export function RegisterForm() {
     if (transactionPassword === password && transactionPassword.length > 0) {
       nextErrors.confirmTransactionPassword = "Use a transaction password that is not your login password.";
     }
-    if (!accepted) {
-      nextErrors.terms = "Accept the Terms & Conditions and Privacy Policy to continue.";
+    if (!acceptedTerms) {
+      nextErrors.acceptTerms = "Accept the Terms of Service to continue.";
+    }
+    if (!acceptedPrivacy) {
+      nextErrors.acceptPrivacy = "Acknowledge the Privacy Policy to continue.";
     }
     return nextErrors;
   }
@@ -235,7 +240,7 @@ export function RegisterForm() {
         return;
       }
       setProgress("Saving your profile…");
-      await initializeCurrentMember(referral, { ...profile, transactionPassword });
+      await initializeCurrentMember(referral, { ...profile, transactionPassword }, { acceptTerms: true, acceptPrivacy: true });
       await refresh();
       router.replace("/dashboard");
     } catch (caught) {
@@ -350,16 +355,28 @@ export function RegisterForm() {
           onChange={(event) => setReferralCode(event.target.value)}
         />
       </Field>
-      <label htmlFor="terms" className="cluster">
-        <input id="terms" name="terms" type="checkbox" required disabled={submitting} />
+      <label htmlFor="acceptTerms" className="cluster">
+        <input id="acceptTerms" name="acceptTerms" type="checkbox" required disabled={submitting} />
         <span>
-          I agree to the <Link href="/terms">Terms & Conditions</Link> and{" "}
-          <Link href="/privacy">Privacy Policy</Link>.
+          I have read and agree to the Questra World{" "}
+          <Link href="/terms">Terms of Service</Link> (Version {TERMS_VERSION}).
         </span>
       </label>
-      {errors.terms ? (
+      {errors.acceptTerms ? (
         <p className="form-error" role="alert">
-          {errors.terms}
+          {errors.acceptTerms}
+        </p>
+      ) : null}
+      <label htmlFor="acceptPrivacy" className="cluster">
+        <input id="acceptPrivacy" name="acceptPrivacy" type="checkbox" required disabled={submitting} />
+        <span>
+          I have read and acknowledge the Questra World{" "}
+          <Link href="/privacy">Privacy Policy</Link> (Version {PRIVACY_VERSION}).
+        </span>
+      </label>
+      {errors.acceptPrivacy ? (
+        <p className="form-error" role="alert">
+          {errors.acceptPrivacy}
         </p>
       ) : null}
       {progress ? (

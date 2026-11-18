@@ -15,8 +15,9 @@ export class MemberClientError extends Error {
 export async function initializeCurrentMember(
   referralCode: string,
   profile?: { firstName: string; lastName: string; phone: string; country?: string | null; transactionPassword?: string } | null,
+  acceptance?: { acceptTerms: boolean; acceptPrivacy: boolean },
 ): Promise<MemberProfile> {
-  const body: Record<string, string> = {};
+  const body: Record<string, string | boolean> = {};
   if (referralCode) {
     body.referralCode = referralCode;
   }
@@ -30,6 +31,10 @@ export async function initializeCurrentMember(
     if (profile.transactionPassword) {
       body.transactionPassword = profile.transactionPassword;
     }
+  }
+  if (acceptance) {
+    body.acceptTerms = acceptance.acceptTerms;
+    body.acceptPrivacy = acceptance.acceptPrivacy;
   }
   return memberRequest("POST", "/me/initialize", body);
 }

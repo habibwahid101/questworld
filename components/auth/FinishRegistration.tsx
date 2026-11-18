@@ -1,6 +1,7 @@
 "use client";
 
 import { FormEvent, useEffect, useState } from "react";
+import Link from "next/link";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { Field, Input, Select } from "@/components/ui/Field";
@@ -9,6 +10,7 @@ import { passwordIssue, TRANSACTION_PASSWORD_MIN } from "@/lib/auth/password";
 import { normalizeReferralCode, readPendingReferral, rememberPendingReferral } from "@/lib/auth/referral";
 import { readPendingSignupProfile, rememberPendingSignupProfile } from "@/lib/auth/signup-profile";
 import { countryNames } from "@/constants/countries";
+import { PRIVACY_VERSION, TERMS_VERSION } from "@/lib/legal/versions";
 import { checkReferralCode, initializeCurrentMember, MemberClientError } from "@/lib/members/client";
 import type { MemberProfile } from "@/lib/members/service";
 
@@ -65,6 +67,12 @@ export function FinishRegistration({ onComplete }: { onComplete: (member: Member
     if (transactionPassword !== confirmTransactionPassword) {
       nextErrors.confirmTransactionPassword = "Transaction passwords do not match.";
     }
+    if (form.get("acceptTerms") !== "on") {
+      nextErrors.acceptTerms = "Accept the Terms of Service to continue.";
+    }
+    if (form.get("acceptPrivacy") !== "on") {
+      nextErrors.acceptPrivacy = "Acknowledge the Privacy Policy to continue.";
+    }
     if (Object.keys(nextErrors).length > 0) {
       setErrors(nextErrors);
       return;
@@ -98,7 +106,7 @@ export function FinishRegistration({ onComplete }: { onComplete: (member: Member
 
     setProgress("Saving your profile…");
     try {
-      const member = await initializeCurrentMember(referral, { ...profile, transactionPassword });
+      const member = await initializeCurrentMember(referral, { ...profile, transactionPassword }, { acceptTerms: true, acceptPrivacy: true });
       onComplete(member);
     } catch (caught) {
       const error = caught instanceof MemberClientError ? caught : new MemberClientError("member_request_failed", "Could not save your profile. Submit again.");
@@ -153,6 +161,20 @@ export function FinishRegistration({ onComplete }: { onComplete: (member: Member
         <Field label="Referral Code — Optional" htmlFor="finish-referral" error={errors.referralCode} hint="Leave this blank if you do not have a referral code.">
           <Input id="finish-referral" value={referralCode} onChange={(event) => setReferralCode(event.target.value)} autoComplete="off" disabled={submitting} />
         </Field>
+        <label htmlFor="finish-accept-terms" className="cluster">
+          <input id="finish-accept-terms" name="acceptTerms" type="checkbox" required disabled={submitting} />
+          <span>
+            I have read and agree to the Questra World <Link href="/terms">Terms of Service</Link> (Version {TERMS_VERSION}).
+          </span>
+        </label>
+        {errors.acceptTerms ? <p className="form-error" role="alert">{errors.acceptTerms}</p> : null}
+        <label htmlFor="finish-accept-privacy" className="cluster">
+          <input id="finish-accept-privacy" name="acceptPrivacy" type="checkbox" required disabled={submitting} />
+          <span>
+            I have read and acknowledge the Questra World <Link href="/privacy">Privacy Policy</Link> (Version {PRIVACY_VERSION}).
+          </span>
+        </label>
+        {errors.acceptPrivacy ? <p className="form-error" role="alert">{errors.acceptPrivacy}</p> : null}
         {errors.form ? (
           <p className="form-error" role="alert">
             {errors.form}

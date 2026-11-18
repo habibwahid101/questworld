@@ -24,10 +24,12 @@ import {
   type ProfilePhotoStore,
   type ProfileUpdateResult,
 } from "../../../lib/members/service";
+import { PRIVACY_VERSION, TERMS_VERSION, type LegalAcceptanceRecord } from "../../../lib/legal/versions";
 
 const PROFILE_SK = "PROFILE";
 const OWNER_SK = "OWNER";
 const UNIQUE_SK = "UNIQUE";
+const ACCEPTANCE_SK = `ACCEPTANCE#${TERMS_VERSION}#${PRIVACY_VERSION}`;
 const PROFILE_UPDATE_ATTEMPTS = 3;
 
 type ApiGatewayEvent = {
@@ -217,7 +219,7 @@ export function createDynamoMemberStore(tableName: string, client: DynamoDBDocum
       } while (startKey);
       return emailConflict ? "email" : null;
     },
-    async createMember(member) {
+    async createMember(member, acceptance) {
       try {
         await client.send(
           new TransactWriteCommand({
@@ -266,13 +268,45 @@ export function createDynamoMemberStore(tableName: string, client: DynamoDBDocum
                     },
                   ]
                 : []),
+              ...(acceptance ? [acceptancePut(tableName, acceptance)] : []),
             ],
           }),
         );
         return "created";
       } catch (caught) {
-        return cancellationResult(caught);
+        const hasPhone = Boolean(registrationPhoneKey(member.phone));
+        return cancellationResult(caught, {
+          phoneIndex: hasPhone ? 3 : null,
+        });
       }
+    },
+    async getLegalAcceptance(memberId) {
+      const response = await client.send(
+        new GetCommand({
+          TableName: tableName,
+          Key: { pk: userKey(memberId), sk: ACCEPTANCE_SK },
+          ConsistentRead: true,
+        }),
+      );
+      const item = response.Item;
+      if (!item || item.memberId !== memberId || item.termsVersion !== TERMS_VERSION || item.privacyVersion !== PRIVACY_VERSION) {
+        return null;
+      }
+      if (
+        typeof item.acceptanceId !== "string" ||
+        typeof item.acceptedAt !== "string" ||
+        item.acceptanceMethod !== "registration"
+      ) {
+        return null;
+      }
+      return {
+        acceptanceId: item.acceptanceId,
+        memberId,
+        termsVersion: TERMS_VERSION,
+        privacyVersion: PRIVACY_VERSION,
+        acceptedAt: item.acceptedAt,
+        acceptanceMethod: "registration",
+      };
     },
     async completeMember(userId, fill: MemberCompletion) {
       const names: Record<string, string> = {};
@@ -504,7 +538,7 @@ export function createDynamoMemberStore(tableName: string, client: DynamoDBDocum
   };
 }
 
-function cancellationResult(caught: unknown): CreateResult {
+function cancellationResult(caught: unknown, layout: { phoneIndex: number | null } = { phoneIndex: 3 }): CreateResult {
   const reasons = cancellationReasons(caught);
   if (reasons.some((reason) => reason === "ConditionalCheckFailed" || reason === "TransactionConflict")) {
     const profileFailed = reasons[0] === "ConditionalCheckFailed";
@@ -515,13 +549,13 @@ function cancellationResult(caught: unknown): CreateResult {
     if (referralFailed) {
       return "referral-taken";
     }
-    if (reasons[3] === "ConditionalCheckFailed") {
+    if (layout.phoneIndex !== null && reasons[layout.phoneIndex] === "ConditionalCheckFailed") {
       return "phone-taken";
     }
     if (reasons[2] === "ConditionalCheckFailed" || reasons[2] === "TransactionConflict") {
       return "email-taken";
     }
-    if (reasons[3] === "TransactionConflict") {
+    if (layout.phoneIndex !== null && reasons[layout.phoneIndex] === "TransactionConflict") {
       return "phone-taken";
     }
   }
@@ -676,6 +710,25 @@ function phoneStillCurrent(phone: string | null): {
     expression: "attribute_exists(pk) AND (attribute_not_exists(#phone) OR #phone = :blank OR attribute_type(#phone, :nullType))",
     names: { "#phone": "phone" },
     values: { ":blank": "", ":nullType": "NULL" },
+  };
+}
+
+function acceptancePut(tableName: string, acceptance: LegalAcceptanceRecord): NonNullable<TransactWriteCommandInput["TransactItems"]>[number] {
+  return {
+    Put: {
+      TableName: tableName,
+      Item: {
+        pk: userKey(acceptance.memberId),
+        sk: ACCEPTANCE_SK,
+        acceptanceId: acceptance.acceptanceId,
+        memberId: acceptance.memberId,
+        termsVersion: acceptance.termsVersion,
+        privacyVersion: acceptance.privacyVersion,
+        acceptedAt: acceptance.acceptedAt,
+        acceptanceMethod: acceptance.acceptanceMethod,
+      },
+      ConditionExpression: "attribute_not_exists(pk) AND attribute_not_exists(sk)",
+    },
   };
 }
 

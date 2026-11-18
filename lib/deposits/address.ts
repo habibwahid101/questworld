@@ -20,3 +20,13 @@ export function readNetworkAddress(network: DepositNetwork, value: string | unde
   }
   return trimmed;
 }
+
+const PAYOUT_HASH_PATTERNS: Record<DepositNetwork, RegExp> = {
+  BEP20: /^0x[a-fA-F0-9]{64}$/,
+  TRC20: /^[a-fA-F0-9]{64}$/,
+};
+
+export function readPayoutHash(network: DepositNetwork, value: string | undefined): string {
+  const trimmed = value?.trim() ?? "";
+  return PAYOUT_HASH_PATTERNS[network].test(trimmed) ? trimmed : "";
+}

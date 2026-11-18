@@ -13,6 +13,7 @@ import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { DynamoDBDocumentClient, GetCommand, PutCommand, QueryCommand, ScanCommand, TransactWriteCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
 import type { AdminGroupDirectory } from "../../../lib/admin/groups";
 import { verifyTransactionPassword } from "../../../lib/members/transaction-password";
+import { readPayoutHash } from "../../../lib/deposits/address";
 import {
   handleInvestmentApi,
   investmentFromStoredItem,
@@ -590,6 +591,9 @@ export function createDynamoInvestmentStore(tableName: string): InvestmentStore 
     async reviewWithdrawal(review) {
       return reviewStoredWithdrawal(tableName, review);
     },
+    async recordPayout(payout) {
+      return recordStoredPayout(tableName, payout);
+    },
     async getById(ownerSub, investmentId) {
       const response = await document.send(
         new GetCommand({
@@ -805,6 +809,73 @@ async function reviewStoredWithdrawal(tableName: string, review: WithdrawalRevie
     }
     throw caught;
   }
+}
+
+async function recordStoredPayout(
+  tableName: string,
+  payout: { withdrawalId: string; transactionHash: string; paidAt: string; paidBy: string },
+): Promise<{ result: "paid" | "replay"; request: ReturnType<typeof withdrawalFromStoredItem> } | { result: "not-found" } | { result: "invalid" } | { result: "conflict" }> {
+  const loaded = await loadWithdrawal(tableName, payout.withdrawalId);
+  if (!loaded) {
+    return { result: "not-found" };
+  }
+  const hash = loaded.network ? readPayoutHash(loaded.network, payout.transactionHash) : "";
+  if (loaded.status === "paid" && hash && loaded.payoutReference === hash && loaded.payoutNetwork === loaded.network) {
+    return { result: "replay", request: loaded };
+  }
+  if (loaded.status !== "approved" || !loaded.network || !loaded.destination) {
+    return { result: "conflict" };
+  }
+  if (!hash) {
+    return { result: "invalid" };
+  }
+  try {
+    const response = await document.send(
+      new UpdateCommand({
+        TableName: tableName,
+        Key: { pk: userKey(loaded.ownerSub), sk: `${WITHDRAWAL_PREFIX}${loaded.withdrawalId}` },
+        UpdateExpression:
+          "SET #status = :paid, payoutReference = :hash, payoutNetwork = :network, paidAt = :paidAt, paidBy = :paidBy, updatedAt = :paidAt",
+        ConditionExpression: "#status = :approved AND attribute_not_exists(payoutReference) AND #network = :network AND destination = :destination",
+        ExpressionAttributeNames: { "#status": "status", "#network": "network" },
+        ExpressionAttributeValues: {
+          ":paid": "paid",
+          ":approved": "approved",
+          ":hash": hash,
+          ":network": loaded.network,
+          ":destination": loaded.destination,
+          ":paidAt": payout.paidAt,
+          ":paidBy": payout.paidBy,
+        },
+        ReturnValues: "ALL_NEW",
+      }),
+    );
+    if (!response.Attributes) {
+      return { result: "not-found" };
+    }
+    return { result: "paid", request: withdrawalFromStoredItem(response.Attributes) };
+  } catch (caught) {
+    if (caught && typeof caught === "object" && (caught as { name?: string }).name === "ConditionalCheckFailedException") {
+      const again = await loadWithdrawal(tableName, payout.withdrawalId);
+      if (again?.status === "paid" && again.payoutReference === hash && again.payoutNetwork === again.network) {
+        return { result: "replay", request: again };
+      }
+      return { result: "conflict" };
+    }
+    throw caught;
+  }
+}
+
+async function loadWithdrawal(tableName: string, withdrawalId: string) {
+  const items = await scanMatches(tableName, {
+    FilterExpression: "sk = :sk",
+    ExpressionAttributeNames: {},
+    ExpressionAttributeValues: { ":sk": `${WITHDRAWAL_PREFIX}${withdrawalId}` },
+  });
+  if (!items[0] || items.length !== 1) {
+    return null;
+  }
+  return withdrawalFromStoredItem(items[0]);
 }
 
 async function reviewStoredDeposit(tableName: string, review: DepositReview): Promise<DepositReviewResult> {

@@ -9,12 +9,13 @@
  * A scheduled job posts one return payment when an active investment is due.
  * Twelve payments return double the investment. The 12th payment completes it.
  * The same run records sponsor commissions for that payment. It does not pay them.
- * A member can request a withdrawal of posted profit. The request does not pay out.
+ * A member can request a withdrawal of posted profit.
+ * An admin records a manual USDT payout after sending it. The server does not send funds.
  * The same monthly run records sponsor commissions. It does not pay them.
  */
 
 import { AdminGroupError, changeAdminGroup, type AdminGroupDirectory } from "../admin/groups.ts";
-import { INITIAL_DEPOSIT_ADDRESSES, readNetworkAddress } from "../deposits/address.ts";
+import { INITIAL_DEPOSIT_ADDRESSES, readNetworkAddress, readPayoutHash, type DepositNetwork } from "../deposits/address.ts";
 
 export const INVESTMENT_CURRENCY = "USDT";
 export const INVESTMENT_SCALE = 6;
@@ -124,7 +125,7 @@ export type CycleAdvance = {
 
 export type CycleAdvanceResult = "advanced" | "completed" | "conflict";
 
-export type WithdrawalStatus = "pending_review" | "approved" | "rejected";
+export type WithdrawalStatus = "pending_review" | "approved" | "rejected" | "paid";
 export type WithdrawalDecision = "approved" | "rejected";
 
 export type WithdrawalRequest = {
@@ -138,6 +139,12 @@ export type WithdrawalRequest = {
   updatedAt: string;
   reviewedAt?: string;
   reviewedBy?: string;
+  network?: DepositNetwork;
+  destination?: string;
+  payoutReference?: string;
+  payoutNetwork?: DepositNetwork;
+  paidAt?: string;
+  paidBy?: string;
 };
 
 export type CreateInvestmentResult =
@@ -174,6 +181,19 @@ export type WithdrawalReviewResult =
   | { result: "reviewed"; request: WithdrawalRequest }
   | { result: "not-found" }
   | { result: "rejected" };
+
+export type WithdrawalPayout = {
+  withdrawalId: string;
+  transactionHash: string;
+  paidAt: string;
+  paidBy: string;
+};
+
+export type WithdrawalPayoutResult =
+  | { result: "paid" | "replay"; request: WithdrawalRequest }
+  | { result: "not-found" }
+  | { result: "invalid" }
+  | { result: "conflict" };
 
 export type DepositSubmissionResult = { result: "submitted" } | { result: "exists" } | { result: "not-found" } | { result: "rejected" };
 
@@ -253,6 +273,7 @@ export type InvestmentStore = {
   listWithdrawals(ownerSub: string): Promise<WithdrawalRequest[]>;
   listAllWithdrawals(): Promise<WithdrawalRequest[]>;
   reviewWithdrawal(review: WithdrawalReview): Promise<WithdrawalReviewResult>;
+  recordPayout(payout: WithdrawalPayout): Promise<WithdrawalPayoutResult>;
   getById(ownerSub: string, investmentId: string): Promise<InvestmentRecord | null>;
   listByOwner(ownerSub: string): Promise<InvestmentRecord[]>;
   getDepositAddress(): Promise<DepositAddress | null>;
@@ -371,7 +392,7 @@ export function createWithdrawalId(random: () => string = () => crypto.randomUUI
 export function availableWithdrawalMinor(profits: readonly ProfitEntry[], withdrawals: readonly WithdrawalRequest[]): number {
   const posted = profits.reduce((sum, entry) => sum + entry.profitMinor, 0);
   const reserved = withdrawals
-    .filter((request) => request.status === "pending_review" || request.status === "approved")
+    .filter((request) => request.status === "pending_review" || request.status === "approved" || request.status === "paid")
     .reduce((sum, request) => sum + request.amountMinor, 0);
   const available = posted - reserved;
   return available > 0 ? available : 0;
@@ -379,7 +400,7 @@ export function availableWithdrawalMinor(profits: readonly ProfitEntry[], withdr
 
 export function withdrawalFromStoredItem(item: Record<string, unknown>): WithdrawalRequest {
   const status = item.status;
-  if (status !== "pending_review" && status !== "approved" && status !== "rejected") {
+  if (status !== "pending_review" && status !== "approved" && status !== "rejected" && status !== "paid") {
     throw new InvestmentRequestError(500, "invalid_stored_withdrawal", "That withdrawal record is not valid.");
   }
   const amountMinor = Number(item.amountMinor);
@@ -389,6 +410,8 @@ export function withdrawalFromStoredItem(item: Record<string, unknown>): Withdra
   if (typeof item.withdrawalId !== "string" || typeof item.ownerSub !== "string" || typeof item.createdAt !== "string") {
     throw new InvestmentRequestError(500, "invalid_stored_withdrawal", "That withdrawal record is not valid.");
   }
+  const destination = storedPayoutDestination(item);
+  const payout = storedPayoutRecord(item, status, destination.network);
   return {
     withdrawalId: item.withdrawalId,
     ownerSub: item.ownerSub,
@@ -400,6 +423,8 @@ export function withdrawalFromStoredItem(item: Record<string, unknown>): Withdra
     updatedAt: typeof item.updatedAt === "string" ? item.updatedAt : item.createdAt,
     ...(typeof item.reviewedAt === "string" ? { reviewedAt: item.reviewedAt } : {}),
     ...(typeof item.reviewedBy === "string" ? { reviewedBy: item.reviewedBy } : {}),
+    ...destination,
+    ...payout,
   };
 }
 
@@ -930,6 +955,20 @@ export async function handleInvestmentApi(input: {
       });
       return { statusCode: 200, body: { withdrawal: request } };
     }
+    const withdrawalPayoutId = withdrawalPayoutIdFromPath(path);
+    if (method === "POST" && withdrawalPayoutId) {
+      if (!isAdminClaims(input.claims)) {
+        return errorBody(403, "forbidden", "Admin access is required.");
+      }
+      const request = await recordWithdrawalPayout({
+        withdrawalId: withdrawalPayoutId,
+        body: input.body,
+        paidBy: identity.userId,
+        store: input.store,
+        now,
+      });
+      return { statusCode: 200, body: { withdrawal: request } };
+    }
     if (path === "/admin/deposits" || path.startsWith("/admin/deposits/")) {
       if (!isAdminClaims(input.claims)) {
         return errorBody(403, "forbidden", "Admin access is required.");
@@ -1382,12 +1421,76 @@ function readIdempotencyKey(value: string | undefined): string {
   return key;
 }
 
+function withdrawalPayoutIdFromPath(path: string): string | null {
+  const match = path.match(/^\/admin\/withdrawals\/([^/]+)\/payout$/);
+  if (!match?.[1] || !WITHDRAWAL_ID_PATTERN.test(match[1])) {
+    return null;
+  }
+  return match[1];
+}
+
 function withdrawalReviewIdFromPath(path: string): string | null {
   const match = path.match(/^\/admin\/withdrawals\/([^/]+)\/review$/);
   if (!match?.[1] || !WITHDRAWAL_ID_PATTERN.test(match[1])) {
     return null;
   }
   return match[1];
+}
+
+async function recordWithdrawalPayout(input: {
+  withdrawalId: string;
+  body: unknown;
+  paidBy: string;
+  store: InvestmentStore;
+  now: () => string;
+}): Promise<WithdrawalRequest> {
+  const transactionHash = payoutHashFromBody(input.body);
+  const paidAt = input.now();
+  const outcome = await input.store.recordPayout({
+    withdrawalId: input.withdrawalId,
+    transactionHash,
+    paidAt,
+    paidBy: input.paidBy,
+  });
+  if (outcome.result === "not-found") {
+    throw new InvestmentRequestError(404, "withdrawal_not_found", "That withdrawal was not found.");
+  }
+  if (outcome.result === "invalid") {
+    throw new InvestmentRequestError(400, "invalid_transaction_hash", "Enter the blockchain transaction hash.");
+  }
+  if (outcome.result === "conflict") {
+    throw new InvestmentRequestError(409, "payout_conflict", "That withdrawal cannot be marked paid.");
+  }
+  const saved = outcome.request;
+  const hash = saved.network ? readPayoutHash(saved.network, transactionHash) : "";
+  if (
+    saved.status !== "paid" ||
+    !hash ||
+    saved.payoutReference !== hash ||
+    saved.payoutNetwork !== saved.network ||
+    !saved.paidAt ||
+    !saved.paidBy
+  ) {
+    throw new InvestmentRequestError(500, "payout_failed", "Could not record that payout.");
+  }
+  if (outcome.result === "paid" && (saved.paidBy !== input.paidBy || saved.paidAt !== paidAt)) {
+    throw new InvestmentRequestError(500, "payout_failed", "Could not record that payout.");
+  }
+  return saved;
+}
+
+function payoutHashFromBody(body: unknown): string {
+  if (!body || typeof body !== "object" || Array.isArray(body)) {
+    throw new InvestmentRequestError(400, "invalid_body", "Enter the blockchain transaction hash.");
+  }
+  const record = body as Record<string, unknown>;
+  if (Object.keys(record).some((key) => key !== "transactionHash")) {
+    throw new InvestmentRequestError(400, "invalid_body", "Only the transaction hash can be submitted.");
+  }
+  if (typeof record.transactionHash !== "string" || record.transactionHash.trim() === "") {
+    throw new InvestmentRequestError(400, "invalid_transaction_hash", "Enter the blockchain transaction hash.");
+  }
+  return record.transactionHash.trim();
 }
 
 async function reviewWithdrawal(input: {
@@ -1494,7 +1597,7 @@ async function requestWithdrawal(input: {
     verify(userId: string, password: string): Promise<"ok" | "missing" | "mismatch">;
   };
 }): Promise<WithdrawalRequest> {
-  const { amountMinor, transactionPassword } = withdrawalRequestFromBody(input.body);
+  const { amountMinor, transactionPassword, network, destination } = withdrawalRequestFromBody(input.body);
   if (!input.transactionPasswords) {
     throw new InvestmentRequestError(500, "configuration", "Withdrawal confirmation is not configured.");
   }
@@ -1519,6 +1622,8 @@ async function requestWithdrawal(input: {
     status: "pending_review",
     createdAt,
     updatedAt: createdAt,
+    network,
+    destination,
   };
   const saved = await input.store.putWithdrawal(request);
   if (saved === "duplicate") {
@@ -1527,23 +1632,68 @@ async function requestWithdrawal(input: {
   return request;
 }
 
-function withdrawalRequestFromBody(body: unknown): { amountMinor: number; transactionPassword: string } {
+function withdrawalRequestFromBody(body: unknown): {
+  amountMinor: number;
+  transactionPassword: string;
+  network: DepositNetwork;
+  destination: string;
+} {
   if (!body || typeof body !== "object" || Array.isArray(body)) {
     throw new InvestmentRequestError(400, "invalid_body", "Enter a withdrawal amount above zero.");
   }
   const record = body as Record<string, unknown>;
   const keys = Object.keys(record);
-  if (keys.some((key) => key !== "amountMinor" && key !== "transactionPassword")) {
+  if (keys.some((key) => key !== "amountMinor" && key !== "transactionPassword" && key !== "network" && key !== "destination")) {
     throw new InvestmentRequestError(400, "invalid_body", "The server calculates the withdrawal.");
   }
   if (typeof record.transactionPassword !== "string" || record.transactionPassword.length === 0) {
     throw new InvestmentRequestError(400, "invalid_body", "Enter the transaction password.");
   }
+  if (record.network !== "BEP20" && record.network !== "TRC20") {
+    throw new InvestmentRequestError(400, "invalid_network", "Choose BEP20 or TRC20.");
+  }
+  const destination = readNetworkAddress(record.network, typeof record.destination === "string" ? record.destination : "");
+  if (!destination) {
+    throw new InvestmentRequestError(400, "invalid_destination", "Enter a valid payout wallet address.");
+  }
   const amountMinor = record.amountMinor;
   if (typeof amountMinor !== "number" || !Number.isSafeInteger(amountMinor) || amountMinor <= 0) {
     throw new InvestmentRequestError(400, "invalid_amount", "Enter a withdrawal amount above zero.");
   }
-  return { amountMinor, transactionPassword: record.transactionPassword };
+  return { amountMinor, transactionPassword: record.transactionPassword, network: record.network, destination };
+}
+
+function storedPayoutDestination(item: Record<string, unknown>): Pick<WithdrawalRequest, "network" | "destination"> {
+  if (item.network === undefined && item.destination === undefined) {
+    return {};
+  }
+  if (item.network !== "BEP20" && item.network !== "TRC20") {
+    throw new InvestmentRequestError(500, "invalid_stored_withdrawal", "That withdrawal record is not valid.");
+  }
+  const destination = readNetworkAddress(item.network, typeof item.destination === "string" ? item.destination : "");
+  if (!destination) {
+    throw new InvestmentRequestError(500, "invalid_stored_withdrawal", "That withdrawal record is not valid.");
+  }
+  return { network: item.network, destination };
+}
+
+function storedPayoutRecord(
+  item: Record<string, unknown>,
+  status: WithdrawalStatus,
+  network: DepositNetwork | undefined,
+): Pick<WithdrawalRequest, "payoutReference" | "payoutNetwork" | "paidAt" | "paidBy"> {
+  const present = item.payoutReference !== undefined || item.payoutNetwork !== undefined || item.paidAt !== undefined || item.paidBy !== undefined;
+  if (status !== "paid" && !present) {
+    return {};
+  }
+  if (status !== "paid" || !network || item.payoutNetwork !== network) {
+    throw new InvestmentRequestError(500, "invalid_stored_withdrawal", "That withdrawal record is not valid.");
+  }
+  const payoutReference = readPayoutHash(network, typeof item.payoutReference === "string" ? item.payoutReference : "");
+  if (!payoutReference || typeof item.paidAt !== "string" || item.paidAt.trim() === "" || typeof item.paidBy !== "string" || item.paidBy.trim() === "") {
+    throw new InvestmentRequestError(500, "invalid_stored_withdrawal", "That withdrawal record is not valid.");
+  }
+  return { payoutReference, payoutNetwork: network, paidAt: item.paidAt, paidBy: item.paidBy };
 }
 
 function storedActivationFields(item: Record<string, unknown>): Pick<InvestmentRecord, "activatedAt" | "activatedBy"> {

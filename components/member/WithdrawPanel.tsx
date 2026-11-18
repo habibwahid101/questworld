@@ -16,6 +16,7 @@ import styles from "./WithdrawPanel.module.css";
 const statusLabel: Record<WithdrawalStatus, string> = {
   pending_review: "Pending review",
   approved: "Approved",
+  paid: "Paid",
   rejected: "Rejected",
 };
 
@@ -29,6 +30,7 @@ export function WithdrawPanel() {
   const [transactionPassword, setTransactionPassword] = useState("");
   const [transactionPasswordSet, setTransactionPasswordSet] = useState<boolean | null>(null);
   const [amountText, setAmountText] = useState("");
+  const [network, setNetwork] = useState<"BEP20" | "TRC20">("BEP20");
   const [walletText, setWalletText] = useState("");
   const [amountError, setAmountError] = useState<string | null>(null);
   const [passwordError, setPasswordError] = useState<string | null>(null);
@@ -75,7 +77,7 @@ export function WithdrawPanel() {
   }, [load]);
 
   async function requestWithdrawal(amountMinor: number) {
-    if (saving || loading || !transactionPasswordSet || transactionPassword.length === 0) {
+    if (saving || loading || !transactionPasswordSet || transactionPassword.length === 0 || walletText.trim() === "") {
       return;
     }
     setSaving(true);
@@ -84,7 +86,7 @@ export function WithdrawPanel() {
     setPasswordError(null);
     setStatusNote(null);
     try {
-      await requestCurrentWithdrawal(amountMinor, transactionPassword);
+      await requestCurrentWithdrawal(amountMinor, transactionPassword, network, walletText.trim());
       setAmountText("");
       setWalletText("");
       setTransactionPassword("");
@@ -122,7 +124,7 @@ export function WithdrawPanel() {
       <Card>
         <h1>Withdraw</h1>
         <p className="lead" style={{ marginTop: 12 }}>
-          Request the available posted profit. This does not pay out.
+          Request the available posted profit. QW does not send the transfer.
         </p>
         <p style={{ marginTop: 10 }}>Available {loading ? "…" : formatUsdtAmount(availableMinor)}</p>
         <Field label="Amount" htmlFor="withdrawal-amount" error={amountError ?? amountAlert}>
@@ -137,6 +139,17 @@ export function WithdrawPanel() {
             }}
             disabled={saving || loading}
           />
+        </Field>
+        <Field label="Network" htmlFor="withdrawal-network">
+          <select
+            id="withdrawal-network"
+            value={network}
+            onChange={(event) => setNetwork(event.target.value === "TRC20" ? "TRC20" : "BEP20")}
+            disabled={saving || loading}
+          >
+            <option value="BEP20">BEP20</option>
+            <option value="TRC20">TRC20</option>
+          </select>
         </Field>
         <Field label="Transaction wallet" htmlFor="withdrawal-wallet">
           <Input
@@ -179,7 +192,7 @@ export function WithdrawPanel() {
         ) : null}
         {transactionPasswordSet ? (
           <Button
-            disabled={saving || loading || !amountReady || transactionPassword.length === 0}
+            disabled={saving || loading || !amountReady || transactionPassword.length === 0 || walletText.trim() === ""}
             aria-busy={saving}
             onClick={() => {
               if (parsedAmount !== null) {
@@ -208,6 +221,14 @@ export function WithdrawPanel() {
             <p style={{ marginTop: 10 }}>
               {statusLabel[request.status]}. Date and time {formatRecordedAt(request.createdAt)}
             </p>
+            {request.network && request.destination ? (
+              <p style={{ marginTop: 10 }}>
+                {request.network} {request.destination}
+              </p>
+            ) : null}
+            {request.status === "paid" && request.payoutReference ? (
+              <p style={{ marginTop: 10 }}>Transaction {request.payoutReference}</p>
+            ) : null}
           </Card>
         ))
       )}

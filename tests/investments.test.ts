@@ -1007,7 +1007,7 @@ test("a member can request posted profit and cannot read another member's reques
     method: "POST",
     path: "/withdrawals",
     claims: claims("member-1"),
-    body: { amountMinor: 7_000_001, transactionPassword: withdrawalPassword },
+    body: { amountMinor: 7_000_001, transactionPassword: withdrawalPassword, network: "BEP20", destination: "0x61440ed26b7527b186b34a661be1e07b9a67f3fe" },
     store,
     transactionPasswords,
   });
@@ -1026,7 +1026,7 @@ test("a member can request posted profit and cannot read another member's reques
     method: "POST",
     path: "/withdrawals",
     claims: claims("member-2"),
-    body: { amountMinor: 7_000_000, transactionPassword: withdrawalPassword },
+    body: { amountMinor: 7_000_000, transactionPassword: withdrawalPassword, network: "BEP20", destination: "0x61440ed26b7527b186b34a661be1e07b9a67f3fe" },
     store,
     transactionPasswords,
   });
@@ -1036,7 +1036,7 @@ test("a member can request posted profit and cannot read another member's reques
     method: "POST",
     path: "/withdrawals",
     claims: claims("member-1"),
-    body: { amountMinor: 1_000_000, transactionPassword: "WrongPass1!" },
+    body: { amountMinor: 1_000_000, transactionPassword: "WrongPass1!", network: "BEP20", destination: "0x61440ed26b7527b186b34a661be1e07b9a67f3fe" },
     store,
     transactionPasswords,
   });
@@ -1048,7 +1048,7 @@ test("a member can request posted profit and cannot read another member's reques
     method: "POST",
     path: "/withdrawals",
     claims: claims("member-1"),
-    body: { amountMinor: 7_000_000, transactionPassword: withdrawalPassword },
+    body: { amountMinor: 7_000_000, transactionPassword: withdrawalPassword, network: "BEP20", destination: "0x61440ed26b7527b186b34a661be1e07b9a67f3fe" },
     store,
     now: () => "2026-11-02T00:00:00.000Z",
     newWithdrawalId: () => "wd_22222222-2222-4222-8222-222222222222",
@@ -1059,6 +1059,8 @@ test("a member can request posted profit and cannot read another member's reques
   assert.equal(withdrawal.status, "pending_review");
   assert.equal(withdrawal.ownerSub, "member-1");
   assert.equal(withdrawal.amountMinor, 7_000_000);
+  assert.equal(withdrawal.network, "BEP20");
+  assert.equal(withdrawal.destination, "0x61440ed26b7527b186b34a661be1e07b9a67f3fe");
   assert.equal(JSON.stringify(requested.body).includes(withdrawalPassword), false);
   assert.equal(JSON.stringify(requested.body).includes(withdrawalHash), false);
   assert.equal((await store.getById("member-1", ACTIVE_ID))?.status, "active");
@@ -1180,6 +1182,120 @@ test("only an admin can review a pending withdrawal once and approval does not c
     store: rejectedStore,
   });
   assert.equal(available.body.availableMinor, 8_000_000);
+});
+
+test("an admin payout records one transaction hash and a paid withdrawal stays reserved", async () => {
+  const withdrawalId = "wd_44444444-4444-4444-8444-444444444444";
+  const destination = "0x61440ed26b7527b186b34a661be1e07b9a67f3fe";
+  const hash = `0x${"ab".repeat(32)}`;
+  const otherHash = `0x${"cd".repeat(32)}`;
+  const profit: ProfitEntry = {
+    investmentId: ACTIVE_ID,
+    ownerSub: "member-1",
+    period: "2026-10",
+    rateBps: 800,
+    paymentNumber: 1,
+    profitMinor: 8_000_000,
+    principalMinor: 100_000_000,
+    currency: "USDT",
+    scale: 6,
+    planId: "starter",
+    planName: "Starter",
+    postedAt: "2026-11-01T01:00:00.000Z",
+  };
+  const approved: WithdrawalRequest = {
+    withdrawalId,
+    ownerSub: "member-1",
+    amountMinor: 8_000_000,
+    currency: "USDT",
+    scale: 6,
+    status: "approved",
+    network: "BEP20",
+    destination,
+    createdAt: NOW,
+    updatedAt: NOW,
+    reviewedAt: NOW,
+    reviewedBy: "admin-1",
+  };
+  const store = createMemoryInvestmentStore();
+  await store.putProfit(profit);
+  await store.putWithdrawal(approved);
+  const adminClaims = { sub: "admin-1", "cognito:groups": "[Admins]" };
+  const path = `/admin/withdrawals/${withdrawalId}/payout`;
+
+  const member = await handleInvestmentApi({
+    method: "POST",
+    path,
+    claims: claims("member-1"),
+    body: { transactionHash: hash },
+    store,
+  });
+  assert.equal(member.statusCode, 403);
+  assert.equal((await store.listWithdrawals("member-1"))[0]?.status, "approved");
+
+  const invalid = await handleInvestmentApi({
+    method: "POST",
+    path,
+    claims: adminClaims,
+    body: { transactionHash: "not-a-hash" },
+    store,
+  });
+  assert.equal(invalid.statusCode, 400);
+  assert.equal((await store.listWithdrawals("member-1"))[0]?.status, "approved");
+
+  const paid = await handleInvestmentApi({
+    method: "POST",
+    path,
+    claims: adminClaims,
+    body: { transactionHash: hash },
+    store,
+    now: () => "2026-11-04T00:00:00.000Z",
+  });
+  assert.equal(paid.statusCode, 200);
+  const saved = paid.body.withdrawal as WithdrawalRequest;
+  assert.equal(saved.status, "paid");
+  assert.equal(saved.payoutReference, hash);
+  assert.equal(saved.payoutNetwork, "BEP20");
+  assert.equal(saved.destination, destination);
+  assert.equal(saved.paidBy, "admin-1");
+  assert.equal(saved.paidAt, "2026-11-04T00:00:00.000Z");
+  assert.equal((await store.listProfits("member-1"))[0]?.profitMinor, 8_000_000);
+
+  const replay = await handleInvestmentApi({
+    method: "POST",
+    path,
+    claims: adminClaims,
+    body: { transactionHash: hash },
+    store,
+    now: () => "2026-11-05T00:00:00.000Z",
+  });
+  assert.equal(replay.statusCode, 200);
+  assert.equal((replay.body.withdrawal as WithdrawalRequest).paidAt, "2026-11-04T00:00:00.000Z");
+
+  const conflict = await handleInvestmentApi({
+    method: "POST",
+    path,
+    claims: adminClaims,
+    body: { transactionHash: otherHash },
+    store,
+  });
+  assert.equal(conflict.statusCode, 409);
+  assert.equal((await store.listWithdrawals("member-1"))[0]?.payoutReference, hash);
+
+  const available = await handleInvestmentApi({ method: "GET", path: "/withdrawals", claims: claims("member-1"), store });
+  assert.equal(available.body.availableMinor, 0);
+
+  const pendingStore = createMemoryInvestmentStore();
+  await pendingStore.putWithdrawal({ ...approved, status: "pending_review" });
+  const pending = await handleInvestmentApi({
+    method: "POST",
+    path,
+    claims: adminClaims,
+    body: { transactionHash: hash },
+    store: pendingStore,
+  });
+  assert.equal(pending.statusCode, 409);
+  assert.equal((await pendingStore.listWithdrawals("member-1"))[0]?.status, "pending_review");
 });
 
 test("monthly commissions post generation 1 and 2 once and skip a missing sponsor", async () => {
@@ -1543,14 +1659,16 @@ test("admin trace lists are read-only and a member cannot read them", async () =
   assert.match(source, /path: "\/admin\/commissions"/);
   assert.match(source, /path: "\/admin\/withdrawals"/);
   assert.match(source, /path: "\/admin\/withdrawals\/\{withdrawalId\}\/review"/);
+  assert.match(source, /path: "\/admin\/withdrawals\/\{withdrawalId\}\/payout"/);
   assert.doesNotMatch(source, /path: "\/admin\/withdrawals",\s*\n\s*methods: \[apigwv2\.HttpMethod\.POST\]/);
   const profitsPanel = readFileSync(new URL("../components/admin/AdminProfitsPanel.tsx", import.meta.url), "utf8");
   const withdrawalsPanel = readFileSync(new URL("../components/admin/AdminWithdrawalsPanel.tsx", import.meta.url), "utf8");
   assert.match(profitsPanel, /profitColumns/);
   assert.match(profitsPanel, /does not post profit or pay it out/);
-  assert.match(withdrawalsPanel, /Nothing is paid out/);
+  assert.match(withdrawalsPanel, /QW does not send the transfer/);
   assert.match(withdrawalsPanel, /reviewAdminWithdrawal/);
-  assert.doesNotMatch(withdrawalsPanel, /Pay out/);
+  assert.match(withdrawalsPanel, /Mark paid/);
+  assert.doesNotMatch(withdrawalsPanel, /private key|automatic transfer/i);
 });
 
 test("the public landing page uses only the current plan, return, and referral facts", () => {

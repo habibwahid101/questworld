@@ -1,6 +1,8 @@
 .shell {
   min-height: 100vh;
   display: grid;
+  min-width: 0;
+  max-width: 100%;
 }
 
 .sidebar {
@@ -39,6 +41,7 @@
 
 .topbar {
   min-height: 64px;
+  min-width: 0;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -69,11 +72,14 @@
 }
 
 .content {
+  min-width: 0;
+  max-width: 100%;
   padding: 20px 16px 40px;
 }
 
 .topActions {
   display: flex;
+  flex: 0 0 auto;
   align-items: center;
   justify-self: end;
   gap: 8px;

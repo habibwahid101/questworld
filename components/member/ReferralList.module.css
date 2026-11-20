@@ -1,13 +1,16 @@
 .scroll {
   width: 100%;
+  max-width: 100%;
+  min-width: 0;
   overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
   margin-top: var(--space-3);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
 }
 
 .scroll table {
-  width: 100%;
+  width: max-content;
   min-width: 720px;
   border-collapse: collapse;
 }

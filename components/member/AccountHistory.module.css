@@ -1,10 +1,14 @@
 .section {
   display: grid;
   gap: var(--space-3);
+  min-width: 0;
+  max-width: 100%;
 }
 
 .scroll {
   width: 100%;
+  max-width: 100%;
+  min-width: 0;
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;
   border: 1px solid var(--color-border);
@@ -14,7 +18,7 @@
 
 .scroll table {
   display: table;
-  width: 100%;
+  width: max-content;
   min-width: 640px;
   border-collapse: collapse;
 }

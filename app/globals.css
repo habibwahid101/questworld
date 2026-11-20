@@ -200,6 +200,13 @@ p {
 .stack {
   display: grid;
   gap: var(--space-4);
+  min-width: 0;
+  max-width: 100%;
+}
+
+.stack > * {
+  min-width: 0;
+  max-width: 100%;
 }
 
 .cluster {
@@ -211,6 +218,8 @@ p {
 
 .table-wrap {
   width: 100%;
+  max-width: 100%;
+  min-width: 0;
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;
   border: 1px solid var(--color-border);
@@ -219,7 +228,7 @@ p {
 }
 
 .table-wrap table {
-  width: 100%;
+  width: max-content;
   min-width: 720px;
   border-collapse: collapse;
 }
